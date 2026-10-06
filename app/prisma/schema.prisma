@@ -147,6 +147,67 @@ enum ReceiptCondition {
   OTHER
 }
 
+enum AssetCondition {
+  UNKNOWN
+  GOOD
+  KNOWN_GOOD
+  COSMETIC_DAMAGE
+  SHIPPING_DAMAGE
+  FAILED
+  INTERMITTENT
+  REPAIRABLE
+  NONREPAIRABLE
+  PARTS_ONLY
+  DATA_BEARING
+  TEST_PENDING
+}
+
+enum WorkActivityType {
+  RECEIVING
+  INVENTORY_INTAKE
+  INSPECTION
+  DIAGNOSIS
+  REPAIR
+  TESTING
+  CONFIGURATION
+  PACKAGING
+  LOGISTICS
+  DATA_DESTRUCTION
+  DECOMMISSIONING
+  ADMINISTRATION
+  TRAINING
+  SUPERVISION
+  OTHER
+}
+
+enum WorkOrderPartStatus {
+  REQUIRED
+  ORDERED
+  BACKORDERED
+  RECEIVED
+  INSTALLED
+  REMOVED
+  RETURNED
+  CONSUMED
+  CANCELLED
+}
+
+enum EvidenceType {
+  PACKAGE_EXTERIOR
+  SHIPPING_LABEL
+  DAMAGE
+  SERIAL_ASSET_TAG
+  BEFORE_REPAIR
+  AFTER_REPAIR
+  TEST_RESULT
+  PACKING
+  OUTBOUND_SHIPMENT
+  SIGNED_AUTHORIZATION
+  TITLE_TRANSFER
+  DATA_DESTRUCTION_CERTIFICATE
+  OTHER
+}
+
 model User {
   id          String     @id @default(cuid())
   email       String     @unique
@@ -158,7 +219,12 @@ model User {
   memberships       Membership[]
   requestedServices ServiceRequest[] @relation("ServiceRequestedBy")
   authorizations    Authorization[]  @relation("AuthorizationApprovedBy")
-  receivedPackages  Receipt[]        @relation("ReceiptReceivedBy")
+  receivedPackages     Receipt[]          @relation("ReceiptReceivedBy")
+  workOrderEvents      WorkOrderEvent[]   @relation("WorkOrderEventActor")
+  workActivities       WorkActivity[]     @relation("WorkActivityWorker")
+  supervisedActivities WorkActivity[]     @relation("WorkActivitySupervisor")
+  assetObservations    AssetObservation[] @relation("AssetObservationObserver")
+  uploadedEvidence     Evidence[]         @relation("EvidenceUploader")
 }
 
 model Organization {
@@ -173,6 +239,7 @@ model Organization {
   memberships     Membership[]
   serviceRequests ServiceRequest[]
   workOrders      WorkOrder[]
+  evidence        Evidence[]
 }
 
 model Membership {
@@ -309,6 +376,8 @@ model Asset {
   workOrders             WorkOrder[]
   serviceRequests        ServiceRequest[]
   packageContents        PackageContent[]
+  observations           AssetObservation[]
+  evidence               Evidence[]
 
   @@index([serialNumber])
   @@index([organizationId])
@@ -421,6 +490,7 @@ model Package {
   shipment Shipment         @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
   contents PackageContent[]
   receipt  Receipt?
+  evidence Evidence[]
 
   @@index([shipmentId])
   @@index([trackingNumber])
@@ -456,6 +526,7 @@ model Receipt {
   package         Package          @relation(fields: [packageId], references: [id], onDelete: Cascade)
   receivedByUser  User?            @relation("ReceiptReceivedBy", fields: [receivedByUserId], references: [id])
   storageLocation StorageLocation? @relation(fields: [storageLocationId], references: [id])
+  evidence        Evidence[]
 
   @@index([receivedByUserId])
   @@index([storageLocationId])
@@ -483,10 +554,147 @@ model WorkOrder {
   organization   Organization?   @relation(fields: [organizationId], references: [id])
   serviceRequest ServiceRequest? @relation(fields: [serviceRequestId], references: [id])
   shipment       Shipment?       @relation(fields: [shipmentId], references: [id])
+  events         WorkOrderEvent[]
+  activities     WorkActivity[]
+  parts          WorkOrderPart[]
+  observations   AssetObservation[]
+  evidence       Evidence[]
 
   @@index([assetId])
   @@index([organizationId])
   @@index([serviceRequestId])
   @@index([shipmentId])
   @@index([status])
+}
+
+
+model WorkOrderEvent {
+  id              String           @id @default(cuid())
+  workOrderId     String
+  actorUserId     String?
+  eventType       String
+  fromStatus      WorkOrderStatus?
+  toStatus        WorkOrderStatus?
+  notes           String?
+  actorLabel      String?
+  systemGenerated Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  actor     User?     @relation("WorkOrderEventActor", fields: [actorUserId], references: [id])
+  evidence  Evidence[]
+
+  @@index([workOrderId, createdAt])
+  @@index([actorUserId])
+  @@index([eventType])
+}
+
+model WorkActivity {
+  id               String           @id @default(cuid())
+  workOrderId      String
+  workerUserId     String?
+  supervisorUserId String?
+  workerLabel      String?
+  activityType     WorkActivityType
+  startedAt        DateTime
+  endedAt          DateTime?
+  durationMinutes  Int?
+  notes            String?
+  billable         Boolean          @default(false)
+  training         Boolean          @default(false)
+  supervised       Boolean          @default(false)
+  verified         Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  workOrder  WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  worker     User?     @relation("WorkActivityWorker", fields: [workerUserId], references: [id])
+  supervisor User?     @relation("WorkActivitySupervisor", fields: [supervisorUserId], references: [id])
+
+  @@index([workOrderId, startedAt])
+  @@index([workerUserId])
+  @@index([activityType])
+}
+
+model AssetObservation {
+  id             String         @id @default(cuid())
+  assetId        String
+  workOrderId    String?
+  observerUserId String?
+  observerLabel  String?
+  observationType String?
+  condition      AssetCondition
+  notes          String?
+  observedAt     DateTime       @default(now())
+  createdAt      DateTime       @default(now())
+
+  asset      Asset      @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  workOrder  WorkOrder? @relation(fields: [workOrderId], references: [id])
+  observer   User?      @relation("AssetObservationObserver", fields: [observerUserId], references: [id])
+
+  @@index([assetId, observedAt])
+  @@index([workOrderId])
+  @@index([condition])
+}
+
+model WorkOrderPart {
+  id          String              @id @default(cuid())
+  workOrderId String
+  partNumber  String?
+  description String
+  manufacturer String?
+  quantity    Int                 @default(1)
+  unitCostCents Int?
+  currency    String              @default("USD")
+  source      String?
+  status      WorkOrderPartStatus @default(REQUIRED)
+  orderedAt   DateTime?
+  receivedAt  DateTime?
+  installedAt DateTime?
+  removedAt   DateTime?
+  returnReference String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  workOrder WorkOrder @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+
+  @@index([workOrderId])
+  @@index([status])
+  @@index([partNumber])
+}
+
+model Evidence {
+  id              String       @id @default(cuid())
+  organizationId  String
+  assetId         String?
+  workOrderId     String?
+  workOrderEventId String?
+  packageId       String?
+  receiptId       String?
+  uploaderUserId  String?
+  evidenceType    EvidenceType
+  description     String?
+  originalFilename String?
+  mimeType        String?
+  storageKey      String?
+  sha256          String?
+  capturedAt      DateTime?
+  uploadedAt      DateTime     @default(now())
+  isOriginal      Boolean      @default(true)
+
+  organization  Organization   @relation(fields: [organizationId], references: [id])
+  asset         Asset?         @relation(fields: [assetId], references: [id])
+  workOrder     WorkOrder?     @relation(fields: [workOrderId], references: [id])
+  workOrderEvent WorkOrderEvent? @relation(fields: [workOrderEventId], references: [id])
+  package       Package?       @relation(fields: [packageId], references: [id])
+  receipt       Receipt?       @relation(fields: [receiptId], references: [id])
+  uploader      User?          @relation("EvidenceUploader", fields: [uploaderUserId], references: [id])
+
+  @@index([organizationId])
+  @@index([assetId])
+  @@index([workOrderId])
+  @@index([workOrderEventId])
+  @@index([packageId])
+  @@index([receiptId])
+  @@index([evidenceType])
 }
