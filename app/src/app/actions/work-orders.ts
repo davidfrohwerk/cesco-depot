@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import {
+  currentUserLabel,
+  requireCurrentUser,
+} from "@/lib/auth";
+import {
   AssetCondition,
   WorkActivityType,
 } from "../../../generated/prisma/client";
@@ -36,18 +40,22 @@ async function revalidateWorkOrder(workOrderId: string) {
   revalidatePath(`/work-orders/${workOrderId}`);
 }
 
+async function authenticatedActor() {
+  const user = await requireCurrentUser();
+
+  return {
+    user,
+    label: currentUserLabel(user),
+  };
+}
+
 export async function beginWorkOrderIntake(
   workOrderId: string,
   formData: FormData
 ) {
-  const actorLabel = String(
-    formData.get("actorLabel") ?? ""
-  ).trim();
+  const actor = await authenticatedActor();
+  const actorLabel = actor.label;
   const notes = String(formData.get("notes") ?? "").trim();
-
-  if (!actorLabel) {
-    throw new Error("Operator name or label is required.");
-  }
 
   await prisma.$transaction(async (tx) => {
     const workOrder = await tx.workOrder.findUnique({
@@ -77,6 +85,8 @@ export async function beginWorkOrderIntake(
         eventType: "INTAKE_STARTED",
         fromStatus: "RECEIVED",
         toStatus: "INTAKE",
+        actorUserId: actor.user.id,
+        actorUserId: actor.user.id,
         actorLabel,
         notes: notes || null,
       },
@@ -101,9 +111,8 @@ export async function recordAssetObservation(
   workOrderId: string,
   formData: FormData
 ) {
-  const observerLabel = String(
-    formData.get("observerLabel") ?? ""
-  ).trim();
+  const actor = await authenticatedActor();
+  const observerLabel = actor.label;
   const observationType = String(
     formData.get("observationType") ?? ""
   ).trim();
@@ -111,10 +120,6 @@ export async function recordAssetObservation(
     formData.get("condition") ?? "UNKNOWN"
   ).trim() as AssetCondition;
   const notes = String(formData.get("notes") ?? "").trim();
-
-  if (!observerLabel) {
-    throw new Error("Observer name or label is required.");
-  }
 
   await prisma.$transaction(async (tx) => {
     const workOrder = await tx.workOrder.findUnique({
@@ -129,6 +134,7 @@ export async function recordAssetObservation(
       data: {
         assetId: workOrder.assetId,
         workOrderId,
+        observerUserId: actor.user.id,
         observerLabel,
         observationType: observationType || null,
         condition,
@@ -142,6 +148,7 @@ export async function recordAssetObservation(
         eventType: "CONDITION_OBSERVED",
         fromStatus: workOrder.status,
         toStatus: workOrder.status,
+        actorUserId: actor.user.id,
         actorLabel: observerLabel,
         notes: [
           `Condition: ${condition}.`,
@@ -163,9 +170,8 @@ export async function startWorkActivity(
   workOrderId: string,
   formData: FormData
 ) {
-  const workerLabel = String(
-    formData.get("workerLabel") ?? ""
-  ).trim();
+  const actor = await authenticatedActor();
+  const workerLabel = actor.label;
   const activityType = String(
     formData.get("activityType") ?? ""
   ).trim() as WorkActivityType;
@@ -174,10 +180,8 @@ export async function startWorkActivity(
   const training = formData.get("training") === "on";
   const supervised = formData.get("supervised") === "on";
 
-  if (!workerLabel || !activityType) {
-    throw new Error(
-      "Worker label and activity type are required."
-    );
+  if (!activityType) {
+    throw new Error("Activity type is required.");
   }
 
   await prisma.$transaction(async (tx) => {
@@ -205,6 +209,7 @@ export async function startWorkActivity(
     const activity = await tx.workActivity.create({
       data: {
         workOrderId,
+        workerUserId: actor.user.id,
         workerLabel,
         activityType,
         startedAt: new Date(),
@@ -221,6 +226,7 @@ export async function startWorkActivity(
         eventType: "ACTIVITY_STARTED",
         fromStatus: workOrder.status,
         toStatus: workOrder.status,
+        actorUserId: actor.user.id,
         actorLabel: workerLabel,
         notes: `${activity.activityType} activity started.`,
       },
@@ -231,6 +237,8 @@ export async function startWorkActivity(
 }
 
 export async function stopWorkActivity(activityId: string) {
+  const actor = await authenticatedActor();
+
   const result = await prisma.$transaction(async (tx) => {
     const activity = await tx.workActivity.findUnique({
       where: { id: activityId },
@@ -268,7 +276,8 @@ export async function stopWorkActivity(activityId: string) {
         eventType: "ACTIVITY_COMPLETED",
         fromStatus: activity.workOrder.status,
         toStatus: activity.workOrder.status,
-        actorLabel: activity.workerLabel,
+        actorUserId: actor.user.id,
+        actorLabel: actor.label,
         notes: `${activity.activityType} completed; ${durationMinutes} minute(s) recorded.`,
       },
     });
@@ -283,6 +292,7 @@ export async function addRequiredPart(
   workOrderId: string,
   formData: FormData
 ) {
+  const actor = await authenticatedActor();
   const description = String(
     formData.get("description") ?? ""
   ).trim();
@@ -334,7 +344,8 @@ export async function addRequiredPart(
         eventType: "PART_REQUIRED",
         fromStatus: workOrder.status,
         toStatus: workOrder.status,
-        actorLabel: "depot-dev",
+        actorUserId: actor.user.id,
+        actorLabel: actor.label,
         notes: [
           `${part.quantity} x ${part.description}`,
           part.partNumber
@@ -354,14 +365,10 @@ export async function setWorkOrderWaitingParts(
   workOrderId: string,
   formData: FormData
 ) {
-  const actorLabel = String(
-    formData.get("actorLabel") ?? ""
-  ).trim();
+  const actor = await authenticatedActor();
+  const actorLabel = actor.label;
   const notes = String(formData.get("notes") ?? "").trim();
 
-  if (!actorLabel) {
-    throw new Error("Operator name or label is required.");
-  }
 
   await prisma.$transaction(async (tx) => {
     const workOrder = await tx.workOrder.findUnique({
@@ -391,6 +398,7 @@ export async function setWorkOrderWaitingParts(
         eventType: "WAITING_PARTS",
         fromStatus: workOrder.status,
         toStatus: "WAITING_PARTS",
+        actorUserId: actor.user.id,
         actorLabel,
         notes: notes || null,
       },
@@ -415,13 +423,9 @@ export async function markPartReceived(
   partId: string,
   formData: FormData
 ) {
-  const actorLabel = String(
-    formData.get("actorLabel") ?? ""
-  ).trim();
+  const actor = await authenticatedActor();
+  const actorLabel = actor.label;
 
-  if (!actorLabel) {
-    throw new Error("Operator name or label is required.");
-  }
 
   const result = await prisma.$transaction(async (tx) => {
     const part = await tx.workOrderPart.findUnique({
@@ -451,6 +455,7 @@ export async function markPartReceived(
         eventType: "PART_RECEIVED",
         fromStatus: part.workOrder.status,
         toStatus: part.workOrder.status,
+        actorUserId: actor.user.id,
         actorLabel,
         notes: `${part.quantity} x ${part.description} received.`,
       },
@@ -466,14 +471,10 @@ export async function resumeRepair(
   workOrderId: string,
   formData: FormData
 ) {
-  const actorLabel = String(
-    formData.get("actorLabel") ?? ""
-  ).trim();
+  const actor = await authenticatedActor();
+  const actorLabel = actor.label;
   const notes = String(formData.get("notes") ?? "").trim();
 
-  if (!actorLabel) {
-    throw new Error("Operator name or label is required.");
-  }
 
   await prisma.$transaction(async (tx) => {
     const workOrder = await tx.workOrder.findUnique({
@@ -497,6 +498,7 @@ export async function resumeRepair(
         eventType: "REPAIR_RESUMED",
         fromStatus: "WAITING_PARTS",
         toStatus: "IN_PROGRESS",
+        actorUserId: actor.user.id,
         actorLabel,
         notes: notes || null,
       },
@@ -511,14 +513,10 @@ export async function markPartInstalled(
   partId: string,
   formData: FormData
 ) {
-  const actorLabel = String(
-    formData.get("actorLabel") ?? ""
-  ).trim();
+  const actor = await authenticatedActor();
+  const actorLabel = actor.label;
   const notes = String(formData.get("notes") ?? "").trim();
 
-  if (!actorLabel) {
-    throw new Error("Operator name or label is required.");
-  }
 
   const result = await prisma.$transaction(async (tx) => {
     const part = await tx.workOrderPart.findUnique({
@@ -550,6 +548,7 @@ export async function markPartInstalled(
         eventType: "PART_INSTALLED",
         fromStatus: part.workOrder.status,
         toStatus: part.workOrder.status,
+        actorUserId: actor.user.id,
         actorLabel,
         notes: [
           `${part.quantity} x ${part.description} installed.`,
@@ -570,16 +569,12 @@ export async function completeRepairForTesting(
   workOrderId: string,
   formData: FormData
 ) {
-  const actorLabel = String(
-    formData.get("actorLabel") ?? ""
-  ).trim();
+  const actor = await authenticatedActor();
+  const actorLabel = actor.label;
   const resolution = String(
     formData.get("resolution") ?? ""
   ).trim();
 
-  if (!actorLabel) {
-    throw new Error("Operator name or label is required.");
-  }
 
   if (!resolution) {
     throw new Error("Repair resolution is required.");
@@ -624,6 +619,7 @@ export async function completeRepairForTesting(
       data: {
         assetId: workOrder.assetId,
         workOrderId,
+        observerUserId: actor.user.id,
         observerLabel: actorLabel,
         observationType: "repair completion",
         condition: "TEST_PENDING",
@@ -637,6 +633,7 @@ export async function completeRepairForTesting(
         eventType: "REPAIR_COMPLETED",
         fromStatus: workOrder.status,
         toStatus: "TESTING",
+        actorUserId: actor.user.id,
         actorLabel,
         notes: resolution,
       },
@@ -661,17 +658,13 @@ export async function recordQaResult(
   workOrderId: string,
   formData: FormData
 ) {
-  const actorLabel = String(
-    formData.get("actorLabel") ?? ""
-  ).trim();
+  const actor = await authenticatedActor();
+  const actorLabel = actor.label;
   const result = String(
     formData.get("result") ?? ""
   ).trim();
   const notes = String(formData.get("notes") ?? "").trim();
 
-  if (!actorLabel) {
-    throw new Error("Tester name or label is required.");
-  }
 
   if (!["PASS", "FAIL"].includes(result)) {
     throw new Error("QA result must be PASS or FAIL.");
@@ -707,6 +700,7 @@ export async function recordQaResult(
       data: {
         assetId: workOrder.assetId,
         workOrderId,
+        observerUserId: actor.user.id,
         observerLabel: actorLabel,
         observationType: "quality assurance",
         condition,
@@ -734,6 +728,7 @@ export async function recordQaResult(
         eventType,
         fromStatus: "TESTING",
         toStatus: nextWorkOrderStatus,
+        actorUserId: actor.user.id,
         actorLabel,
         notes: notes || null,
       },
@@ -759,14 +754,10 @@ export async function packReadyAsset(
   workOrderId: string,
   formData: FormData
 ) {
-  const actorLabel = String(
-    formData.get("actorLabel") ?? ""
-  ).trim();
+  const actor = await authenticatedActor();
+  const actorLabel = actor.label;
   const notes = String(formData.get("notes") ?? "").trim();
 
-  if (!actorLabel) {
-    throw new Error("Operator name or label is required.");
-  }
 
   await prisma.$transaction(async (tx) => {
     const workOrder = await tx.workOrder.findUnique({
@@ -798,6 +789,7 @@ export async function packReadyAsset(
         eventType: "PACKED",
         fromStatus: "READY",
         toStatus: "PACKED",
+        actorUserId: actor.user.id,
         actorLabel,
         notes: notes || "Asset packed for outbound shipment.",
       },
@@ -811,9 +803,8 @@ export async function createOutboundShipment(
   workOrderId: string,
   formData: FormData
 ) {
-  const actorLabel = String(
-    formData.get("actorLabel") ?? ""
-  ).trim();
+  const actor = await authenticatedActor();
+  const actorLabel = actor.label;
   const carrier = String(formData.get("carrier") ?? "").trim();
   const trackingNumber = String(
     formData.get("trackingNumber") ?? ""
@@ -916,6 +907,7 @@ export async function createOutboundShipment(
         eventType: "OUTBOUND_SHIPMENT_PREPARED",
         fromStatus: "PACKED",
         toStatus: "PACKED",
+        actorUserId: actor.user.id,
         actorLabel,
         notes: `Outbound shipment prepared via ${carrier}; tracking ${trackingNumber}; destination ${destination.name}.`,
       },
@@ -938,13 +930,9 @@ export async function markOutboundShipmentAccepted(
   shipmentId: string,
   formData: FormData
 ) {
-  const actorLabel = String(
-    formData.get("actorLabel") ?? ""
-  ).trim();
+  const actor = await authenticatedActor();
+  const actorLabel = actor.label;
 
-  if (!actorLabel) {
-    throw new Error("Operator name or label is required.");
-  }
 
   const result = await prisma.$transaction(async (tx) => {
     const shipment = await tx.shipment.findUnique({
@@ -1036,6 +1024,7 @@ export async function markOutboundShipmentAccepted(
         eventType: "OUTBOUND_CARRIER_ACCEPTED",
         fromStatus: "PACKED",
         toStatus: "OUTBOUND",
+        actorUserId: actor.user.id,
         actorLabel,
         notes: `${shipment.carrier ?? "Carrier"} accepted outbound shipment ${shipment.trackingNumber ?? ""}.`,
       },
@@ -1070,14 +1059,10 @@ export async function confirmOutboundDelivery(
   shipmentId: string,
   formData: FormData
 ) {
-  const actorLabel = String(
-    formData.get("actorLabel") ?? ""
-  ).trim();
+  const actor = await authenticatedActor();
+  const actorLabel = actor.label;
   const notes = String(formData.get("notes") ?? "").trim();
 
-  if (!actorLabel) {
-    throw new Error("Operator name or label is required.");
-  }
 
   const result = await prisma.$transaction(async (tx) => {
     const shipment = await tx.shipment.findUnique({
@@ -1166,6 +1151,7 @@ export async function confirmOutboundDelivery(
         eventType: "DELIVERED_TO_CUSTOMER",
         fromStatus: "OUTBOUND",
         toStatus: "COMPLETED",
+        actorUserId: actor.user.id,
         actorLabel,
         notes: [
           `Delivered to ${shipment.destinationSite.name}.`,
@@ -1211,10 +1197,15 @@ export async function acknowledgeCustomerReceipt(
   shipmentId: string,
   formData: FormData
 ) {
-  const actorLabel = String(
+  const actor = await authenticatedActor();
+  const recipientLabel = String(
     formData.get("actorLabel") ?? ""
   ).trim();
   const notes = String(formData.get("notes") ?? "").trim();
+
+  if (!recipientLabel) {
+    throw new Error("Customer recipient name or label is required.");
+  }
 
   if (!actorLabel) {
     throw new Error("Customer recipient name or label is required.");
@@ -1272,7 +1263,7 @@ export async function acknowledgeCustomerReceipt(
       where: { id: shipment.id },
       data: {
         customerAcknowledgedAt: acknowledgedAt,
-        customerAcknowledgedByLabel: actorLabel,
+        customerAcknowledgedByLabel: recipientLabel,
         customerAcknowledgmentNotes: notes || null,
       },
     });
@@ -1283,9 +1274,10 @@ export async function acknowledgeCustomerReceipt(
         eventType: "CUSTOMER_RECEIPT_ACKNOWLEDGED",
         fromStatus: workOrder.status,
         toStatus: workOrder.status,
-        actorLabel,
+        actorUserId: actor.user.id,
+        actorLabel: actor.label,
         notes: [
-          `Customer receipt acknowledged at ${shipment.destinationSite.name}.`,
+          `Customer receipt acknowledged by ${recipientLabel} at ${shipment.destinationSite.name}.`,
           notes || null,
         ]
           .filter(Boolean)
@@ -1299,7 +1291,7 @@ export async function acknowledgeCustomerReceipt(
         eventType: "CUSTOMER_RECEIPT_ACKNOWLEDGED",
         fromStatus: asset.status,
         toStatus: asset.status,
-        actor: actorLabel,
+        actor: actor.label,
         notes: [
           `Receipt acknowledged at ${shipment.destinationSite.name}.`,
           notes || null,
