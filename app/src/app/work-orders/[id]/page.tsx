@@ -4,6 +4,9 @@ import {
   addRequiredPart,
   beginWorkOrderIntake,
   completeRepairForTesting,
+  confirmOutboundDelivery,
+  createOutboundShipment,
+  markOutboundShipmentAccepted,
   markPartInstalled,
   markPartReceived,
   recordAssetObservation,
@@ -12,6 +15,7 @@ import {
   setWorkOrderWaitingParts,
   startWorkActivity,
   stopWorkActivity,
+  packReadyAsset,
 } from "@/app/actions/work-orders";
 import { prisma } from "@/lib/prisma";
 
@@ -108,6 +112,29 @@ export default async function WorkOrderPage({ params }: PageProps) {
     (sum, activity) => sum + (activity.durationMinutes ?? 0),
     0
   );
+
+  const outboundShipment = workOrder.serviceRequestId
+    ? await prisma.shipment.findFirst({
+        where: {
+          serviceRequestId: workOrder.serviceRequestId,
+          direction: "OUTBOUND",
+        },
+        include: {
+          destinationSite: true,
+          packages: true,
+        },
+        orderBy: { createdAt: "desc" },
+      })
+    : null;
+
+  const customerSites = workOrder.asset.ownerOrganizationId
+    ? await prisma.site.findMany({
+        where: {
+          organizationId: workOrder.asset.ownerOrganizationId,
+        },
+        orderBy: { name: "asc" },
+      })
+    : [];
 
   return (
     <main className="mx-auto max-w-6xl p-8">
@@ -631,6 +658,186 @@ export default async function WorkOrderPage({ params }: PageProps) {
               Record QA result
             </button>
           </form>
+        </section>
+      )}
+
+      {workOrder.status === "READY" && (
+        <section className="mt-8 rounded border p-5">
+          <h2 className="text-xl font-semibold">
+            Prepare return to customer
+          </h2>
+          <p className="mt-2 text-sm opacity-70">
+            Packing is recorded separately from shipping. The asset remains in
+            CESCo custody until the outbound carrier actually accepts it.
+          </p>
+
+          <form
+            action={packReadyAsset.bind(null, workOrder.id)}
+            className="mt-5 grid gap-3 md:grid-cols-2"
+          >
+            <input
+              name="actorLabel"
+              required
+              placeholder="Packer name"
+              className="rounded border px-3 py-2"
+            />
+            <input
+              name="notes"
+              placeholder="Packing note, box/seal condition, included accessories"
+              className="rounded border px-3 py-2"
+            />
+            <button
+              type="submit"
+              className="rounded border px-4 py-2 font-medium md:col-span-2"
+            >
+              Mark asset packed
+            </button>
+          </form>
+        </section>
+      )}
+
+      {workOrder.status === "PACKED" && !outboundShipment && (
+        <section className="mt-8 rounded border p-5">
+          <h2 className="text-xl font-semibold">
+            Create outbound shipment
+          </h2>
+
+          {customerSites.length === 0 ? (
+            <p className="mt-4 text-sm opacity-70">
+              The asset owner does not yet have a destination site. Add the
+              customer destination before creating the return shipment.
+            </p>
+          ) : (
+            <form
+              action={createOutboundShipment.bind(null, workOrder.id)}
+              className="mt-5 grid gap-3 md:grid-cols-2"
+            >
+              <input
+                name="actorLabel"
+                required
+                placeholder="Operator name"
+                className="rounded border px-3 py-2"
+              />
+              <select
+                name="destinationSiteId"
+                required
+                defaultValue=""
+                className="rounded border px-3 py-2"
+              >
+                <option value="" disabled>
+                  Select customer destination
+                </option>
+                {customerSites.map((site) => (
+                  <option key={site.id} value={site.id}>
+                    {site.name}
+                  </option>
+                ))}
+              </select>
+              <input
+                name="carrier"
+                required
+                placeholder="Carrier"
+                className="rounded border px-3 py-2"
+              />
+              <input
+                name="trackingNumber"
+                required
+                placeholder="Tracking number"
+                className="rounded border px-3 py-2"
+              />
+              <button
+                type="submit"
+                className="rounded border px-4 py-2 font-medium md:col-span-2"
+              >
+                Save outbound shipment
+              </button>
+            </form>
+          )}
+        </section>
+      )}
+
+      {outboundShipment && (
+        <section className="mt-8 rounded border p-5">
+          <h2 className="text-xl font-semibold">
+            Outbound return
+          </h2>
+
+          <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
+            <div>
+              <span className="opacity-60">Destination:</span>{" "}
+              {outboundShipment.destinationSite.name}
+            </div>
+            <div>
+              <span className="opacity-60">Status:</span>{" "}
+              {outboundShipment.status}
+            </div>
+            <div>
+              <span className="opacity-60">Carrier:</span>{" "}
+              {outboundShipment.carrier ?? "—"}
+            </div>
+            <div>
+              <span className="opacity-60">Tracking:</span>{" "}
+              {outboundShipment.trackingNumber ?? "—"}
+            </div>
+          </div>
+
+          {outboundShipment.status === "TRACKING_ENTERED" && (
+            <form
+              action={markOutboundShipmentAccepted.bind(
+                null,
+                outboundShipment.id
+              )}
+              className="mt-5 flex flex-wrap gap-3"
+            >
+              <input
+                name="actorLabel"
+                required
+                placeholder="Operator name"
+                className="rounded border px-3 py-2"
+              />
+              <button
+                type="submit"
+                className="rounded border px-4 py-2 font-medium"
+              >
+                Simulate outbound carrier acceptance
+              </button>
+            </form>
+          )}
+
+          {outboundShipment.status === "IN_TRANSIT" && (
+            <form
+              action={confirmOutboundDelivery.bind(
+                null,
+                outboundShipment.id
+              )}
+              className="mt-5 grid gap-3 md:grid-cols-2"
+            >
+              <input
+                name="actorLabel"
+                required
+                placeholder="Delivery confirmer"
+                className="rounded border px-3 py-2"
+              />
+              <input
+                name="notes"
+                placeholder="Delivery note / carrier confirmation"
+                className="rounded border px-3 py-2"
+              />
+              <button
+                type="submit"
+                className="rounded border px-4 py-2 font-medium md:col-span-2"
+              >
+                Confirm delivery to customer
+              </button>
+            </form>
+          )}
+
+          {outboundShipment.status === "DELIVERED" && (
+            <p className="mt-5 text-sm font-medium">
+              Delivery confirmed. CESCo custody has ended and the service
+              request is complete.
+            </p>
+          )}
         </section>
       )}
 
