@@ -779,3 +779,482 @@ export async function recordQaResult(
 
   await revalidateWorkOrder(workOrderId);
 }
+
+
+export async function packReadyAsset(
+  workOrderId: string,
+  formData: FormData
+) {
+  const actorLabel = String(
+    formData.get("actorLabel") ?? ""
+  ).trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  if (!actorLabel) {
+    throw new Error("Operator name or label is required.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const workOrder = await tx.workOrder.findUnique({
+      where: { id: workOrderId },
+      include: {
+        activities: {
+          where: { endedAt: null },
+        },
+      },
+    });
+
+    if (!workOrder) {
+      throw new Error("Work order not found.");
+    }
+
+    if (workOrder.status !== "READY") {
+      throw new Error("Only a READY work order can be packed.");
+    }
+
+    if (workOrder.activities.length > 0) {
+      throw new Error(
+        "Stop the active labor/activity timer before packing."
+      );
+    }
+
+    await tx.workOrder.update({
+      where: { id: workOrderId },
+      data: { status: "PACKED" },
+    });
+
+    await tx.workOrderEvent.create({
+      data: {
+        workOrderId,
+        eventType: "PACKED",
+        fromStatus: "READY",
+        toStatus: "PACKED",
+        actorLabel,
+        notes: notes || "Asset packed for outbound shipment.",
+      },
+    });
+  });
+
+  await revalidateWorkOrder(workOrderId);
+}
+
+export async function createOutboundShipment(
+  workOrderId: string,
+  formData: FormData
+) {
+  const actorLabel = String(
+    formData.get("actorLabel") ?? ""
+  ).trim();
+  const carrier = String(formData.get("carrier") ?? "").trim();
+  const trackingNumber = String(
+    formData.get("trackingNumber") ?? ""
+  ).trim();
+  const destinationSiteId = String(
+    formData.get("destinationSiteId") ?? ""
+  ).trim();
+
+  if (
+    !actorLabel ||
+    !carrier ||
+    !trackingNumber ||
+    !destinationSiteId
+  ) {
+    throw new Error(
+      "Operator, carrier, tracking number, and destination are required."
+    );
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const workOrder = await tx.workOrder.findUnique({
+      where: { id: workOrderId },
+      include: {
+        asset: true,
+        serviceRequest: {
+          include: {
+            shipments: {
+              where: { direction: "OUTBOUND" },
+            },
+          },
+        },
+      },
+    });
+
+    if (!workOrder) {
+      throw new Error("Work order not found.");
+    }
+
+    if (workOrder.status !== "PACKED") {
+      throw new Error(
+        "Work order must be PACKED before outbound shipment setup."
+      );
+    }
+
+    if (!workOrder.serviceRequest) {
+      throw new Error(
+        "Outbound shipment requires a linked service request."
+      );
+    }
+
+    if (workOrder.serviceRequest.shipments.length > 0) {
+      throw new Error(
+        "An outbound shipment already exists for this service request."
+      );
+    }
+
+    const destination = await tx.site.findUnique({
+      where: { id: destinationSiteId },
+    });
+
+    if (!destination) {
+      throw new Error("Destination site not found.");
+    }
+
+    if (
+      workOrder.asset.ownerOrganizationId &&
+      destination.organizationId !==
+        workOrder.asset.ownerOrganizationId
+    ) {
+      throw new Error(
+        "Outbound destination must belong to the asset owner organization."
+      );
+    }
+
+    const shipment = await tx.shipment.create({
+      data: {
+        serviceRequestId: workOrder.serviceRequest.id,
+        direction: "OUTBOUND",
+        originSiteId: workOrder.asset.siteId,
+        destinationSiteId,
+        carrier,
+        trackingNumber,
+        status: "TRACKING_ENTERED",
+        packages: {
+          create: {
+            packageCode: "OUT-1",
+            trackingNumber,
+            status: "EXPECTED",
+            contents: {
+              create: {
+                assetId: workOrder.assetId,
+                description: "Outbound serviced asset",
+                quantity: 1,
+                expected: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    await tx.workOrderEvent.create({
+      data: {
+        workOrderId,
+        eventType: "OUTBOUND_SHIPMENT_PREPARED",
+        fromStatus: "PACKED",
+        toStatus: "PACKED",
+        actorLabel,
+        notes: `Outbound shipment prepared via ${carrier}; tracking ${trackingNumber}; destination ${destination.name}.`,
+      },
+    });
+
+    return {
+      workOrderId,
+      serviceRequestId: workOrder.serviceRequest.id,
+      shipmentId: shipment.id,
+    };
+  });
+
+  revalidatePath(`/work-orders/${result.workOrderId}`);
+  revalidatePath(
+    `/service-requests/${result.serviceRequestId}`
+  );
+}
+
+export async function markOutboundShipmentAccepted(
+  shipmentId: string,
+  formData: FormData
+) {
+  const actorLabel = String(
+    formData.get("actorLabel") ?? ""
+  ).trim();
+
+  if (!actorLabel) {
+    throw new Error("Operator name or label is required.");
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const shipment = await tx.shipment.findUnique({
+      where: { id: shipmentId },
+      include: {
+        destinationSite: true,
+        serviceRequest: {
+          include: {
+            asset: {
+              include: {
+                ownerOrganization: true,
+              },
+            },
+            workOrders: true,
+          },
+        },
+      },
+    });
+
+    if (!shipment) {
+      throw new Error("Shipment not found.");
+    }
+
+    if (shipment.direction !== "OUTBOUND") {
+      throw new Error("Shipment is not outbound.");
+    }
+
+    if (shipment.status === "IN_TRANSIT") {
+      const existingWorkOrder =
+        shipment.serviceRequest.workOrders[0] ?? null;
+      return {
+        workOrderId: existingWorkOrder?.id ?? null,
+        serviceRequestId: shipment.serviceRequestId,
+      };
+    }
+
+    if (shipment.status !== "TRACKING_ENTERED") {
+      throw new Error(
+        "Outbound tracking must be entered before carrier acceptance."
+      );
+    }
+
+    const asset = shipment.serviceRequest.asset;
+    const workOrder =
+      shipment.serviceRequest.workOrders.find(
+        (candidate) => candidate.assetId === asset?.id
+      ) ?? null;
+
+    if (!asset || !workOrder) {
+      throw new Error(
+        "Outbound shipment requires a linked asset and work order."
+      );
+    }
+
+    if (workOrder.status !== "PACKED") {
+      throw new Error(
+        "Work order must be PACKED before outbound carrier acceptance."
+      );
+    }
+
+    const now = new Date();
+
+    await tx.shipment.update({
+      where: { id: shipment.id },
+      data: {
+        status: "IN_TRANSIT",
+        acceptedAt: now,
+        shippedAt: shipment.shippedAt ?? now,
+      },
+    });
+
+    await tx.package.updateMany({
+      where: { shipmentId: shipment.id },
+      data: { status: "IN_TRANSIT" },
+    });
+
+    await tx.workOrder.update({
+      where: { id: workOrder.id },
+      data: { status: "OUTBOUND" },
+    });
+
+    await tx.asset.update({
+      where: { id: asset.id },
+      data: {
+        status: "DISPATCHED",
+        currentCustodyType: "CARRIER",
+        currentCustodianLabel:
+          shipment.carrier ?? "Outbound carrier",
+        currentStorageLocationId: null,
+      },
+    });
+
+    await tx.workOrderEvent.create({
+      data: {
+        workOrderId: workOrder.id,
+        eventType: "OUTBOUND_CARRIER_ACCEPTED",
+        fromStatus: "PACKED",
+        toStatus: "OUTBOUND",
+        actorLabel,
+        notes: `${shipment.carrier ?? "Carrier"} accepted outbound shipment ${shipment.trackingNumber ?? ""}.`,
+      },
+    });
+
+    await tx.assetEvent.create({
+      data: {
+        assetId: asset.id,
+        eventType: "DISPATCHED_TO_CUSTOMER",
+        fromStatus: asset.status,
+        toStatus: "DISPATCHED",
+        actor: actorLabel,
+        notes: `Outbound to ${shipment.destinationSite.name} via ${shipment.carrier ?? "carrier"}; tracking ${shipment.trackingNumber ?? "not recorded"}.`,
+      },
+    });
+
+    return {
+      workOrderId: workOrder.id,
+      serviceRequestId: shipment.serviceRequestId,
+    };
+  });
+
+  if (result.workOrderId) {
+    revalidatePath(`/work-orders/${result.workOrderId}`);
+  }
+  revalidatePath(
+    `/service-requests/${result.serviceRequestId}`
+  );
+}
+
+export async function confirmOutboundDelivery(
+  shipmentId: string,
+  formData: FormData
+) {
+  const actorLabel = String(
+    formData.get("actorLabel") ?? ""
+  ).trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  if (!actorLabel) {
+    throw new Error("Operator name or label is required.");
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const shipment = await tx.shipment.findUnique({
+      where: { id: shipmentId },
+      include: {
+        destinationSite: true,
+        serviceRequest: {
+          include: {
+            asset: {
+              include: {
+                ownerOrganization: true,
+              },
+            },
+            workOrders: true,
+          },
+        },
+      },
+    });
+
+    if (!shipment) {
+      throw new Error("Shipment not found.");
+    }
+
+    if (shipment.direction !== "OUTBOUND") {
+      throw new Error("Shipment is not outbound.");
+    }
+
+    if (shipment.status !== "IN_TRANSIT") {
+      throw new Error(
+        "Only an in-transit outbound shipment can be delivered."
+      );
+    }
+
+    const asset = shipment.serviceRequest.asset;
+    const workOrder =
+      shipment.serviceRequest.workOrders.find(
+        (candidate) => candidate.assetId === asset?.id
+      ) ?? null;
+
+    if (!asset || !workOrder) {
+      throw new Error(
+        "Outbound shipment requires a linked asset and work order."
+      );
+    }
+
+    if (workOrder.status !== "OUTBOUND") {
+      throw new Error(
+        "Work order must be OUTBOUND before delivery confirmation."
+      );
+    }
+
+    const now = new Date();
+
+    await tx.shipment.update({
+      where: { id: shipment.id },
+      data: {
+        status: "DELIVERED",
+        deliveredAt: now,
+      },
+    });
+
+    await tx.package.updateMany({
+      where: { shipmentId: shipment.id },
+      data: { status: "DELIVERED" },
+    });
+
+    await tx.workOrder.update({
+      where: { id: workOrder.id },
+      data: {
+        status: "COMPLETED",
+        completedAt: now,
+        closedAt: now,
+      },
+    });
+
+    await tx.serviceRequest.update({
+      where: { id: shipment.serviceRequestId },
+      data: { status: "COMPLETED" },
+    });
+
+    await tx.asset.update({
+      where: { id: asset.id },
+      data: {
+        status: "DELIVERED",
+        currentCustodyType: "CUSTOMER",
+        currentCustodianLabel:
+          asset.ownerOrganization?.name ?? "Customer",
+        siteId: shipment.destinationSiteId,
+        currentStorageLocationId: null,
+      },
+    });
+
+    await tx.workOrderEvent.create({
+      data: {
+        workOrderId: workOrder.id,
+        eventType: "DELIVERED_TO_CUSTOMER",
+        fromStatus: "OUTBOUND",
+        toStatus: "COMPLETED",
+        actorLabel,
+        notes: [
+          `Delivered to ${shipment.destinationSite.name}.`,
+          notes || null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      },
+    });
+
+    await tx.assetEvent.create({
+      data: {
+        assetId: asset.id,
+        eventType: "DELIVERED_TO_CUSTOMER",
+        fromStatus: asset.status,
+        toStatus: "DELIVERED",
+        actor: actorLabel,
+        notes: [
+          `Customer custody resumed at ${shipment.destinationSite.name}.`,
+          notes || null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      },
+    });
+
+    return {
+      workOrderId: workOrder.id,
+      serviceRequestId: shipment.serviceRequestId,
+      assetId: asset.id,
+    };
+  });
+
+  revalidatePath(`/work-orders/${result.workOrderId}`);
+  revalidatePath(
+    `/service-requests/${result.serviceRequestId}`
+  );
+  revalidatePath(`/assets/${result.assetId}`);
+}
