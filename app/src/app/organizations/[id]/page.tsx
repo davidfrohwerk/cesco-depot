@@ -109,7 +109,11 @@ export default async function OrganizationPage({ params }: PageProps) {
             </p>
           ) : (
             organization.sites.map((site) => (
-              <article key={site.id} className="rounded border p-4">
+              <Link
+                key={site.id}
+                href={`/sites/${site.id}`}
+                className="block rounded border p-4 hover:bg-black/5"
+              >
                 <div className="font-semibold">{site.name}</div>
 
                 <div className="mt-2 text-sm opacity-70">
@@ -119,9 +123,9 @@ export default async function OrganizationPage({ params }: PageProps) {
                 </div>
 
                 <div className="mt-2 text-xs opacity-50">
-                  {site.id}
+                  Manage storage locations
                 </div>
-              </article>
+              </Link>
             ))
           )}
         </div>
