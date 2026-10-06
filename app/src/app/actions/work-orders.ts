@@ -968,7 +968,10 @@ export async function markOutboundShipmentAccepted(
       throw new Error("Shipment not found.");
     }
 
-    if (shipment.status === "IN_TRANSIT") {
+    if (
+      shipment.direction === "OUTBOUND" &&
+      shipment.status === "IN_TRANSIT"
+    ) {
       const existingWorkOrder =
         shipment.serviceRequest.workOrders[0] ?? null;
       return {
