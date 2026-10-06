@@ -172,6 +172,7 @@ model Organization {
   ownedAssets       Asset[]            @relation("AssetOwnerOrganization")
   memberships       Membership[]
   serviceRequests   ServiceRequest[]
+  workOrders        WorkOrder[]
 }
 
 model Membership {
@@ -479,6 +480,7 @@ model WorkOrder {
   updatedAt        DateTime        @updatedAt
 
   asset          Asset           @relation(fields: [assetId], references: [id])
+  organization   Organization?   @relation(fields: [organizationId], references: [id])
   serviceRequest ServiceRequest? @relation(fields: [serviceRequestId], references: [id])
   shipment       Shipment?       @relation(fields: [shipmentId], references: [id])
 
