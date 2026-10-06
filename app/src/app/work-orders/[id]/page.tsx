@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  acknowledgeCustomerReceipt,
   addRequiredPart,
   beginWorkOrderIntake,
   completeRepairForTesting,
@@ -845,10 +846,57 @@ export default async function WorkOrderPage({ params }: PageProps) {
           )}
 
           {outboundShipment.status === "DELIVERED" && (
-            <p className="mt-5 text-sm font-medium">
-              Delivery confirmed. CESCo custody has ended and the service
-              request is complete.
-            </p>
+            <div className="mt-5">
+              <p className="text-sm font-medium">
+                Carrier delivery confirmed. CESCo custody has ended and the
+                service request is complete.
+              </p>
+
+              {outboundShipment.customerAcknowledgedAt ? (
+                <div className="mt-4 rounded border p-4 text-sm">
+                  <div className="font-medium">
+                    Customer receipt acknowledged
+                  </div>
+                  <div className="mt-2 opacity-70">
+                    By: {outboundShipment.customerAcknowledgedByLabel ?? "—"}
+                  </div>
+                  <div className="mt-1 opacity-70">
+                    At: {outboundShipment.customerAcknowledgedAt.toLocaleString()}
+                  </div>
+                  {outboundShipment.customerAcknowledgmentNotes && (
+                    <div className="mt-2">
+                      {outboundShipment.customerAcknowledgmentNotes}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <form
+                  action={acknowledgeCustomerReceipt.bind(
+                    null,
+                    outboundShipment.id
+                  )}
+                  className="mt-4 grid gap-3 md:grid-cols-2"
+                >
+                  <input
+                    name="actorLabel"
+                    required
+                    placeholder="Customer recipient name"
+                    className="rounded border px-3 py-2"
+                  />
+                  <input
+                    name="notes"
+                    placeholder="Optional customer receipt note"
+                    className="rounded border px-3 py-2"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded border px-4 py-2 font-medium md:col-span-2"
+                  >
+                    Acknowledge customer receipt
+                  </button>
+                </form>
+              )}
+            </div>
           )}
         </section>
       )}
