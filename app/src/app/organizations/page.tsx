@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createOrganization } from "@/app/actions/organizations";
 import { prisma } from "@/lib/prisma";
 
@@ -37,10 +38,14 @@ export default async function OrganizationsPage() {
           </p>
         ) : (
           organizations.map((org) => (
-            <article key={org.id} className="rounded border p-4">
+            <Link
+              key={org.id}
+              href={`/organizations/${org.id}`}
+              className="block rounded border p-4 hover:bg-black/5"
+            >
               <div className="font-semibold">{org.name}</div>
               <div className="mt-1 text-xs opacity-60">{org.id}</div>
-            </article>
+            </Link>
           ))
         )}
       </section>
