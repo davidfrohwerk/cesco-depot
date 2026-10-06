@@ -6,6 +6,19 @@ import {
   AssetCondition,
   WorkActivityType,
 } from "../../../generated/prisma/client";
+import {
+  assertCanAcceptOutbound,
+  assertCanAcknowledgeReceipt,
+  assertCanBeginIntake,
+  assertCanCompleteRepair,
+  assertCanConfirmDelivery,
+  assertCanCreateOutbound,
+  assertCanPack,
+  assertCanRecordQa,
+  assertCanResumeRepair,
+  assertCanWaitForParts,
+  qaTransition,
+} from "@/lib/workflow-rules";
 
 function parseOptionalCents(value: FormDataEntryValue | null) {
   const raw = String(value ?? "").trim();
@@ -46,11 +59,7 @@ export async function beginWorkOrderIntake(
       throw new Error("Work order not found.");
     }
 
-    if (workOrder.status !== "RECEIVED") {
-      throw new Error(
-        "Work order must be RECEIVED before intake begins."
-      );
-    }
+    assertCanBeginIntake(workOrder.status);
 
     await tx.workOrder.update({
       where: { id: workOrderId },
@@ -364,15 +373,7 @@ export async function setWorkOrderWaitingParts(
       throw new Error("Work order not found.");
     }
 
-    if (
-      !["INTAKE", "OPEN", "IN_PROGRESS"].includes(
-        workOrder.status
-      )
-    ) {
-      throw new Error(
-        "Work order is not in a state that can wait for parts."
-      );
-    }
+    assertCanWaitForParts(workOrder.status);
 
     await tx.workOrder.update({
       where: { id: workOrderId },
@@ -483,11 +484,7 @@ export async function resumeRepair(
       throw new Error("Work order not found.");
     }
 
-    if (workOrder.status !== "WAITING_PARTS") {
-      throw new Error(
-        "Only a work order waiting for parts can resume repair."
-      );
-    }
+    assertCanResumeRepair(workOrder.status);
 
     await tx.workOrder.update({
       where: { id: workOrderId },
@@ -604,27 +601,11 @@ export async function completeRepairForTesting(
       throw new Error("Work order not found.");
     }
 
-    if (!["INTAKE", "OPEN", "IN_PROGRESS"].includes(workOrder.status)) {
-      throw new Error(
-        "Work order is not in a repair state that can move to testing."
-      );
-    }
-
-    if (workOrder.activities.length > 0) {
-      throw new Error(
-        "Stop the active labor/activity timer before completing repair."
-      );
-    }
-
-    const unresolvedParts = workOrder.parts.filter((part) =>
-      ["REQUIRED", "ORDERED", "BACKORDERED"].includes(part.status)
-    );
-
-    if (unresolvedParts.length > 0) {
-      throw new Error(
-        "Resolve required or outstanding parts before completing repair."
-      );
-    }
+    assertCanCompleteRepair({
+      status: workOrder.status,
+      hasActiveActivity: workOrder.activities.length > 0,
+      partStatuses: workOrder.parts.map((part) => part.status),
+    });
 
     await tx.workOrder.update({
       where: { id: workOrderId },
@@ -711,23 +692,16 @@ export async function recordQaResult(
       throw new Error("Work order not found.");
     }
 
-    if (workOrder.status !== "TESTING") {
-      throw new Error(
-        "QA results can only be recorded while the work order is TESTING."
-      );
-    }
+    assertCanRecordQa({
+      status: workOrder.status,
+      hasActiveActivity: workOrder.activities.length > 0,
+    });
 
-    if (workOrder.activities.length > 0) {
-      throw new Error(
-        "Stop the active labor/activity timer before recording the QA result."
-      );
-    }
-
-    const passed = result === "PASS";
-    const nextWorkOrderStatus = passed ? "READY" : "IN_PROGRESS";
-    const nextAssetStatus = passed ? "READY" : "REPAIR";
-    const condition = passed ? "KNOWN_GOOD" : "FAILED";
-    const eventType = passed ? "TEST_PASSED" : "TEST_FAILED";
+    const transition = qaTransition(result);
+    const nextWorkOrderStatus = transition.workOrderStatus;
+    const nextAssetStatus = transition.assetStatus;
+    const condition = transition.condition;
+    const eventType = transition.eventType;
 
     await tx.assetObservation.create({
       data: {
@@ -808,15 +782,10 @@ export async function packReadyAsset(
       throw new Error("Work order not found.");
     }
 
-    if (workOrder.status !== "READY") {
-      throw new Error("Only a READY work order can be packed.");
-    }
-
-    if (workOrder.activities.length > 0) {
-      throw new Error(
-        "Stop the active labor/activity timer before packing."
-      );
-    }
+    assertCanPack({
+      status: workOrder.status,
+      hasActiveActivity: workOrder.activities.length > 0,
+    });
 
     await tx.workOrder.update({
       where: { id: workOrderId },
@@ -883,21 +852,16 @@ export async function createOutboundShipment(
       throw new Error("Work order not found.");
     }
 
-    if (workOrder.status !== "PACKED") {
-      throw new Error(
-        "Work order must be PACKED before outbound shipment setup."
-      );
-    }
+    assertCanCreateOutbound({
+      workOrderStatus: workOrder.status,
+      hasServiceRequest: Boolean(workOrder.serviceRequest),
+      existingOutboundCount:
+        workOrder.serviceRequest?.shipments.length ?? 0,
+    });
 
     if (!workOrder.serviceRequest) {
       throw new Error(
         "Outbound shipment requires a linked service request."
-      );
-    }
-
-    if (workOrder.serviceRequest.shipments.length > 0) {
-      throw new Error(
-        "An outbound shipment already exists for this service request."
       );
     }
 
@@ -1004,10 +968,6 @@ export async function markOutboundShipmentAccepted(
       throw new Error("Shipment not found.");
     }
 
-    if (shipment.direction !== "OUTBOUND") {
-      throw new Error("Shipment is not outbound.");
-    }
-
     if (shipment.status === "IN_TRANSIT") {
       const existingWorkOrder =
         shipment.serviceRequest.workOrders[0] ?? null;
@@ -1015,12 +975,6 @@ export async function markOutboundShipmentAccepted(
         workOrderId: existingWorkOrder?.id ?? null,
         serviceRequestId: shipment.serviceRequestId,
       };
-    }
-
-    if (shipment.status !== "TRACKING_ENTERED") {
-      throw new Error(
-        "Outbound tracking must be entered before carrier acceptance."
-      );
     }
 
     const asset = shipment.serviceRequest.asset;
@@ -1035,11 +989,11 @@ export async function markOutboundShipmentAccepted(
       );
     }
 
-    if (workOrder.status !== "PACKED") {
-      throw new Error(
-        "Work order must be PACKED before outbound carrier acceptance."
-      );
-    }
+    assertCanAcceptOutbound({
+      direction: shipment.direction,
+      shipmentStatus: shipment.status,
+      workOrderStatus: workOrder.status,
+    });
 
     const now = new Date();
 
@@ -1144,16 +1098,6 @@ export async function confirmOutboundDelivery(
       throw new Error("Shipment not found.");
     }
 
-    if (shipment.direction !== "OUTBOUND") {
-      throw new Error("Shipment is not outbound.");
-    }
-
-    if (shipment.status !== "IN_TRANSIT") {
-      throw new Error(
-        "Only an in-transit outbound shipment can be delivered."
-      );
-    }
-
     const asset = shipment.serviceRequest.asset;
     const workOrder =
       shipment.serviceRequest.workOrders.find(
@@ -1166,11 +1110,11 @@ export async function confirmOutboundDelivery(
       );
     }
 
-    if (workOrder.status !== "OUTBOUND") {
-      throw new Error(
-        "Work order must be OUTBOUND before delivery confirmation."
-      );
-    }
+    assertCanConfirmDelivery({
+      direction: shipment.direction,
+      shipmentStatus: shipment.status,
+      workOrderStatus: workOrder.status,
+    });
 
     const now = new Date();
 
@@ -1291,15 +1235,10 @@ export async function acknowledgeCustomerReceipt(
       throw new Error("Shipment not found.");
     }
 
-    if (shipment.direction !== "OUTBOUND") {
-      throw new Error("Shipment is not outbound.");
-    }
-
-    if (shipment.status !== "DELIVERED") {
-      throw new Error(
-        "Customer receipt can only be acknowledged after carrier delivery."
-      );
-    }
+    assertCanAcknowledgeReceipt({
+      direction: shipment.direction,
+      shipmentStatus: shipment.status,
+    });
 
     if (shipment.customerAcknowledgedAt) {
       const existingWorkOrder =
