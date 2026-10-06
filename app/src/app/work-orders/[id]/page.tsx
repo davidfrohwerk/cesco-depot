@@ -3,8 +3,11 @@ import { notFound } from "next/navigation";
 import {
   addRequiredPart,
   beginWorkOrderIntake,
+  completeRepairForTesting,
+  markPartInstalled,
   markPartReceived,
   recordAssetObservation,
+  recordQaResult,
   resumeRepair,
   setWorkOrderWaitingParts,
   startWorkActivity,
@@ -466,6 +469,31 @@ export default async function WorkOrderPage({ params }: PageProps) {
                     </button>
                   </form>
                 )}
+
+                {part.status === "RECEIVED" && (
+                  <form
+                    action={markPartInstalled.bind(null, part.id)}
+                    className="mt-4 grid gap-2 md:grid-cols-2"
+                  >
+                    <input
+                      name="actorLabel"
+                      required
+                      placeholder="Installer name"
+                      className="rounded border px-3 py-2"
+                    />
+                    <input
+                      name="notes"
+                      placeholder="Installation note"
+                      className="rounded border px-3 py-2"
+                    />
+                    <button
+                      type="submit"
+                      className="rounded border px-4 py-2 font-medium md:col-span-2"
+                    >
+                      Mark part installed
+                    </button>
+                  </form>
+                )}
               </article>
             ))
           )}
@@ -521,6 +549,90 @@ export default async function WorkOrderPage({ params }: PageProps) {
           </form>
         )}
       </section>
+
+      {["INTAKE", "OPEN", "IN_PROGRESS"].includes(workOrder.status) && (
+        <section className="mt-8 rounded border p-5">
+          <h2 className="text-xl font-semibold">
+            Complete repair and send to testing
+          </h2>
+          <p className="mt-2 text-sm opacity-70">
+            This records the repair result separately from QA. Any active
+            activity timer must be stopped, and required/outstanding parts must
+            be resolved first.
+          </p>
+
+          <form
+            action={completeRepairForTesting.bind(null, workOrder.id)}
+            className="mt-5 grid gap-3 md:grid-cols-2"
+          >
+            <input
+              name="actorLabel"
+              required
+              placeholder="Technician name"
+              className="rounded border px-3 py-2"
+            />
+            <textarea
+              name="resolution"
+              required
+              placeholder="What was repaired, replaced, configured, or otherwise resolved?"
+              className="rounded border px-3 py-2 md:row-span-2"
+            />
+            <button
+              type="submit"
+              className="rounded border px-4 py-2 font-medium"
+            >
+              Complete repair and begin testing
+            </button>
+          </form>
+        </section>
+      )}
+
+      {workOrder.status === "TESTING" && (
+        <section className="mt-8 rounded border p-5">
+          <h2 className="text-xl font-semibold">
+            Quality assurance / functional test
+          </h2>
+          <p className="mt-2 text-sm opacity-70">
+            A passed test marks the asset known-good and READY. A failed test
+            returns the work order to IN_PROGRESS and the asset to REPAIR.
+          </p>
+
+          <form
+            action={recordQaResult.bind(null, workOrder.id)}
+            className="mt-5 grid gap-3 md:grid-cols-2"
+          >
+            <input
+              name="actorLabel"
+              required
+              placeholder="Tester name"
+              className="rounded border px-3 py-2"
+            />
+            <select
+              name="result"
+              required
+              defaultValue=""
+              className="rounded border px-3 py-2"
+            >
+              <option value="" disabled>
+                Select QA result
+              </option>
+              <option value="PASS">Pass</option>
+              <option value="FAIL">Fail</option>
+            </select>
+            <textarea
+              name="notes"
+              placeholder="Test method, measurements, failures, exceptions, or release note"
+              className="rounded border px-3 py-2 md:col-span-2"
+            />
+            <button
+              type="submit"
+              className="rounded border px-4 py-2 font-medium md:col-span-2"
+            >
+              Record QA result
+            </button>
+          </form>
+        </section>
+      )}
 
       <section className="mt-8 grid gap-6 lg:grid-cols-2">
         <div>
