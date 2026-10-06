@@ -3,6 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { AssetStatus } from "../../../generated/prisma/client";
+
+const allowedTransitions: Partial<Record<AssetStatus, readonly AssetStatus[]>> = {
+  REGISTERED: ["RECEIVED"],
+  RECEIVED: ["INSPECTION"],
+  INSPECTION: ["REPAIR"],
+  REPAIR: ["TESTING"],
+  TESTING: ["READY"],
+  READY: [],
+};
 
 export async function createAsset(
   organizationId: string,
@@ -49,4 +59,55 @@ export async function createAsset(
 
   revalidatePath(`/organizations/${organizationId}`);
   redirect(`/assets/${asset.id}`);
+}
+
+export async function transitionAsset(
+  assetId: string,
+  formData: FormData
+) {
+  const requestedStatus = String(
+    formData.get("status") ?? ""
+  ).trim() as AssetStatus;
+
+  const note = String(
+    formData.get("note") ?? ""
+  ).trim();
+
+  const asset = await prisma.asset.findUnique({
+    where: { id: assetId },
+  });
+
+  if (!asset) {
+    throw new Error("Asset not found.");
+  }
+
+  const allowed = allowedTransitions[asset.status] ?? [];
+
+  if (!allowed.includes(requestedStatus)) {
+    throw new Error(
+      `Invalid asset transition: ${asset.status} -> ${requestedStatus}`
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.asset.update({
+      where: { id: assetId },
+      data: {
+        status: requestedStatus,
+      },
+    });
+
+    await tx.assetEvent.create({
+      data: {
+        assetId,
+        eventType: `STATUS_CHANGED_TO_${requestedStatus}`,
+        fromStatus: asset.status,
+        toStatus: requestedStatus,
+        actor: "depot-dev",
+        notes: note || null,
+      },
+    });
+  });
+
+  revalidatePath(`/assets/${assetId}`);
 }
