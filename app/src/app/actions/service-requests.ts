@@ -319,7 +319,7 @@ export async function markShipmentAccepted(shipmentId: string) {
       },
     });
 
-    await tx.workOrder.create({
+    const workOrder = await tx.workOrder.create({
       data: {
         assetId: asset.id,
         organizationId: shipment.serviceRequest.organizationId,
@@ -331,6 +331,20 @@ export async function markShipmentAccepted(shipmentId: string) {
         reportedIssue:
           shipment.serviceRequest.customerNotes ?? null,
         openedAt: now,
+      },
+    });
+
+    await tx.workOrderEvent.create({
+      data: {
+        workOrderId: workOrder.id,
+        eventType: "WORK_ORDER_OPENED",
+        fromStatus: null,
+        toStatus: "IN_TRANSIT",
+        actorLabel: "system",
+        systemGenerated: true,
+        notes: shipment.trackingNumber
+          ? `Work order opened when carrier acceptance was confirmed for tracking ${shipment.trackingNumber}.`
+          : "Work order opened when carrier acceptance was confirmed.",
       },
     });
 
@@ -492,10 +506,32 @@ export async function receiveInboundPackage(
         data: { status: "RECEIVED" },
       });
 
+      const shipmentWorkOrders = await tx.workOrder.findMany({
+        where: { shipmentId: pkg.shipmentId },
+      });
+
       await tx.workOrder.updateMany({
         where: { shipmentId: pkg.shipmentId },
         data: { status: "RECEIVED" },
       });
+
+      for (const workOrder of shipmentWorkOrders) {
+        await tx.workOrderEvent.create({
+          data: {
+            workOrderId: workOrder.id,
+            eventType: "PACKAGE_RECEIVED",
+            fromStatus: workOrder.status,
+            toStatus: "RECEIVED",
+            actorLabel: "system",
+            systemGenerated: true,
+            notes: [
+              `Package received at ${pkg.shipment.destinationSite.name}.`,
+              `Condition: ${condition}.`,
+              `Location: ${storageLocation.name}.`,
+            ].join(" "),
+          },
+        });
+      }
     }
 
     await tx.asset.update({
