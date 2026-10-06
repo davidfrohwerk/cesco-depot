@@ -161,8 +161,20 @@ export default async function WorkOrderPage({ params }: PageProps) {
           </p>
         </div>
 
-        <div className="rounded border px-4 py-2 font-medium">
-          {workOrder.status}
+        <div className="flex flex-col items-end gap-2">
+          <div className="rounded border px-4 py-2 text-sm font-medium">
+            Status: {workOrder.status}
+          </div>
+          {["RECEIVED", "READY", "PACKED", "OUTBOUND"].includes(
+            workOrder.status
+          ) && (
+            <a
+              href="#next-action"
+              className="text-sm underline"
+            >
+              Go to next action
+            </a>
+          )}
         </div>
       </div>
 
@@ -230,7 +242,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
       </section>
 
       {workOrder.status === "RECEIVED" && (
-        <section className="mt-8 rounded border p-5">
+        <section id="next-action" className="mt-8 rounded border p-5">
           <h2 className="text-xl font-semibold">
             Begin depot intake
           </h2>
@@ -662,7 +674,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
       )}
 
       {workOrder.status === "READY" && (
-        <section className="mt-8 rounded border p-5">
+        <section id="next-action" className="mt-8 rounded border p-5">
           <h2 className="text-xl font-semibold">
             Prepare return to customer
           </h2>
@@ -697,7 +709,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
       )}
 
       {workOrder.status === "PACKED" && !outboundShipment && (
-        <section className="mt-8 rounded border p-5">
+        <section id="next-action" className="mt-8 rounded border p-5">
           <h2 className="text-xl font-semibold">
             Create outbound shipment
           </h2>
@@ -757,7 +769,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
       )}
 
       {outboundShipment && (
-        <section className="mt-8 rounded border p-5">
+        <section id="next-action" className="mt-8 rounded border p-5">
           <h2 className="text-xl font-semibold">
             Outbound return
           </h2>
