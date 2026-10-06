@@ -508,3 +508,274 @@ export async function resumeRepair(
 
   await revalidateWorkOrder(workOrderId);
 }
+
+
+export async function markPartInstalled(
+  partId: string,
+  formData: FormData
+) {
+  const actorLabel = String(
+    formData.get("actorLabel") ?? ""
+  ).trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  if (!actorLabel) {
+    throw new Error("Operator name or label is required.");
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const part = await tx.workOrderPart.findUnique({
+      where: { id: partId },
+      include: { workOrder: true },
+    });
+
+    if (!part) {
+      throw new Error("Part not found.");
+    }
+
+    if (part.status !== "RECEIVED") {
+      throw new Error(
+        "Only a received part can be marked installed."
+      );
+    }
+
+    await tx.workOrderPart.update({
+      where: { id: partId },
+      data: {
+        status: "INSTALLED",
+        installedAt: new Date(),
+      },
+    });
+
+    await tx.workOrderEvent.create({
+      data: {
+        workOrderId: part.workOrderId,
+        eventType: "PART_INSTALLED",
+        fromStatus: part.workOrder.status,
+        toStatus: part.workOrder.status,
+        actorLabel,
+        notes: [
+          `${part.quantity} x ${part.description} installed.`,
+          notes || null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      },
+    });
+
+    return { workOrderId: part.workOrderId };
+  });
+
+  await revalidateWorkOrder(result.workOrderId);
+}
+
+export async function completeRepairForTesting(
+  workOrderId: string,
+  formData: FormData
+) {
+  const actorLabel = String(
+    formData.get("actorLabel") ?? ""
+  ).trim();
+  const resolution = String(
+    formData.get("resolution") ?? ""
+  ).trim();
+
+  if (!actorLabel) {
+    throw new Error("Operator name or label is required.");
+  }
+
+  if (!resolution) {
+    throw new Error("Repair resolution is required.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const workOrder = await tx.workOrder.findUnique({
+      where: { id: workOrderId },
+      include: {
+        asset: true,
+        activities: {
+          where: { endedAt: null },
+        },
+        parts: true,
+      },
+    });
+
+    if (!workOrder) {
+      throw new Error("Work order not found.");
+    }
+
+    if (!["INTAKE", "OPEN", "IN_PROGRESS"].includes(workOrder.status)) {
+      throw new Error(
+        "Work order is not in a repair state that can move to testing."
+      );
+    }
+
+    if (workOrder.activities.length > 0) {
+      throw new Error(
+        "Stop the active labor/activity timer before completing repair."
+      );
+    }
+
+    const unresolvedParts = workOrder.parts.filter((part) =>
+      ["REQUIRED", "ORDERED", "BACKORDERED"].includes(part.status)
+    );
+
+    if (unresolvedParts.length > 0) {
+      throw new Error(
+        "Resolve required or outstanding parts before completing repair."
+      );
+    }
+
+    await tx.workOrder.update({
+      where: { id: workOrderId },
+      data: {
+        status: "TESTING",
+        resolution,
+      },
+    });
+
+    await tx.asset.update({
+      where: { id: workOrder.assetId },
+      data: { status: "TESTING" },
+    });
+
+    await tx.assetObservation.create({
+      data: {
+        assetId: workOrder.assetId,
+        workOrderId,
+        observerLabel: actorLabel,
+        observationType: "repair completion",
+        condition: "TEST_PENDING",
+        notes: resolution,
+      },
+    });
+
+    await tx.workOrderEvent.create({
+      data: {
+        workOrderId,
+        eventType: "REPAIR_COMPLETED",
+        fromStatus: workOrder.status,
+        toStatus: "TESTING",
+        actorLabel,
+        notes: resolution,
+      },
+    });
+
+    await tx.assetEvent.create({
+      data: {
+        assetId: workOrder.assetId,
+        eventType: "REPAIR_COMPLETED",
+        fromStatus: workOrder.asset.status,
+        toStatus: "TESTING",
+        actor: actorLabel,
+        notes: resolution,
+      },
+    });
+  });
+
+  await revalidateWorkOrder(workOrderId);
+}
+
+export async function recordQaResult(
+  workOrderId: string,
+  formData: FormData
+) {
+  const actorLabel = String(
+    formData.get("actorLabel") ?? ""
+  ).trim();
+  const result = String(
+    formData.get("result") ?? ""
+  ).trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  if (!actorLabel) {
+    throw new Error("Tester name or label is required.");
+  }
+
+  if (!["PASS", "FAIL"].includes(result)) {
+    throw new Error("QA result must be PASS or FAIL.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const workOrder = await tx.workOrder.findUnique({
+      where: { id: workOrderId },
+      include: {
+        asset: true,
+        activities: {
+          where: { endedAt: null },
+        },
+      },
+    });
+
+    if (!workOrder) {
+      throw new Error("Work order not found.");
+    }
+
+    if (workOrder.status !== "TESTING") {
+      throw new Error(
+        "QA results can only be recorded while the work order is TESTING."
+      );
+    }
+
+    if (workOrder.activities.length > 0) {
+      throw new Error(
+        "Stop the active labor/activity timer before recording the QA result."
+      );
+    }
+
+    const passed = result === "PASS";
+    const nextWorkOrderStatus = passed ? "READY" : "IN_PROGRESS";
+    const nextAssetStatus = passed ? "READY" : "REPAIR";
+    const condition = passed ? "KNOWN_GOOD" : "FAILED";
+    const eventType = passed ? "TEST_PASSED" : "TEST_FAILED";
+
+    await tx.assetObservation.create({
+      data: {
+        assetId: workOrder.assetId,
+        workOrderId,
+        observerLabel: actorLabel,
+        observationType: "quality assurance",
+        condition,
+        notes: notes || null,
+      },
+    });
+
+    await tx.workOrder.update({
+      where: { id: workOrderId },
+      data: {
+        status: nextWorkOrderStatus,
+      },
+    });
+
+    await tx.asset.update({
+      where: { id: workOrder.assetId },
+      data: {
+        status: nextAssetStatus,
+      },
+    });
+
+    await tx.workOrderEvent.create({
+      data: {
+        workOrderId,
+        eventType,
+        fromStatus: "TESTING",
+        toStatus: nextWorkOrderStatus,
+        actorLabel,
+        notes: notes || null,
+      },
+    });
+
+    await tx.assetEvent.create({
+      data: {
+        assetId: workOrder.assetId,
+        eventType,
+        fromStatus: workOrder.asset.status,
+        toStatus: nextAssetStatus,
+        actor: actorLabel,
+        notes: notes || null,
+      },
+    });
+  });
+
+  await revalidateWorkOrder(workOrderId);
+}
