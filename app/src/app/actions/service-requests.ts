@@ -4,7 +4,10 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { ServiceType } from "../../../generated/prisma/client";
+import {
+  ReceiptCondition,
+  ServiceType,
+} from "../../../generated/prisma/client";
 
 function parseOptionalCents(value: FormDataEntryValue | null) {
   const raw = String(value ?? "").trim();
@@ -201,6 +204,16 @@ export async function createInboundShipment(
             trackingNumber,
             status: "EXPECTED",
             packageCode: "PKG-1",
+            contents: request.assetId
+              ? {
+                  create: {
+                    assetId: request.assetId,
+                    description: "Expected service asset",
+                    quantity: 1,
+                    expected: true,
+                  },
+                }
+              : undefined,
           },
         },
       },
@@ -323,6 +336,199 @@ export async function markShipmentAccepted(shipmentId: string) {
 
     return {
       serviceRequestId: shipment.serviceRequestId,
+      assetId: asset.id,
+    };
+  });
+
+  revalidatePath(
+    `/service-requests/${result.serviceRequestId}`
+  );
+
+  if (result.assetId) {
+    revalidatePath(`/assets/${result.assetId}`);
+  }
+}
+
+
+export async function receiveInboundPackage(
+  packageId: string,
+  formData: FormData
+) {
+  const storageLocationId = String(
+    formData.get("storageLocationId") ?? ""
+  ).trim();
+
+  const condition = String(
+    formData.get("condition") ?? "UNKNOWN"
+  ).trim() as ReceiptCondition;
+
+  const sealValue = String(
+    formData.get("sealIntact") ?? ""
+  ).trim();
+
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  if (!storageLocationId) {
+    throw new Error("A receiving storage location is required.");
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const pkg = await tx.package.findUnique({
+      where: { id: packageId },
+      include: {
+        receipt: true,
+        contents: true,
+        shipment: {
+          include: {
+            destinationSite: true,
+            serviceRequest: {
+              include: {
+                asset: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!pkg) {
+      throw new Error("Package not found.");
+    }
+
+    if (pkg.receipt) {
+      return {
+        serviceRequestId: pkg.shipment.serviceRequestId,
+        assetId: pkg.shipment.serviceRequest.assetId,
+      };
+    }
+
+    if (
+      pkg.shipment.status !== "IN_TRANSIT" &&
+      pkg.shipment.status !== "PARTIALLY_RECEIVED"
+    ) {
+      throw new Error(
+        "Package can only be received from an in-transit shipment."
+      );
+    }
+
+    const storageLocation = await tx.storageLocation.findUnique({
+      where: { id: storageLocationId },
+    });
+
+    if (
+      !storageLocation ||
+      storageLocation.siteId !== pkg.shipment.destinationSiteId
+    ) {
+      throw new Error(
+        "Receiving location must belong to the shipment destination site."
+      );
+    }
+
+    const asset = pkg.shipment.serviceRequest.asset;
+
+    if (!asset) {
+      throw new Error(
+        "Service request must have an asset before package receipt."
+      );
+    }
+
+    if (!pkg.contents.some((content) => content.assetId === asset.id)) {
+      await tx.packageContent.create({
+        data: {
+          packageId: pkg.id,
+          assetId: asset.id,
+          description: "Received service asset",
+          quantity: 1,
+          expected: true,
+        },
+      });
+    }
+
+    const now = new Date();
+
+    await tx.receipt.create({
+      data: {
+        packageId: pkg.id,
+        storageLocationId,
+        receivedAt: now,
+        condition,
+        sealIntact:
+          sealValue === "true"
+            ? true
+            : sealValue === "false"
+              ? false
+              : null,
+        notes: notes || null,
+      },
+    });
+
+    await tx.package.update({
+      where: { id: pkg.id },
+      data: { status: "RECEIVED" },
+    });
+
+    const remainingPackages = await tx.package.count({
+      where: {
+        shipmentId: pkg.shipmentId,
+        status: { not: "RECEIVED" },
+      },
+    });
+
+    const shipmentComplete = remainingPackages === 0;
+
+    await tx.shipment.update({
+      where: { id: pkg.shipmentId },
+      data: {
+        status: shipmentComplete
+          ? "RECEIVED"
+          : "PARTIALLY_RECEIVED",
+        deliveredAt: shipmentComplete ? now : null,
+      },
+    });
+
+    if (shipmentComplete) {
+      await tx.serviceRequest.update({
+        where: { id: pkg.shipment.serviceRequestId },
+        data: { status: "RECEIVED" },
+      });
+
+      await tx.workOrder.updateMany({
+        where: { shipmentId: pkg.shipmentId },
+        data: { status: "RECEIVED" },
+      });
+    }
+
+    await tx.asset.update({
+      where: { id: asset.id },
+      data: {
+        status: "RECEIVED",
+        siteId: pkg.shipment.destinationSiteId,
+        currentStorageLocationId: storageLocationId,
+        currentCustodyType: "CESCO",
+        currentCustodianLabel: "CESCo",
+      },
+    });
+
+    await tx.assetEvent.create({
+      data: {
+        assetId: asset.id,
+        eventType: "PACKAGE_RECEIVED",
+        fromStatus: asset.status,
+        toStatus: "RECEIVED",
+        actor: "system",
+        notes: [
+          `Package received at ${pkg.shipment.destinationSite.name}.`,
+          `Condition: ${condition}.`,
+          `Location: ${storageLocation.name}.`,
+          notes ? `Receiving note: ${notes}` : null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      },
+    });
+
+    return {
+      serviceRequestId: pkg.shipment.serviceRequestId,
       assetId: asset.id,
     };
   });
