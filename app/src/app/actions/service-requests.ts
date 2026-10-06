@@ -52,15 +52,40 @@ export async function createServiceRequest(
     throw new Error("Asset not found.");
   }
 
-  const request = await prisma.serviceRequest.create({
-    data: {
-      organizationId: asset.organizationId,
-      assetId: asset.id,
-      serviceType,
-      status: "PENDING_AUTHORIZATION",
-      customerNotes: customerNotes || null,
-      requestedOutcome: requestedOutcome || null,
-    },
+  const request = await prisma.$transaction(async (tx) => {
+    if (!asset.ownerOrganizationId) {
+      await tx.asset.update({
+        where: { id: asset.id },
+        data: {
+          ownerOrganizationId: asset.organizationId,
+          currentCustodyType:
+            asset.currentCustodyType ?? "CUSTOMER",
+        },
+      });
+
+      await tx.assetEvent.create({
+        data: {
+          assetId: asset.id,
+          eventType: "OWNERSHIP_BASELINE_RECORDED",
+          fromStatus: asset.status,
+          toStatus: asset.status,
+          actor: "system",
+          notes:
+            "Legacy prototype asset reconciled: account organization recorded as owner before the first service request.",
+        },
+      });
+    }
+
+    return tx.serviceRequest.create({
+      data: {
+        organizationId: asset.organizationId,
+        assetId: asset.id,
+        serviceType,
+        status: "PENDING_AUTHORIZATION",
+        customerNotes: customerNotes || null,
+        requestedOutcome: requestedOutcome || null,
+      },
+    });
   });
 
   revalidatePath(`/assets/${assetId}`);
