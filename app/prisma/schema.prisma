@@ -15,6 +15,7 @@ enum AssetStatus {
   REPAIR
   TESTING
   READY
+  DELIVERED
   STOCKED
   DISPATCHED
   INSTALLED
@@ -93,6 +94,12 @@ enum AuthorizationStatus {
   REVOKED
 }
 
+enum ShipmentDirection {
+  INBOUND
+  OUTBOUND
+  TRANSFER
+}
+
 enum ShipmentStatus {
   PREPARING
   LABEL_CREATED
@@ -100,6 +107,7 @@ enum ShipmentStatus {
   IN_TRANSIT
   PARTIALLY_RECEIVED
   RECEIVED
+  DELIVERED
   EXCEPTION
   CANCELLED
 }
@@ -108,6 +116,7 @@ enum PackageStatus {
   EXPECTED
   IN_TRANSIT
   RECEIVED
+  DELIVERED
   OPENED
   RECONCILED
   EXCEPTION
@@ -319,6 +328,7 @@ model Site {
   assets               Asset[]
   storageLocations     StorageLocation[]
   destinationShipments Shipment[]        @relation("ShipmentDestinationSite")
+  originShipments      Shipment[]        @relation("ShipmentOriginSite")
 
   @@index([organizationId])
 }
@@ -449,12 +459,14 @@ model Authorization {
 }
 
 model Shipment {
-  id                String         @id @default(cuid())
+  id                String            @id @default(cuid())
   serviceRequestId  String
+  direction         ShipmentDirection @default(INBOUND)
+  originSiteId      String?
   destinationSiteId String
   carrier           String?
   trackingNumber    String?
-  status            ShipmentStatus @default(PREPARING)
+  status            ShipmentStatus    @default(PREPARING)
   labelReference    String?
   shippedAt         DateTime?
   acceptedAt        DateTime?
@@ -464,11 +476,14 @@ model Shipment {
   updatedAt         DateTime       @updatedAt
 
   serviceRequest  ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+  originSite      Site?          @relation("ShipmentOriginSite", fields: [originSiteId], references: [id])
   destinationSite Site           @relation("ShipmentDestinationSite", fields: [destinationSiteId], references: [id])
   packages        Package[]
   workOrders      WorkOrder[]
 
   @@index([serviceRequestId])
+  @@index([direction])
+  @@index([originSiteId])
   @@index([destinationSiteId])
   @@index([trackingNumber])
   @@index([status])
