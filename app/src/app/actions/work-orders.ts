@@ -1258,3 +1258,129 @@ export async function confirmOutboundDelivery(
   );
   revalidatePath(`/assets/${result.assetId}`);
 }
+
+
+export async function acknowledgeCustomerReceipt(
+  shipmentId: string,
+  formData: FormData
+) {
+  const actorLabel = String(
+    formData.get("actorLabel") ?? ""
+  ).trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  if (!actorLabel) {
+    throw new Error("Customer recipient name or label is required.");
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const shipment = await tx.shipment.findUnique({
+      where: { id: shipmentId },
+      include: {
+        serviceRequest: {
+          include: {
+            asset: true,
+            workOrders: true,
+          },
+        },
+        destinationSite: true,
+      },
+    });
+
+    if (!shipment) {
+      throw new Error("Shipment not found.");
+    }
+
+    if (shipment.direction !== "OUTBOUND") {
+      throw new Error("Shipment is not outbound.");
+    }
+
+    if (shipment.status !== "DELIVERED") {
+      throw new Error(
+        "Customer receipt can only be acknowledged after carrier delivery."
+      );
+    }
+
+    if (shipment.customerAcknowledgedAt) {
+      const existingWorkOrder =
+        shipment.serviceRequest.workOrders[0] ?? null;
+
+      return {
+        workOrderId: existingWorkOrder?.id ?? null,
+        serviceRequestId: shipment.serviceRequestId,
+        assetId: shipment.serviceRequest.assetId ?? null,
+      };
+    }
+
+    const asset = shipment.serviceRequest.asset;
+    const workOrder =
+      shipment.serviceRequest.workOrders.find(
+        (candidate) => candidate.assetId === asset?.id
+      ) ?? null;
+
+    if (!asset || !workOrder) {
+      throw new Error(
+        "Outbound delivery acknowledgment requires a linked asset and work order."
+      );
+    }
+
+    const acknowledgedAt = new Date();
+
+    await tx.shipment.update({
+      where: { id: shipment.id },
+      data: {
+        customerAcknowledgedAt: acknowledgedAt,
+        customerAcknowledgedByLabel: actorLabel,
+        customerAcknowledgmentNotes: notes || null,
+      },
+    });
+
+    await tx.workOrderEvent.create({
+      data: {
+        workOrderId: workOrder.id,
+        eventType: "CUSTOMER_RECEIPT_ACKNOWLEDGED",
+        fromStatus: workOrder.status,
+        toStatus: workOrder.status,
+        actorLabel,
+        notes: [
+          `Customer receipt acknowledged at ${shipment.destinationSite.name}.`,
+          notes || null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      },
+    });
+
+    await tx.assetEvent.create({
+      data: {
+        assetId: asset.id,
+        eventType: "CUSTOMER_RECEIPT_ACKNOWLEDGED",
+        fromStatus: asset.status,
+        toStatus: asset.status,
+        actor: actorLabel,
+        notes: [
+          `Receipt acknowledged at ${shipment.destinationSite.name}.`,
+          notes || null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      },
+    });
+
+    return {
+      workOrderId: workOrder.id,
+      serviceRequestId: shipment.serviceRequestId,
+      assetId: asset.id,
+    };
+  });
+
+  if (result.workOrderId) {
+    revalidatePath(`/work-orders/${result.workOrderId}`);
+  }
+  revalidatePath(
+    `/service-requests/${result.serviceRequestId}`
+  );
+  if (result.assetId) {
+    revalidatePath(`/assets/${result.assetId}`);
+  }
+}
