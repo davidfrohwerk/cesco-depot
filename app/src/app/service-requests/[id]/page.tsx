@@ -148,7 +148,12 @@ export default async function ServiceRequestPage({
           <h2 className="font-semibold">Operational work order</h2>
           {workOrder ? (
             <div className="mt-3 text-sm">
-              <div className="font-medium">{workOrder.number}</div>
+              <Link
+                href={`/work-orders/${workOrder.id}`}
+                className="font-medium underline"
+              >
+                {workOrder.number}
+              </Link>
               <div className="mt-1 opacity-70">
                 Status: {workOrder.status}
               </div>
