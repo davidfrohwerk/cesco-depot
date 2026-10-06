@@ -86,14 +86,23 @@ export default async function ServiceRequestPage({
     (authorization) => authorization.status === "APPROVED"
   );
 
-  const shipment = request.shipments[0] ?? null;
-  const workOrder = request.workOrders[0] ?? null;
-  const pkg = shipment?.packages[0] ?? null;
+  const inboundShipment =
+    request.shipments.find(
+      (candidate) => candidate.direction === "INBOUND"
+    ) ?? null;
 
-  const storageLocations = shipment
+  const outboundShipment =
+    request.shipments.find(
+      (candidate) => candidate.direction === "OUTBOUND"
+    ) ?? null;
+
+  const workOrder = request.workOrders[0] ?? null;
+  const pkg = inboundShipment?.packages[0] ?? null;
+
+  const storageLocations = inboundShipment
     ? await prisma.storageLocation.findMany({
         where: {
-          siteId: shipment.destinationSiteId,
+          siteId: inboundShipment.destinationSiteId,
           isActive: true,
         },
         orderBy: { name: "asc" },
@@ -234,20 +243,20 @@ export default async function ServiceRequestPage({
           <p className="mt-4 text-sm opacity-70">
             Authorize the service before creating the inbound shipment.
           </p>
-        ) : shipment ? (
+        ) : inboundShipment ? (
           <div className="mt-4 text-sm">
             <div className="font-medium">
-              {shipment.carrier ?? "Carrier"} ·{" "}
-              {shipment.trackingNumber ?? "No tracking"}
+              {inboundShipment.carrier ?? "Carrier"} ·{" "}
+              {inboundShipment.trackingNumber ?? "No tracking"}
             </div>
             <div className="mt-1">
-              Shipment status: {shipment.status}
+              Shipment status: {inboundShipment.status}
             </div>
             <div className="mt-1">
-              Destination: {shipment.destinationSite.name}
+              Destination: {inboundShipment.destinationSite.name}
             </div>
 
-            {shipment.status === "TRACKING_ENTERED" && (
+            {inboundShipment.status === "TRACKING_ENTERED" && (
               <div className="mt-5 rounded border p-4">
                 <p className="font-medium">
                   Tracking exists, but operational work has not started.
@@ -261,7 +270,7 @@ export default async function ServiceRequestPage({
                 <form
                   action={markShipmentAccepted.bind(
                     null,
-                    shipment.id
+                    inboundShipment.id
                   )}
                   className="mt-4"
                 >
@@ -275,15 +284,15 @@ export default async function ServiceRequestPage({
               </div>
             )}
 
-            {(shipment.status === "IN_TRANSIT" ||
-              shipment.status === "PARTIALLY_RECEIVED") && (
+            {(inboundShipment.status === "IN_TRANSIT" ||
+              inboundShipment.status === "PARTIALLY_RECEIVED") && (
               <div className="mt-5 rounded border p-4">
                 <div className="font-medium">
                   Carrier acceptance confirmed
                 </div>
                 <div className="mt-2 opacity-70">
                   Accepted:{" "}
-                  {shipment.acceptedAt?.toLocaleString() ?? "—"}
+                  {inboundShipment.acceptedAt?.toLocaleString() ?? "—"}
                 </div>
                 <div className="mt-2 opacity-70">
                   Work order is active and the shipment is awaiting receipt.
@@ -291,14 +300,14 @@ export default async function ServiceRequestPage({
               </div>
             )}
 
-            {shipment.status === "RECEIVED" && (
+            {inboundShipment.status === "RECEIVED" && (
               <div className="mt-5 rounded border p-4">
                 <div className="font-medium">
                   Shipment received by CESCo
                 </div>
                 <div className="mt-2 opacity-70">
                   Delivered:{" "}
-                  {shipment.deliveredAt?.toLocaleString() ?? "—"}
+                  {inboundShipment.deliveredAt?.toLocaleString() ?? "—"}
                 </div>
               </div>
             )}
@@ -353,7 +362,7 @@ export default async function ServiceRequestPage({
           3. Package receipt and inventory intake
         </h2>
 
-        {!shipment || !pkg ? (
+        {!inboundShipment || !pkg ? (
           <p className="mt-4 text-sm opacity-70">
             Create the inbound shipment first.
           </p>
@@ -384,8 +393,8 @@ export default async function ServiceRequestPage({
               </div>
             )}
           </div>
-        ) : shipment.status !== "IN_TRANSIT" &&
-          shipment.status !== "PARTIALLY_RECEIVED" ? (
+        ) : inboundShipment.status !== "IN_TRANSIT" &&
+          inboundShipment.status !== "PARTIALLY_RECEIVED" ? (
           <p className="mt-4 text-sm opacity-70">
             Package receipt becomes available after carrier acceptance.
           </p>
@@ -399,10 +408,10 @@ export default async function ServiceRequestPage({
               physical location before accepting custody.
             </p>
             <Link
-              href={`/sites/${shipment.destinationSiteId}`}
+              href={`/sites/${inboundShipment.destinationSiteId}`}
               className="mt-4 inline-block underline"
             >
-              Manage {shipment.destinationSite.name} storage locations
+              Manage {inboundShipment.destinationSite.name} storage locations
             </Link>
           </div>
         ) : (
@@ -465,6 +474,32 @@ export default async function ServiceRequestPage({
         )}
       </section>
 
+      {outboundShipment && (
+        <section className="mt-6 rounded border p-5">
+          <h2 className="text-xl font-semibold">
+            Outbound return
+          </h2>
+          <div className="mt-4 grid gap-2 text-sm md:grid-cols-2">
+            <div>
+              <span className="opacity-60">Status:</span>{" "}
+              {outboundShipment.status}
+            </div>
+            <div>
+              <span className="opacity-60">Destination:</span>{" "}
+              {outboundShipment.destinationSite.name}
+            </div>
+            <div>
+              <span className="opacity-60">Carrier:</span>{" "}
+              {outboundShipment.carrier ?? "—"}
+            </div>
+            <div>
+              <span className="opacity-60">Tracking:</span>{" "}
+              {outboundShipment.trackingNumber ?? "—"}
+            </div>
+          </div>
+        </section>
+      )}
+
       <section className="mt-6 rounded border p-5">
         <h2 className="text-xl font-semibold">
           4. Operational state
@@ -481,7 +516,7 @@ export default async function ServiceRequestPage({
           <div className="rounded border p-3">
             <div className="font-medium">Shipment</div>
             <div className="mt-1 opacity-70">
-              {shipment?.status ?? "NOT CREATED"}
+              {inboundShipment?.status ?? "NOT CREATED"}
             </div>
           </div>
 
