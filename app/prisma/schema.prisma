@@ -29,12 +29,136 @@ enum AssetStatus {
 }
 
 enum WorkOrderStatus {
+  IN_TRANSIT
+  AWAITING_RECEIPT
+  RECEIVED
+  INTAKE
   OPEN
   IN_PROGRESS
   WAITING_PARTS
+  WAITING_CUSTOMER_AUTHORIZATION
+  WAITING_EXTERNAL_SERVICE
   TESTING
+  READY
+  PACKED
+  OUTBOUND
   COMPLETED
   CANCELLED
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  DISABLED
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  DISABLED
+}
+
+enum ServiceRequestStatus {
+  DRAFT
+  PENDING_AUTHORIZATION
+  AUTHORIZED
+  SHIPMENT_PREPARING
+  IN_TRANSIT
+  RECEIVED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum ServiceType {
+  DIAGNOSE
+  REPAIR
+  TEST
+  RECONFIGURE
+  STRATEGIC_STOCK
+  REDEPLOY
+  SHIP_ELSEWHERE
+  DECOMMISSION
+  DATA_DESTRUCTION
+  DONATE
+  RECYCLE
+  OTHER
+}
+
+enum AuthorizationStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  EXPIRED
+  REVOKED
+}
+
+enum ShipmentStatus {
+  PREPARING
+  LABEL_CREATED
+  TRACKING_ENTERED
+  IN_TRANSIT
+  PARTIALLY_RECEIVED
+  RECEIVED
+  EXCEPTION
+  CANCELLED
+}
+
+enum PackageStatus {
+  EXPECTED
+  IN_TRANSIT
+  RECEIVED
+  OPENED
+  RECONCILED
+  EXCEPTION
+}
+
+enum StorageLocationType {
+  RECEIVING
+  CAGE
+  ROOM
+  RACK
+  SHELF
+  BIN
+  PALLET_POSITION
+  BENCH
+  FLOOR_POSITION
+  OTHER
+}
+
+enum CustodyType {
+  CUSTOMER
+  CARRIER
+  CESCO
+  FIELD_TECHNICIAN
+  PARTNER
+  RECYCLER
+  OTHER
+}
+
+enum ReceiptCondition {
+  UNKNOWN
+  GOOD
+  DAMAGED
+  TAMPERED
+  WET
+  CRUSHED
+  OPEN
+  OTHER
+}
+
+model User {
+  id          String     @id @default(cuid())
+  email       String     @unique
+  displayName String?
+  status      UserStatus @default(INVITED)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  memberships          Membership[]
+  requestedServices    ServiceRequest[] @relation("ServiceRequestedBy")
+  authorizations       Authorization[]  @relation("AuthorizationApprovedBy")
+  receivedPackages     Receipt[]        @relation("ReceiptReceivedBy")
 }
 
 model Organization {
@@ -43,8 +167,71 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sites  Site[]
-  assets Asset[]
+  sites             Site[]
+  assets            Asset[]            @relation("AssetAccountOrganization")
+  ownedAssets       Asset[]            @relation("AssetOwnerOrganization")
+  memberships       Membership[]
+  serviceRequests   ServiceRequest[]
+}
+
+model Membership {
+  id             String           @id @default(cuid())
+  userId         String
+  organizationId String
+  status         MembershipStatus @default(INVITED)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+  roles        MembershipRole[]
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@index([userId])
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships MembershipRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  roles RolePermission[]
+}
+
+model MembershipRole {
+  membershipId String
+  roleId       String
+  createdAt    DateTime @default(now())
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([membershipId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
 }
 
 model Site {
@@ -60,30 +247,72 @@ model Site {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  assets       Asset[]
+  organization         Organization      @relation(fields: [organizationId], references: [id])
+  assets               Asset[]
+  storageLocations     StorageLocation[]
+  destinationShipments Shipment[]        @relation("ShipmentDestinationSite")
+
+  @@index([organizationId])
+}
+
+model StorageLocation {
+  id                    String              @id @default(cuid())
+  siteId                String
+  parentId              String?
+  name                  String
+  code                  String?
+  type                  StorageLocationType
+  isActive              Boolean             @default(true)
+  capacity              Int?
+  capacityUnit          String?
+  secureStorage         Boolean             @default(false)
+  environmentalNotes    String?
+  dedicatedOrganizationId String?
+  notes                 String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  site                  Site              @relation(fields: [siteId], references: [id])
+  parent                StorageLocation?  @relation("StorageLocationTree", fields: [parentId], references: [id])
+  children              StorageLocation[] @relation("StorageLocationTree")
+  currentAssets         Asset[]           @relation("AssetCurrentStorageLocation")
+  receipts              Receipt[]
+
+  @@index([siteId])
+  @@index([parentId])
+  @@unique([siteId, code])
 }
 
 model Asset {
-  id             String      @id @default(cuid())
-  assetTag       String      @unique
-  organizationId String
-  siteId         String?
-  manufacturer   String?
-  model          String?
-  serialNumber   String?
-  status         AssetStatus @default(REGISTERED)
-  description    String?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  id                       String       @id @default(cuid())
+  assetTag                 String       @unique
+  organizationId           String
+  ownerOrganizationId      String?
+  siteId                   String?
+  currentStorageLocationId String?
+  currentCustodyType       CustodyType?
+  currentCustodianLabel    String?
+  manufacturer             String?
+  model                    String?
+  serialNumber             String?
+  status                   AssetStatus  @default(REGISTERED)
+  description              String?
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  site         Site?        @relation(fields: [siteId], references: [id])
-  events       AssetEvent[]
-  workOrders   WorkOrder[]
+  organization          Organization     @relation("AssetAccountOrganization", fields: [organizationId], references: [id])
+  ownerOrganization     Organization?    @relation("AssetOwnerOrganization", fields: [ownerOrganizationId], references: [id])
+  site                  Site?            @relation(fields: [siteId], references: [id])
+  currentStorageLocation StorageLocation? @relation("AssetCurrentStorageLocation", fields: [currentStorageLocationId], references: [id])
+  events                AssetEvent[]
+  workOrders            WorkOrder[]
+  serviceRequests       ServiceRequest[]
+  packageContents       PackageContent[]
 
   @@index([serialNumber])
   @@index([organizationId])
+  @@index([ownerOrganizationId])
+  @@index([currentStorageLocationId])
   @@index([status])
 }
 
@@ -102,21 +331,160 @@ model AssetEvent {
   @@index([assetId, createdAt])
 }
 
-model WorkOrder {
-  id            String          @id @default(cuid())
-  assetId       String
-  number        String          @unique
-  status        WorkOrderStatus @default(OPEN)
-  reportedIssue String?
-  diagnosis     String?
-  resolution    String?
-  openedAt      DateTime        @default(now())
-  closedAt      DateTime?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+model ServiceRequest {
+  id                String               @id @default(cuid())
+  organizationId    String
+  assetId           String?
+  requestedByUserId String?
+  serviceType       ServiceType
+  status            ServiceRequestStatus @default(DRAFT)
+  priority          String?
+  customerNotes     String?
+  requestedOutcome  String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
-  asset Asset @relation(fields: [assetId], references: [id])
+  organization    Organization   @relation(fields: [organizationId], references: [id])
+  asset           Asset?         @relation(fields: [assetId], references: [id])
+  requestedByUser User?          @relation("ServiceRequestedBy", fields: [requestedByUserId], references: [id])
+  authorizations  Authorization[]
+  shipments       Shipment[]
+  workOrders      WorkOrder[]
+
+  @@index([organizationId])
+  @@index([assetId])
+  @@index([status])
+}
+
+model Authorization {
+  id                 String              @id @default(cuid())
+  serviceRequestId   String
+  authorizedByUserId String?
+  status             AuthorizationStatus @default(PENDING)
+  scope              String
+  spendingLimitCents Int?
+  currency           String              @default("USD")
+  termsVersion       String?
+  authorizedAt       DateTime?
+  expiresAt          DateTime?
+  notes              String?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  serviceRequest   ServiceRequest @relation(fields: [serviceRequestId], references: [id], onDelete: Cascade)
+  authorizedByUser User?          @relation("AuthorizationApprovedBy", fields: [authorizedByUserId], references: [id])
+
+  @@index([serviceRequestId])
+  @@index([status])
+}
+
+model Shipment {
+  id                String         @id @default(cuid())
+  serviceRequestId  String
+  destinationSiteId String
+  carrier           String?
+  trackingNumber    String?
+  status            ShipmentStatus @default(PREPARING)
+  labelReference    String?
+  shippedAt         DateTime?
+  acceptedAt        DateTime?
+  expectedAt        DateTime?
+  deliveredAt       DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id])
+  destinationSite Site           @relation("ShipmentDestinationSite", fields: [destinationSiteId], references: [id])
+  packages       Package[]
+  workOrders     WorkOrder[]
+
+  @@index([serviceRequestId])
+  @@index([destinationSiteId])
+  @@index([trackingNumber])
+  @@index([status])
+}
+
+model Package {
+  id             String        @id @default(cuid())
+  shipmentId     String
+  packageCode    String?
+  trackingNumber String?
+  status         PackageStatus @default(EXPECTED)
+  weightGrams    Int?
+  lengthMm       Int?
+  widthMm        Int?
+  heightMm       Int?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  shipment Shipment         @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  contents PackageContent[]
+  receipt  Receipt?
+
+  @@index([shipmentId])
+  @@index([trackingNumber])
+}
+
+model PackageContent {
+  id          String   @id @default(cuid())
+  packageId   String
+  assetId     String?
+  description String?
+  quantity    Int      @default(1)
+  expected    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  asset   Asset?  @relation(fields: [assetId], references: [id])
+
+  @@index([packageId])
+  @@index([assetId])
+}
+
+model Receipt {
+  id                String           @id @default(cuid())
+  packageId         String           @unique
+  receivedByUserId  String?
+  storageLocationId String?
+  receivedAt        DateTime         @default(now())
+  condition         ReceiptCondition @default(UNKNOWN)
+  sealIntact        Boolean?
+  notes             String?
+  createdAt         DateTime         @default(now())
+
+  package         Package          @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  receivedByUser  User?            @relation("ReceiptReceivedBy", fields: [receivedByUserId], references: [id])
+  storageLocation StorageLocation? @relation(fields: [storageLocationId], references: [id])
+
+  @@index([receivedByUserId])
+  @@index([storageLocationId])
+}
+
+model WorkOrder {
+  id               String          @id @default(cuid())
+  assetId          String
+  organizationId   String?
+  serviceRequestId String?
+  shipmentId       String?
+  number           String          @unique
+  status           WorkOrderStatus @default(OPEN)
+  serviceType      ServiceType?
+  reportedIssue    String?
+  diagnosis        String?
+  resolution       String?
+  openedAt         DateTime        @default(now())
+  completedAt      DateTime?
+  closedAt         DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  asset          Asset           @relation(fields: [assetId], references: [id])
+  serviceRequest ServiceRequest? @relation(fields: [serviceRequestId], references: [id])
+  shipment       Shipment?       @relation(fields: [shipmentId], references: [id])
 
   @@index([assetId])
+  @@index([organizationId])
+  @@index([serviceRequestId])
+  @@index([shipmentId])
   @@index([status])
 }
