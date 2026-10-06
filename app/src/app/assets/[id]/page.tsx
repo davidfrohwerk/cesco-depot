@@ -1,11 +1,37 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { transitionAsset } from "@/app/actions/assets";
 import { prisma } from "@/lib/prisma";
+import { AssetStatus } from "../../../../generated/prisma/client";
 
 type PageProps = {
   params: Promise<{
     id: string;
   }>;
+};
+
+const nextStatus: Partial<Record<AssetStatus, AssetStatus>> = {
+  REGISTERED: "RECEIVED",
+  RECEIVED: "INSPECTION",
+  INSPECTION: "REPAIR",
+  REPAIR: "TESTING",
+  TESTING: "READY",
+};
+
+const transitionLabels: Partial<Record<AssetStatus, string>> = {
+  RECEIVED: "Mark received",
+  INSPECTION: "Begin inspection",
+  REPAIR: "Begin repair",
+  TESTING: "Send to testing",
+  READY: "Mark ready",
+};
+
+const notePlaceholders: Partial<Record<AssetStatus, string>> = {
+  RECEIVED: "Receiving note (optional)",
+  INSPECTION: "Inspection intake note (optional)",
+  REPAIR: "Inspection findings / repair intake note",
+  TESTING: "Repair completed / testing notes",
+  READY: "Test result / release note",
 };
 
 export default async function AssetPage({ params }: PageProps) {
@@ -29,6 +55,9 @@ export default async function AssetPage({ params }: PageProps) {
     notFound();
   }
 
+  const destinationStatus = nextStatus[asset.status];
+  const transitionForAsset = transitionAsset.bind(null, asset.id);
+
   return (
     <main className="mx-auto max-w-5xl p-8">
       <Link
@@ -40,9 +69,7 @@ export default async function AssetPage({ params }: PageProps) {
 
       <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">
-            {asset.assetTag}
-          </h1>
+          <h1 className="text-3xl font-bold">{asset.assetTag}</h1>
 
           <p className="mt-2 opacity-70">
             {[asset.manufacturer, asset.model]
@@ -94,6 +121,37 @@ export default async function AssetPage({ params }: PageProps) {
         </div>
       </section>
 
+      <section className="mt-10 rounded border p-5">
+        <h2 className="text-xl font-semibold">Update lifecycle status</h2>
+
+        <p className="mt-2 text-sm opacity-70">
+          Current status: {asset.status}
+        </p>
+
+        {destinationStatus ? (
+          <form action={transitionForAsset} className="mt-5 space-y-3">
+            <input type="hidden" name="status" value={destinationStatus} />
+
+            <textarea
+              name="note"
+              placeholder={notePlaceholders[destinationStatus] ?? "Lifecycle note (optional)"}
+              className="w-full rounded border px-3 py-2"
+            />
+
+            <button
+              type="submit"
+              className="rounded border px-4 py-2 font-medium"
+            >
+              {transitionLabels[destinationStatus] ?? `Move to ${destinationStatus}`}
+            </button>
+          </form>
+        ) : (
+          <p className="mt-5 text-sm opacity-70">
+            This asset has completed the initial depot workflow.
+          </p>
+        )}
+      </section>
+
       <section className="mt-10">
         <h2 className="text-2xl font-semibold">Asset history</h2>
 
@@ -106,9 +164,7 @@ export default async function AssetPage({ params }: PageProps) {
             asset.events.map((event) => (
               <article key={event.id} className="rounded border p-4">
                 <div className="flex flex-wrap justify-between gap-2">
-                  <div className="font-semibold">
-                    {event.eventType}
-                  </div>
+                  <div className="font-semibold">{event.eventType}</div>
 
                   <time className="text-sm opacity-60">
                     {event.createdAt.toLocaleString()}
