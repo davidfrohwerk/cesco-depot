@@ -4,6 +4,7 @@ import {
   authorizeServiceRequest,
   createInboundShipment,
   markShipmentAccepted,
+  receiveInboundPackage,
 } from "@/app/actions/service-requests";
 import { prisma } from "@/lib/prisma";
 
@@ -22,6 +23,17 @@ function moneyFromCents(value: number | null) {
   }).format(value / 100);
 }
 
+const receiptConditions = [
+  "UNKNOWN",
+  "GOOD",
+  "DAMAGED",
+  "TAMPERED",
+  "WET",
+  "CRUSHED",
+  "OPEN",
+  "OTHER",
+] as const;
+
 export default async function ServiceRequestPage({
   params,
 }: PageProps) {
@@ -39,7 +51,15 @@ export default async function ServiceRequestPage({
         orderBy: { createdAt: "desc" },
         include: {
           destinationSite: true,
-          packages: true,
+          packages: {
+            include: {
+              receipt: {
+                include: {
+                  storageLocation: true,
+                },
+              },
+            },
+          },
           workOrders: {
             orderBy: { openedAt: "desc" },
           },
@@ -68,6 +88,17 @@ export default async function ServiceRequestPage({
 
   const shipment = request.shipments[0] ?? null;
   const workOrder = request.workOrders[0] ?? null;
+  const pkg = shipment?.packages[0] ?? null;
+
+  const storageLocations = shipment
+    ? await prisma.storageLocation.findMany({
+        where: {
+          siteId: shipment.destinationSiteId,
+          isActive: true,
+        },
+        orderBy: { name: "asc" },
+      })
+    : [];
 
   return (
     <main className="mx-auto max-w-5xl p-8">
@@ -84,9 +115,7 @@ export default async function ServiceRequestPage({
 
       <div className="mt-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm opacity-60">
-            Service request
-          </p>
+          <p className="text-sm opacity-60">Service request</p>
           <h1 className="text-3xl font-bold">
             {request.serviceType.replaceAll("_", " ")}
           </h1>
@@ -241,7 +270,8 @@ export default async function ServiceRequestPage({
               </div>
             )}
 
-            {shipment.status === "IN_TRANSIT" && (
+            {(shipment.status === "IN_TRANSIT" ||
+              shipment.status === "PARTIALLY_RECEIVED") && (
               <div className="mt-5 rounded border p-4">
                 <div className="font-medium">
                   Carrier acceptance confirmed
@@ -251,7 +281,19 @@ export default async function ServiceRequestPage({
                   {shipment.acceptedAt?.toLocaleString() ?? "—"}
                 </div>
                 <div className="mt-2 opacity-70">
-                  The work order should now be open as IN_TRANSIT.
+                  Work order is active and the shipment is awaiting receipt.
+                </div>
+              </div>
+            )}
+
+            {shipment.status === "RECEIVED" && (
+              <div className="mt-5 rounded border p-4">
+                <div className="font-medium">
+                  Shipment received by CESCo
+                </div>
+                <div className="mt-2 opacity-70">
+                  Delivered:{" "}
+                  {shipment.deliveredAt?.toLocaleString() ?? "—"}
                 </div>
               </div>
             )}
@@ -303,10 +345,127 @@ export default async function ServiceRequestPage({
 
       <section className="mt-6 rounded border p-5">
         <h2 className="text-xl font-semibold">
-          3. Operational boundary
+          3. Package receipt and inventory intake
         </h2>
 
-        <div className="mt-4 grid gap-3 text-sm md:grid-cols-3">
+        {!shipment || !pkg ? (
+          <p className="mt-4 text-sm opacity-70">
+            Create the inbound shipment first.
+          </p>
+        ) : pkg.receipt ? (
+          <div className="mt-4 text-sm">
+            <div className="font-medium">Package received</div>
+            <div className="mt-2">
+              Condition: {pkg.receipt.condition}
+            </div>
+            <div className="mt-1">
+              Received: {pkg.receipt.receivedAt.toLocaleString()}
+            </div>
+            <div className="mt-1">
+              Location:{" "}
+              {pkg.receipt.storageLocation?.name ?? "Not assigned"}
+            </div>
+            <div className="mt-1">
+              Seal intact:{" "}
+              {pkg.receipt.sealIntact === null
+                ? "Not recorded"
+                : pkg.receipt.sealIntact
+                  ? "Yes"
+                  : "No"}
+            </div>
+            {pkg.receipt.notes && (
+              <div className="mt-2 opacity-70">
+                {pkg.receipt.notes}
+              </div>
+            )}
+          </div>
+        ) : shipment.status !== "IN_TRANSIT" &&
+          shipment.status !== "PARTIALLY_RECEIVED" ? (
+          <p className="mt-4 text-sm opacity-70">
+            Package receipt becomes available after carrier acceptance.
+          </p>
+        ) : storageLocations.length === 0 ? (
+          <div className="mt-4 text-sm">
+            <p className="font-medium">
+              The destination site has no storage locations yet.
+            </p>
+            <p className="mt-2 opacity-70">
+              Define at least one receiving, cage, shelf, bin, or other
+              physical location before accepting custody.
+            </p>
+            <Link
+              href={`/sites/${shipment.destinationSiteId}`}
+              className="mt-4 inline-block underline"
+            >
+              Manage {shipment.destinationSite.name} storage locations
+            </Link>
+          </div>
+        ) : (
+          <form
+            action={receiveInboundPackage.bind(null, pkg.id)}
+            className="mt-5 grid gap-3 md:grid-cols-2"
+          >
+            <select
+              name="condition"
+              defaultValue="UNKNOWN"
+              className="rounded border px-3 py-2"
+            >
+              {receiptConditions.map((condition) => (
+                <option key={condition} value={condition}>
+                  {condition.replaceAll("_", " ")}
+                </option>
+              ))}
+            </select>
+
+            <select
+              name="storageLocationId"
+              required
+              defaultValue=""
+              className="rounded border px-3 py-2"
+            >
+              <option value="" disabled>
+                Select receiving/storage location
+              </option>
+              {storageLocations.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.name} —{" "}
+                  {location.type.replaceAll("_", " ")}
+                </option>
+              ))}
+            </select>
+
+            <select
+              name="sealIntact"
+              defaultValue=""
+              className="rounded border px-3 py-2"
+            >
+              <option value="">Seal condition not recorded</option>
+              <option value="true">Seal intact</option>
+              <option value="false">Seal broken / not intact</option>
+            </select>
+
+            <textarea
+              name="notes"
+              placeholder="Receiving condition, exceptions, visible damage, or other intake notes"
+              className="rounded border px-3 py-2 md:row-span-2"
+            />
+
+            <button
+              type="submit"
+              className="rounded border px-4 py-2 font-medium"
+            >
+              Receive package into CESCo custody
+            </button>
+          </form>
+        )}
+      </section>
+
+      <section className="mt-6 rounded border p-5">
+        <h2 className="text-xl font-semibold">
+          4. Operational state
+        </h2>
+
+        <div className="mt-4 grid gap-3 text-sm md:grid-cols-4">
           <div className="rounded border p-3">
             <div className="font-medium">Request</div>
             <div className="mt-1 opacity-70">
@@ -318,6 +477,13 @@ export default async function ServiceRequestPage({
             <div className="font-medium">Shipment</div>
             <div className="mt-1 opacity-70">
               {shipment?.status ?? "NOT CREATED"}
+            </div>
+          </div>
+
+          <div className="rounded border p-3">
+            <div className="font-medium">Package</div>
+            <div className="mt-1 opacity-70">
+              {pkg?.status ?? "NOT CREATED"}
             </div>
           </div>
 
