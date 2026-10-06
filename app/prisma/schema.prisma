@@ -471,8 +471,11 @@ model Shipment {
   shippedAt         DateTime?
   acceptedAt        DateTime?
   expectedAt        DateTime?
-  deliveredAt       DateTime?
-  createdAt         DateTime       @default(now())
+  deliveredAt                 DateTime?
+  customerAcknowledgedAt       DateTime?
+  customerAcknowledgedByLabel  String?
+  customerAcknowledgmentNotes  String?
+  createdAt                   DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
   serviceRequest  ServiceRequest @relation(fields: [serviceRequestId], references: [id])
