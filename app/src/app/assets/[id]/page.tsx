@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { transitionAsset } from "@/app/actions/assets";
+import { createServiceRequest } from "@/app/actions/service-requests";
 import { prisma } from "@/lib/prisma";
-import { AssetStatus } from "../../../../generated/prisma/client";
 
 type PageProps = {
   params: Promise<{
@@ -10,29 +9,19 @@ type PageProps = {
   }>;
 };
 
-const nextStatus: Partial<Record<AssetStatus, AssetStatus>> = {
-  REGISTERED: "RECEIVED",
-  RECEIVED: "INSPECTION",
-  INSPECTION: "REPAIR",
-  REPAIR: "TESTING",
-  TESTING: "READY",
-};
-
-const transitionLabels: Partial<Record<AssetStatus, string>> = {
-  RECEIVED: "Mark received",
-  INSPECTION: "Begin inspection",
-  REPAIR: "Begin repair",
-  TESTING: "Send to testing",
-  READY: "Mark ready",
-};
-
-const notePlaceholders: Partial<Record<AssetStatus, string>> = {
-  RECEIVED: "Receiving note (optional)",
-  INSPECTION: "Inspection intake note (optional)",
-  REPAIR: "Inspection findings / repair intake note",
-  TESTING: "Repair completed / testing notes",
-  READY: "Test result / release note",
-};
+const serviceOptions = [
+  ["DIAGNOSE", "Diagnose"],
+  ["REPAIR", "Repair"],
+  ["TEST", "Test"],
+  ["RECONFIGURE", "Reconfigure / reimage"],
+  ["STRATEGIC_STOCK", "Store as strategic spare"],
+  ["REDEPLOY", "Redeploy"],
+  ["SHIP_ELSEWHERE", "Ship elsewhere"],
+  ["DECOMMISSION", "Decommission"],
+  ["DATA_DESTRUCTION", "Data destruction"],
+  ["DONATE", "Donate to CESCo"],
+  ["RECYCLE", "Recycle / disposition"],
+] as const;
 
 export default async function AssetPage({ params }: PageProps) {
   const { id } = await params;
@@ -41,9 +30,22 @@ export default async function AssetPage({ params }: PageProps) {
     where: { id },
     include: {
       organization: true,
+      ownerOrganization: true,
       site: true,
+      currentStorageLocation: true,
       events: {
         orderBy: { createdAt: "desc" },
+      },
+      serviceRequests: {
+        orderBy: { createdAt: "desc" },
+        include: {
+          shipments: {
+            orderBy: { createdAt: "desc" },
+          },
+          workOrders: {
+            orderBy: { openedAt: "desc" },
+          },
+        },
       },
       workOrders: {
         orderBy: { createdAt: "desc" },
@@ -55,8 +57,10 @@ export default async function AssetPage({ params }: PageProps) {
     notFound();
   }
 
-  const destinationStatus = nextStatus[asset.status];
-  const transitionForAsset = transitionAsset.bind(null, asset.id);
+  const createRequestForAsset = createServiceRequest.bind(
+    null,
+    asset.id
+  );
 
   return (
     <main className="mx-auto max-w-5xl p-8">
@@ -94,13 +98,35 @@ export default async function AssetPage({ params }: PageProps) {
             </div>
 
             <div>
-              <dt className="opacity-60">Organization</dt>
+              <dt className="opacity-60">Account organization</dt>
               <dd>{asset.organization.name}</dd>
             </div>
 
             <div>
-              <dt className="opacity-60">Site</dt>
-              <dd>{asset.site?.name ?? "Unassigned"}</dd>
+              <dt className="opacity-60">Legal owner</dt>
+              <dd>
+                {asset.ownerOrganization?.name ??
+                  "Not yet explicitly recorded"}
+              </dd>
+            </div>
+
+            <div>
+              <dt className="opacity-60">Custody</dt>
+              <dd>
+                {asset.currentCustodyType ?? "Not yet recorded"}
+                {asset.currentCustodianLabel
+                  ? ` — ${asset.currentCustodianLabel}`
+                  : ""}
+              </dd>
+            </div>
+
+            <div>
+              <dt className="opacity-60">Current location</dt>
+              <dd>
+                {asset.currentStorageLocation?.name ??
+                  asset.site?.name ??
+                  "Not yet recorded"}
+              </dd>
             </div>
 
             <div>
@@ -111,45 +137,119 @@ export default async function AssetPage({ params }: PageProps) {
         </div>
 
         <div className="rounded border p-4">
-          <h2 className="font-semibold">Work orders</h2>
+          <h2 className="font-semibold">Operational record</h2>
 
-          <p className="mt-4 text-sm opacity-70">
-            {asset.workOrders.length === 0
-              ? "No work orders yet."
-              : `${asset.workOrders.length} work order(s)`}
-          </p>
+          <dl className="mt-4 space-y-2 text-sm">
+            <div>
+              <dt className="opacity-60">Service requests</dt>
+              <dd>{asset.serviceRequests.length}</dd>
+            </div>
+            <div>
+              <dt className="opacity-60">Work orders</dt>
+              <dd>{asset.workOrders.length}</dd>
+            </div>
+            <div>
+              <dt className="opacity-60">Asset events</dt>
+              <dd>{asset.events.length}</dd>
+            </div>
+          </dl>
         </div>
       </section>
 
       <section className="mt-10 rounded border p-5">
-        <h2 className="text-xl font-semibold">Update lifecycle status</h2>
+        <h2 className="text-xl font-semibold">
+          Request service for this asset
+        </h2>
 
         <p className="mt-2 text-sm opacity-70">
-          Current status: {asset.status}
+          Creating a service request does not open a work order. The
+          operational work order begins when the inbound shipment is accepted
+          by the carrier.
         </p>
 
-        {destinationStatus ? (
-          <form action={transitionForAsset} className="mt-5 space-y-3">
-            <input type="hidden" name="status" value={destinationStatus} />
+        <form
+          action={createRequestForAsset}
+          className="mt-5 grid gap-3 md:grid-cols-2"
+        >
+          <select
+            name="serviceType"
+            required
+            defaultValue=""
+            className="rounded border px-3 py-2"
+          >
+            <option value="" disabled>
+              Select desired outcome
+            </option>
+            {serviceOptions.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
 
-            <textarea
-              name="note"
-              placeholder={notePlaceholders[destinationStatus] ?? "Lifecycle note (optional)"}
-              className="w-full rounded border px-3 py-2"
-            />
+          <input
+            name="requestedOutcome"
+            placeholder="Desired outcome"
+            className="rounded border px-3 py-2"
+          />
 
-            <button
-              type="submit"
-              className="rounded border px-4 py-2 font-medium"
-            >
-              {transitionLabels[destinationStatus] ?? `Move to ${destinationStatus}`}
-            </button>
-          </form>
-        ) : (
-          <p className="mt-5 text-sm opacity-70">
-            This asset has completed the initial depot workflow.
-          </p>
-        )}
+          <textarea
+            name="customerNotes"
+            placeholder="Describe the issue, request, or handling instructions"
+            className="rounded border px-3 py-2 md:col-span-2"
+          />
+
+          <button
+            type="submit"
+            className="rounded border px-4 py-2 font-medium md:col-span-2"
+          >
+            Create service request
+          </button>
+        </form>
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-2xl font-semibold">Service requests</h2>
+
+        <div className="mt-5 space-y-3">
+          {asset.serviceRequests.length === 0 ? (
+            <p className="text-sm opacity-70">
+              No service requests yet.
+            </p>
+          ) : (
+            asset.serviceRequests.map((request) => {
+              const shipment = request.shipments[0] ?? null;
+              const workOrder = request.workOrders[0] ?? null;
+
+              return (
+                <Link
+                  key={request.id}
+                  href={`/service-requests/${request.id}`}
+                  className="block rounded border p-4 hover:bg-black/5"
+                >
+                  <div className="flex flex-wrap justify-between gap-2">
+                    <div className="font-semibold">
+                      {request.serviceType.replaceAll("_", " ")}
+                    </div>
+                    <div className="text-sm">{request.status}</div>
+                  </div>
+
+                  <div className="mt-2 grid gap-1 text-sm opacity-70 md:grid-cols-2">
+                    <div>
+                      Shipment: {shipment?.status ?? "NOT CREATED"}
+                    </div>
+                    <div>
+                      Work order:{" "}
+                      {workOrder
+                        ? `${workOrder.number} · ${workOrder.status}`
+                        : "NOT OPEN"}
+                    </div>
+                  </div>
+                </Link>
+              );
+            })
+          )}
+        </div>
       </section>
 
       <section className="mt-10">
