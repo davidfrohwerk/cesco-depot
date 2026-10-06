@@ -1,0 +1,25 @@
+# Environment/secrets
+.env
+.env.*
+!.env.example
+
+# Application
+node_modules/
+.next/
+dist/
+build/
+
+# Databases/backups
+backups/*
+!backups/.gitkeep
+
+# Runtime
+*.log
+*.pid
+tmp/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

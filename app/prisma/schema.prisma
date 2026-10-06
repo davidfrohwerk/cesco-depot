@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AssetStatus {
+  REGISTERED
+  IN_TRANSIT_TO_DEPOT
+  RECEIVED
+  INSPECTION
+  REPAIR
+  TESTING
+  READY
+  STOCKED
+  DISPATCHED
+  INSTALLED
+  DECOMMISSIONED
+  DISPOSITION_REVIEW
+  DONATION_OFFERED
+  TITLE_TRANSFERRED
+  REFURBISHED
+  HARVESTED
+  RECYCLED
+  RETIRED
+}
+
+enum WorkOrderStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_PARTS
+  TESTING
+  COMPLETED
+  CANCELLED
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sites  Site[]
+  assets Asset[]
+}
+
+model Site {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  addressLine1   String?
+  addressLine2   String?
+  city           String?
+  state          String?
+  postalCode     String?
+  country        String   @default("US")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  assets       Asset[]
+}
+
+model Asset {
+  id             String      @id @default(cuid())
+  assetTag       String      @unique
+  organizationId String
+  siteId         String?
+  manufacturer   String?
+  model          String?
+  serialNumber   String?
+  status         AssetStatus @default(REGISTERED)
+  description    String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  site         Site?        @relation(fields: [siteId], references: [id])
+  events       AssetEvent[]
+  workOrders   WorkOrder[]
+
+  @@index([serialNumber])
+  @@index([organizationId])
+  @@index([status])
+}
+
+model AssetEvent {
+  id         String      @id @default(cuid())
+  assetId    String
+  eventType  String
+  fromStatus AssetStatus?
+  toStatus   AssetStatus?
+  notes      String?
+  actor      String?
+  createdAt  DateTime    @default(now())
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId, createdAt])
+}
+
+model WorkOrder {
+  id            String          @id @default(cuid())
+  assetId       String
+  number        String          @unique
+  status        WorkOrderStatus @default(OPEN)
+  reportedIssue String?
+  diagnosis     String?
+  resolution    String?
+  openedAt      DateTime        @default(now())
+  closedAt      DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  asset Asset @relation(fields: [assetId], references: [id])
+
+  @@index([assetId])
+  @@index([status])
+}
