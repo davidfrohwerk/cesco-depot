@@ -494,6 +494,7 @@ model Authorization {
 
   serviceRequest   ServiceRequest @relation(fields: [serviceRequestId], references: [id], onDelete: Cascade)
   authorizedByUser User?          @relation("AuthorizationApprovedBy", fields: [authorizedByUserId], references: [id])
+  evidence         Evidence[]
 
   @@index([serviceRequestId])
   @@index([status])
@@ -524,6 +525,7 @@ model Shipment {
   destinationSite Site           @relation("ShipmentDestinationSite", fields: [destinationSiteId], references: [id])
   packages        Package[]
   workOrders      WorkOrder[]
+  evidence        Evidence[]
 
   @@index([serviceRequestId])
   @@index([direction])
@@ -748,6 +750,8 @@ model Evidence {
   workOrderEvent WorkOrderEvent? @relation(fields: [workOrderEventId], references: [id])
   package       Package?       @relation(fields: [packageId], references: [id])
   receipt       Receipt?       @relation(fields: [receiptId], references: [id])
+  authorization Authorization? @relation(fields: [authorizationId], references: [id])
+  shipment      Shipment?      @relation(fields: [shipmentId], references: [id])
   uploader      User?          @relation("EvidenceUploader", fields: [uploaderUserId], references: [id])
   accessEvents  EvidenceAccessEvent[]
 
@@ -757,6 +761,8 @@ model Evidence {
   @@index([workOrderEventId])
   @@index([packageId])
   @@index([receiptId])
+  @@index([authorizationId])
+  @@index([shipmentId])
   @@index([evidenceType])
 }
 
