@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { createOrganization } from "@/app/actions/organizations";
-import { requireCurrentUser } from "@/lib/auth";
+import {
+  requireCurrentUser,
+  userHasPermission,
+} from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export default async function OrganizationsPage() {
-  await requireCurrentUser();
+  const currentUser = await requireCurrentUser();
 
   const organizations = await prisma.organization.findMany({
     orderBy: { createdAt: "desc" },
@@ -41,14 +44,37 @@ export default async function OrganizationsPage() {
           </p>
         ) : (
           organizations.map((org) => (
-            <Link
+            <article
               key={org.id}
-              href={`/organizations/${org.id}`}
-              className="block rounded border p-4 hover:bg-black/5"
+              className="rounded border p-4"
             >
-              <div className="font-semibold">{org.name}</div>
-              <div className="mt-1 text-xs opacity-60">{org.id}</div>
-            </Link>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <Link
+                    href={`/organizations/${org.id}`}
+                    className="font-semibold underline"
+                  >
+                    {org.name}
+                  </Link>
+                  <div className="mt-1 text-xs opacity-60">
+                    {org.id}
+                  </div>
+                </div>
+
+                {userHasPermission(
+                  currentUser,
+                  "organization.manage_users",
+                  org.id
+                ) && (
+                  <Link
+                    href={`/organizations/${org.id}/users`}
+                    className="rounded border px-3 py-2 text-sm font-medium"
+                  >
+                    Users & roles
+                  </Link>
+                )}
+              </div>
+            </article>
           ))
         )}
       </section>
