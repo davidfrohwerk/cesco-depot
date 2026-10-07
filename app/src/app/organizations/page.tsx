@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { createOrganization } from "@/app/actions/organizations";
+import { requireCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export default async function OrganizationsPage() {
+  await requireCurrentUser();
+
   const organizations = await prisma.organization.findMany({
     orderBy: { createdAt: "desc" },
   });
