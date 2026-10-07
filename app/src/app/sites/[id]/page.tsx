@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createStorageLocation } from "@/app/actions/storage-locations";
-import { requireCurrentUser } from "@/lib/auth";
+import { requireOrganizationPermission } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 
 type PageProps = {
@@ -24,8 +24,6 @@ const locationTypes = [
 ] as const;
 
 export default async function SitePage({ params }: PageProps) {
-  await requireCurrentUser();
-
   const { id } = await params;
 
   const site = await prisma.site.findUnique({
@@ -41,6 +39,11 @@ export default async function SitePage({ params }: PageProps) {
   if (!site) {
     notFound();
   }
+
+  await requireOrganizationPermission(
+    "organization.view",
+    site.organizationId
+  );
 
   const createLocationForSite = createStorageLocation.bind(
     null,
