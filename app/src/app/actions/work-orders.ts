@@ -1198,7 +1198,7 @@ export async function acknowledgeCustomerReceipt(
 ) {
   const actor = await authenticatedActor();
   const recipientLabel = String(
-    formData.get("actorLabel") ?? ""
+    formData.get("recipientLabel") ?? ""
   ).trim();
   const notes = String(formData.get("notes") ?? "").trim();
 
