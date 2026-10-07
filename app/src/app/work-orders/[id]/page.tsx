@@ -91,12 +91,22 @@ export default async function WorkOrderPage({ params }: PageProps) {
         },
       },
       events: {
+        include: {
+          actor: true,
+        },
         orderBy: { createdAt: "desc" },
       },
       activities: {
+        include: {
+          worker: true,
+          supervisor: true,
+        },
         orderBy: { startedAt: "desc" },
       },
       observations: {
+        include: {
+          observer: true,
+        },
         orderBy: { observedAt: "desc" },
       },
       parts: {
@@ -889,7 +899,10 @@ export default async function WorkOrderPage({ params }: PageProps) {
                     </div>
                   </div>
                   <div className="mt-2 text-sm opacity-70">
-                    {activity.workerLabel ?? "Unidentified worker"}
+                    {activity.worker?.displayName ??
+                      activity.worker?.email ??
+                      activity.workerLabel ??
+                      "Unidentified worker"}
                   </div>
                   <div className="mt-1 text-xs opacity-50">
                     {activity.startedAt.toLocaleString()}
@@ -941,7 +954,11 @@ export default async function WorkOrderPage({ params }: PageProps) {
                   </div>
                 )}
                 <div className="mt-2 text-xs opacity-50">
-                  Actor: {event.actorLabel ?? (event.systemGenerated ? "system" : "—")}
+                  Actor:{" "}
+                  {event.actor?.displayName ??
+                    event.actor?.email ??
+                    event.actorLabel ??
+                    (event.systemGenerated ? "system" : "—")}
                 </div>
               </article>
             ))
