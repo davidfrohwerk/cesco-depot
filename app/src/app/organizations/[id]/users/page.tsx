@@ -103,9 +103,12 @@ export default async function OrganizationUsersPage({
             Share this one-time link with the invited user. It expires in
             24 hours. CESCo Depot does not send email yet.
           </p>
-          <code className="mt-4 block break-all rounded border p-3 text-sm">
+          <Link
+            href={`/invite/${invite}`}
+            className="mt-4 block break-all rounded border p-3 text-sm underline"
+          >
             /invite/{invite}
-          </code>
+          </Link>
         </section>
       )}
 
