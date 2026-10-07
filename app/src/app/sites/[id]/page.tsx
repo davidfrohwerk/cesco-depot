@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createStorageLocation } from "@/app/actions/storage-locations";
+import { requireCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 type PageProps = {
@@ -23,6 +24,8 @@ const locationTypes = [
 ] as const;
 
 export default async function SitePage({ params }: PageProps) {
+  await requireCurrentUser();
+
   const { id } = await params;
 
   const site = await prisma.site.findUnique({
