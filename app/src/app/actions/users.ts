@@ -146,6 +146,7 @@ export async function inviteOrganizationUser(
     await tx.userInvite.create({
       data: {
         userId: user.id,
+        membershipId: membership.id,
         createdByUserId: currentUser.id,
         tokenHash,
         expiresAt,
@@ -296,11 +297,8 @@ export async function acceptInvite(
   const invite = await prisma.userInvite.findUnique({
     where: { tokenHash },
     include: {
-      user: {
-        include: {
-          memberships: true,
-        },
-      },
+      membership: true,
+      user: true,
     },
   });
 
@@ -325,11 +323,8 @@ export async function acceptInvite(
       },
     });
 
-    await tx.membership.updateMany({
-      where: {
-        userId: invite.userId,
-        status: "INVITED",
-      },
+    await tx.membership.update({
+      where: { id: invite.membershipId },
       data: { status: "ACTIVE" },
     });
 
