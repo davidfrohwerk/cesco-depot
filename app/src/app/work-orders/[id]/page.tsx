@@ -18,6 +18,7 @@ import {
   stopWorkActivity,
   packReadyAsset,
 } from "@/app/actions/work-orders";
+import { uploadWorkOrderEvidence } from "@/app/actions/evidence";
 import {
   requireOrganizationPermission,
   userHasOrganizationPermission,
@@ -45,6 +46,22 @@ const assetConditions = [
   "TEST_PENDING",
 ] as const;
 
+const evidenceTypes = [
+  "PACKAGE_EXTERIOR",
+  "SHIPPING_LABEL",
+  "DAMAGE",
+  "SERIAL_ASSET_TAG",
+  "BEFORE_REPAIR",
+  "AFTER_REPAIR",
+  "TEST_RESULT",
+  "PACKING",
+  "OUTBOUND_SHIPMENT",
+  "SIGNED_AUTHORIZATION",
+  "TITLE_TRANSFER",
+  "DATA_DESTRUCTION_CERTIFICATE",
+  "OTHER",
+] as const;
+
 const activityTypes = [
   "RECEIVING",
   "INVENTORY_INTAKE",
@@ -62,6 +79,16 @@ const activityTypes = [
   "SUPERVISION",
   "OTHER",
 ] as const;
+
+function formatBytes(value: number | null) {
+  if (value === null) return "Unknown size";
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 function moneyFromCents(value: number | null) {
   if (value === null) return "—";
@@ -113,6 +140,12 @@ export default async function WorkOrderPage({ params }: PageProps) {
       parts: {
         orderBy: { createdAt: "desc" },
       },
+      evidence: {
+        include: {
+          uploader: true,
+        },
+        orderBy: { uploadedAt: "desc" },
+      },
     },
   });
 
@@ -146,6 +179,16 @@ export default async function WorkOrderPage({ params }: PageProps) {
   const canAcknowledgeReceipt = userHasOrganizationPermission(
     currentUser,
     "shipment.acknowledge_receipt",
+    organizationId
+  );
+  const canViewEvidence = userHasOrganizationPermission(
+    currentUser,
+    "evidence.view",
+    organizationId
+  );
+  const canUploadEvidence = userHasOrganizationPermission(
+    currentUser,
+    "evidence.upload",
     organizationId
   );
 
@@ -871,6 +914,126 @@ export default async function WorkOrderPage({ params }: PageProps) {
               )}
             </div>
           )}
+        </section>
+      )}
+
+      {canViewEvidence && (
+        <section className="mt-8 rounded border p-5">
+          <h2 className="text-2xl font-semibold">Evidence</h2>
+          <p className="mt-2 text-sm opacity-70">
+            Original files are stored outside the public web root and served
+            only after an authorization check. SHA-256 is recorded at upload.
+          </p>
+
+          {canUploadEvidence && (
+            <form
+              action={uploadWorkOrderEvidence.bind(null, workOrder.id)}
+              className="mt-5 grid gap-3 md:grid-cols-2"
+            >
+              <input
+                name="file"
+                type="file"
+                required
+                className="rounded border px-3 py-2 md:col-span-2"
+              />
+
+              <select
+                name="evidenceType"
+                required
+                defaultValue=""
+                className="rounded border px-3 py-2"
+              >
+                <option value="" disabled>
+                  Select evidence type
+                </option>
+                {evidenceTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {type.replaceAll("_", " ")}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                name="capturedAt"
+                type="datetime-local"
+                className="rounded border px-3 py-2"
+              />
+
+              <textarea
+                name="description"
+                placeholder="What this file shows or proves"
+                className="rounded border px-3 py-2 md:col-span-2"
+              />
+
+              <button
+                type="submit"
+                className="rounded border px-4 py-2 font-medium md:col-span-2"
+              >
+                Upload evidence
+              </button>
+            </form>
+          )}
+
+          <div className="mt-6 space-y-3">
+            {workOrder.evidence.length === 0 ? (
+              <p className="text-sm opacity-70">
+                No evidence files attached to this work order.
+              </p>
+            ) : (
+              workOrder.evidence.map((evidence) => (
+                <article
+                  key={evidence.id}
+                  className="rounded border p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">
+                        {evidence.evidenceType.replaceAll("_", " ")}
+                      </div>
+                      <div className="mt-1 text-sm opacity-70">
+                        {evidence.originalFilename ?? "Unnamed evidence file"}
+                      </div>
+                    </div>
+                    <Link
+                      href={`/evidence/${evidence.id}/download`}
+                      className="text-sm underline"
+                    >
+                      Download original
+                    </Link>
+                  </div>
+
+                  {evidence.description && (
+                    <div className="mt-3 text-sm">
+                      {evidence.description}
+                    </div>
+                  )}
+
+                  <div className="mt-3 grid gap-1 text-xs opacity-60 md:grid-cols-2">
+                    <div>
+                      Uploaded: {evidence.uploadedAt.toLocaleString()}
+                    </div>
+                    <div>
+                      By:{" "}
+                      {evidence.uploader?.displayName ??
+                        evidence.uploader?.email ??
+                        "Unknown uploader"}
+                    </div>
+                    <div>
+                      Size: {formatBytes(evidence.sizeBytes)}
+                    </div>
+                    <div>
+                      Captured:{" "}
+                      {evidence.capturedAt?.toLocaleString() ??
+                        "Not recorded"}
+                    </div>
+                    <div className="md:col-span-2 break-all">
+                      SHA-256: {evidence.sha256 ?? "Not recorded"}
+                    </div>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
         </section>
       )}
 
