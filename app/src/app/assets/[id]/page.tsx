@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createServiceRequest } from "@/app/actions/service-requests";
-import { requireOrganizationPermission } from "@/lib/access-scope";
+import {
+  requireOrganizationPermission,
+  userHasOrganizationPermission,
+} from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 
 type PageProps = {
@@ -58,8 +61,14 @@ export default async function AssetPage({ params }: PageProps) {
     notFound();
   }
 
-  await requireOrganizationPermission(
+  const currentUser = await requireOrganizationPermission(
     "asset.view",
+    asset.organizationId
+  );
+
+  const canCreateServiceRequest = userHasOrganizationPermission(
+    currentUser,
+    "service_request.create",
     asset.organizationId
   );
 
@@ -162,6 +171,7 @@ export default async function AssetPage({ params }: PageProps) {
         </div>
       </section>
 
+      {canCreateServiceRequest && (
       <section className="mt-10 rounded border p-5">
         <h2 className="text-xl font-semibold">
           Request service for this asset
@@ -213,6 +223,7 @@ export default async function AssetPage({ params }: PageProps) {
           </button>
         </form>
       </section>
+      )}
 
       <section className="mt-10">
         <h2 className="text-2xl font-semibold">Service requests</h2>
