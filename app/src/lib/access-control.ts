@@ -18,6 +18,8 @@ export const permissionDefinitions = [
   ["billing.view", "View billing records"],
   ["billing.manage", "Manage billing records"],
   ["audit.view", "View audit and provenance records"],
+  ["evidence.view", "View evidence files and metadata"],
+  ["evidence.upload", "Upload evidence files"],
 ] as const;
 
 export const roleDefinitions = [
@@ -47,6 +49,8 @@ export const roleDefinitions = [
       "shipment.acknowledge_receipt",
       "billing.view",
       "audit.view",
+      "evidence.view",
+      "evidence.upload",
     ],
   },
   {
@@ -66,6 +70,8 @@ export const roleDefinitions = [
       "shipment.manage",
       "shipment.acknowledge_receipt",
       "audit.view",
+      "evidence.view",
+      "evidence.upload",
     ],
   },
   {
@@ -79,6 +85,8 @@ export const roleDefinitions = [
       "work_order.view",
       "work_order.manage",
       "audit.view",
+      "evidence.view",
+      "evidence.upload",
     ],
   },
   {
@@ -94,6 +102,8 @@ export const roleDefinitions = [
       "shipment.manage",
       "shipment.acknowledge_receipt",
       "audit.view",
+      "evidence.view",
+      "evidence.upload",
     ],
   },
   {
@@ -111,6 +121,8 @@ export const roleDefinitions = [
       "shipment.acknowledge_receipt",
       "billing.view",
       "audit.view",
+      "evidence.view",
+      "evidence.upload",
     ],
   },
   {
@@ -124,6 +136,8 @@ export const roleDefinitions = [
       "work_order.view",
       "shipment.prepare",
       "shipment.acknowledge_receipt",
+      "evidence.view",
+      "evidence.upload",
     ],
   },
   {
@@ -135,6 +149,7 @@ export const roleDefinitions = [
       "asset.view",
       "work_order.view",
       "billing.view",
+      "evidence.view",
     ],
   },
   {
@@ -146,6 +161,7 @@ export const roleDefinitions = [
       "asset.view",
       "work_order.view",
       "audit.view",
+      "evidence.view",
     ],
   },
 ] as const;
