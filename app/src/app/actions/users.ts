@@ -6,9 +6,9 @@ import { prisma } from "@/lib/prisma";
 import {
   createSession,
   hashPassword,
-  requirePermission,
   userHasPermission,
 } from "@/lib/auth";
+import { requireOrganizationPermission } from "@/lib/access-scope";
 import { ensureDefaultAccessControl } from "@/lib/access-control";
 
 const INVITE_HOURS = 24;
@@ -20,7 +20,10 @@ function inviteTokenHash(token: string) {
 function allowedRoleKeysForUser(
   user: Awaited<ReturnType<typeof requirePermission>>
 ) {
-  if (userHasPermission(user, "system.admin")) {
+  if (
+    userHasPermission(user, "system.admin") ||
+    userHasPermission(user, "organization.manage")
+  ) {
     return null;
   }
 
@@ -36,7 +39,7 @@ export async function inviteOrganizationUser(
   organizationId: string,
   formData: FormData
 ) {
-  const currentUser = await requirePermission(
+  const currentUser = await requireOrganizationPermission(
     "organization.manage_users",
     organizationId
   );
@@ -175,7 +178,7 @@ export async function setMembershipStatus(
   membershipId: string,
   formData: FormData
 ) {
-  const currentUser = await requirePermission(
+  const currentUser = await requireOrganizationPermission(
     "organization.manage_users",
     organizationId
   );
