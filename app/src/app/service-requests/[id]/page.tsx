@@ -6,7 +6,10 @@ import {
   markShipmentAccepted,
   receiveInboundPackage,
 } from "@/app/actions/service-requests";
-import { requireOrganizationPermission } from "@/lib/access-scope";
+import {
+  requireOrganizationPermission,
+  userHasOrganizationPermission,
+} from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 
 type PageProps = {
@@ -76,8 +79,24 @@ export default async function ServiceRequestPage({
     notFound();
   }
 
-  await requireOrganizationPermission(
+  const currentUser = await requireOrganizationPermission(
     "organization.view",
+    request.organizationId
+  );
+
+  const canAuthorize = userHasOrganizationPermission(
+    currentUser,
+    "service_request.authorize",
+    request.organizationId
+  );
+  const canManageShipment = userHasOrganizationPermission(
+    currentUser,
+    "shipment.manage",
+    request.organizationId
+  );
+  const canReceiveInventory = userHasOrganizationPermission(
+    currentUser,
+    "inventory.receive",
     request.organizationId
   );
 
@@ -209,7 +228,7 @@ export default async function ServiceRequestPage({
               {approvedAuthorization.authorizedAt?.toLocaleString()}
             </div>
           </div>
-        ) : (
+        ) : canAuthorize ? (
           <form
             action={authorizeServiceRequest.bind(null, request.id)}
             className="mt-5 space-y-3"
@@ -237,6 +256,10 @@ export default async function ServiceRequestPage({
               Authorize service
             </button>
           </form>
+        ) : (
+          <p className="mt-4 text-sm opacity-70">
+            You can view this request, but your role cannot authorize service.
+          </p>
         )}
       </section>
 
@@ -273,20 +296,26 @@ export default async function ServiceRequestPage({
                   replace this manual trigger later.
                 </p>
 
-                <form
-                  action={markShipmentAccepted.bind(
-                    null,
-                    inboundShipment.id
-                  )}
-                  className="mt-4"
-                >
-                  <button
-                    type="submit"
-                    className="rounded border px-4 py-2 font-medium"
+                {canManageShipment ? (
+                  <form
+                    action={markShipmentAccepted.bind(
+                      null,
+                      inboundShipment.id
+                    )}
+                    className="mt-4"
                   >
-                    Simulate carrier acceptance
-                  </button>
-                </form>
+                    <button
+                      type="submit"
+                      className="rounded border px-4 py-2 font-medium"
+                    >
+                      Simulate carrier acceptance
+                    </button>
+                  </form>
+                ) : (
+                  <p className="mt-4 opacity-70">
+                    Your role cannot update shipment custody.
+                  </p>
+                )}
               </div>
             )}
 
@@ -318,7 +347,7 @@ export default async function ServiceRequestPage({
               </div>
             )}
           </div>
-        ) : (
+        ) : canManageShipment ? (
           <form
             action={createInboundShipment.bind(null, request.id)}
             className="mt-5 grid gap-3 md:grid-cols-2"
@@ -360,6 +389,10 @@ export default async function ServiceRequestPage({
               Save inbound shipment
             </button>
           </form>
+        ) : (
+          <p className="mt-4 text-sm opacity-70">
+            Your role cannot create or update shipments.
+          </p>
         )}
       </section>
 
@@ -420,6 +453,10 @@ export default async function ServiceRequestPage({
               Manage {inboundShipment.destinationSite.name} storage locations
             </Link>
           </div>
+        ) : !canReceiveInventory ? (
+          <p className="mt-4 text-sm opacity-70">
+            Your role can view receipt status but cannot receive inventory.
+          </p>
         ) : (
           <form
             action={receiveInboundPackage.bind(null, pkg.id)}
