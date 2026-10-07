@@ -104,7 +104,10 @@ async function actorForActivity(activityId: string) {
   return actorForWorkOrder(activity.workOrderId);
 }
 
-async function actorForShipment(shipmentId: string) {
+async function actorForShipment(
+  shipmentId: string,
+  permissionKey = "shipment.manage"
+) {
   const shipment = await prisma.shipment.findUnique({
     where: { id: shipmentId },
     select: {
@@ -120,7 +123,7 @@ async function actorForShipment(shipmentId: string) {
 
   return actorForOrganization(
     shipment.serviceRequest.organizationId,
-    "shipment.manage"
+    permissionKey
   );
 }
 
@@ -1271,7 +1274,7 @@ export async function acknowledgeCustomerReceipt(
   shipmentId: string,
   formData: FormData
 ) {
-  const actor = await actorForShipment(shipmentId);
+  const actor = await actorForShipment(shipmentId, "shipment.acknowledge_receipt");
   const recipientLabel = String(
     formData.get("recipientLabel") ?? ""
   ).trim();
