@@ -6,7 +6,7 @@ import {
   markShipmentAccepted,
   receiveInboundPackage,
 } from "@/app/actions/service-requests";
-import { requireCurrentUser } from "@/lib/auth";
+import { requireOrganizationPermission } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 
 type PageProps = {
@@ -38,8 +38,6 @@ const receiptConditions = [
 export default async function ServiceRequestPage({
   params,
 }: PageProps) {
-  await requireCurrentUser();
-
   const { id } = await params;
 
   const request = await prisma.serviceRequest.findUnique({
@@ -77,6 +75,11 @@ export default async function ServiceRequestPage({
   if (!request) {
     notFound();
   }
+
+  await requireOrganizationPermission(
+    "organization.view",
+    request.organizationId
+  );
 
   const sites = await prisma.site.findMany({
     orderBy: [{ organization: { name: "asc" } }, { name: "asc" }],
