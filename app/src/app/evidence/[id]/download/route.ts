@@ -51,7 +51,7 @@ export async function GET(
     evidence.originalFilename
   );
 
-  return new Response(bytes, {
+  return new Response(new Uint8Array(bytes), {
     headers: {
       "Content-Type":
         evidence.mimeType || "application/octet-stream",
