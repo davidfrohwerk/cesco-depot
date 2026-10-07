@@ -18,7 +18,7 @@ function inviteTokenHash(token: string) {
 }
 
 function allowedRoleKeysForUser(
-  user: Awaited<ReturnType<typeof requirePermission>>
+  user: Awaited<ReturnType<typeof requireOrganizationPermission>>
 ) {
   if (
     userHasPermission(user, "system.admin") ||
