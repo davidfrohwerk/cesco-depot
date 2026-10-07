@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -47,6 +48,27 @@ export async function GET(
     notFound();
   }
 
+  const observedSha256 = createHash("sha256")
+    .update(bytes)
+    .digest("hex");
+
+  if (
+    evidence.sha256 &&
+    observedSha256 !== evidence.sha256
+  ) {
+    return new Response(
+      "Evidence integrity check failed. The stored file does not match its recorded SHA-256.",
+      {
+        status: 409,
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "private, no-store",
+          "X-Content-Type-Options": "nosniff",
+        },
+      }
+    );
+  }
+
   const filename = safeDownloadFilename(
     evidence.originalFilename
   );
@@ -60,7 +82,8 @@ export async function GET(
         `attachment; filename="${filename}"`,
       "Cache-Control": "private, no-store",
       "X-Content-Type-Options": "nosniff",
-      "X-Evidence-SHA256": evidence.sha256 ?? "",
+      "X-Evidence-SHA256": evidence.sha256 ?? observedSha256,
+      "X-Evidence-Integrity": evidence.sha256 ? "verified" : "unrecorded",
     },
   });
 }
