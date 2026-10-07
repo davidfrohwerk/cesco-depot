@@ -654,6 +654,9 @@ export default async function ServiceRequestPage({
                       {evidence.capturedAt?.toLocaleString() ??
                         "Not recorded"}
                     </div>
+                    <div>
+                      Downloads: {evidence._count.accessEvents}
+                    </div>
                     <div className="md:col-span-2 break-all">
                       SHA-256: {evidence.sha256 ?? "Not recorded"}
                     </div>
