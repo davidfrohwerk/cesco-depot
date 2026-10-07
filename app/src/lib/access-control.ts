@@ -178,6 +178,29 @@ export async function ensureDefaultAccessControl() {
       },
     });
 
+    const allowedPermissionIds = definition.permissions.map(
+      (permissionKey) => {
+        const permission = permissionMap.get(permissionKey);
+
+        if (!permission) {
+          throw new Error(
+            `Permission definition missing: ${permissionKey}`
+          );
+        }
+
+        return permission.id;
+      }
+    );
+
+    await prisma.rolePermission.deleteMany({
+      where: {
+        roleId: role.id,
+        permissionId: {
+          notIn: allowedPermissionIds,
+        },
+      },
+    });
+
     for (const permissionKey of definition.permissions) {
       const permission = permissionMap.get(permissionKey);
 
