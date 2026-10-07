@@ -6,6 +6,7 @@ import {
   markShipmentAccepted,
   receiveInboundPackage,
 } from "@/app/actions/service-requests";
+import { requireCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 type PageProps = {
@@ -37,6 +38,8 @@ const receiptConditions = [
 export default async function ServiceRequestPage({
   params,
 }: PageProps) {
+  await requireCurrentUser();
+
   const { id } = await params;
 
   const request = await prisma.serviceRequest.findUnique({
