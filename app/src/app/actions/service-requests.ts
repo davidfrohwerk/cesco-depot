@@ -191,7 +191,7 @@ export async function createInboundShipment(
   }
 
   await requireOrganizationPermission(
-    "shipment.manage",
+    "shipment.prepare",
     requestForAccess.organizationId
   );
 
