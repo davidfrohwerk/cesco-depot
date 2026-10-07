@@ -13,6 +13,14 @@ import { ensureDefaultAccessControl } from "@/lib/access-control";
 
 const INVITE_HOURS = 24;
 
+const INTERNAL_ROLE_KEYS = new Set([
+  "SYSTEM_ADMIN",
+  "CESCO_OPERATIONS_ADMIN",
+  "DEPOT_MANAGER",
+  "DEPOT_TECHNICIAN",
+  "RECEIVING_LOGISTICS",
+]);
+
 function inviteTokenHash(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -68,12 +76,31 @@ export async function inviteOrganizationUser(
     );
   }
 
-  const role = await prisma.role.findUnique({
-    where: { key: roleKey },
-  });
+  const [role, organization] = await Promise.all([
+    prisma.role.findUnique({
+      where: { key: roleKey },
+    }),
+    prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { name: true },
+    }),
+  ]);
 
   if (!role) {
     throw new Error("Selected role does not exist.");
+  }
+
+  if (!organization) {
+    throw new Error("Organization not found.");
+  }
+
+  if (
+    INTERNAL_ROLE_KEYS.has(role.key) &&
+    organization.name.toLowerCase() !== "cesco internal"
+  ) {
+    throw new Error(
+      "CESCo operational roles may only be assigned within CESCo Internal."
+    );
   }
 
   const token = randomBytes(32).toString("hex");
