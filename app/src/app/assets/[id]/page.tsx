@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { createServiceRequest } from "@/app/actions/service-requests";
 import { uploadAssetEvidence } from "@/app/actions/evidence";
 import {
-  requireOrganizationPermission,
+  requireOrganizationPagePermission,
   userHasOrganizationPermission,
 } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
@@ -40,7 +40,7 @@ export default async function AssetPage({ params }: PageProps) {
     notFound();
   }
 
-  const currentUser = await requireOrganizationPermission(
+  const currentUser = await requireOrganizationPagePermission(
     "asset.view",
     assetScope.organizationId
   );
