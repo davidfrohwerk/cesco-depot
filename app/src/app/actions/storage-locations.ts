@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireCurrentUser } from "@/lib/auth";
+import { requireOrganizationPermission } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 import { StorageLocationType } from "../../../generated/prisma/client";
 
@@ -9,7 +9,20 @@ export async function createStorageLocation(
   siteId: string,
   formData: FormData
 ) {
-  await requireCurrentUser();
+  const site = await prisma.site.findUnique({
+    where: { id: siteId },
+    select: { organizationId: true },
+  });
+
+  if (!site) {
+    throw new Error("Site not found.");
+  }
+
+  await requireOrganizationPermission(
+    "inventory.receive",
+    site.organizationId
+  );
+
   const name = String(formData.get("name") ?? "").trim();
   const code = String(formData.get("code") ?? "").trim();
   const type = String(
