@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { requireCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   ReceiptCondition,
@@ -31,6 +32,7 @@ export async function createServiceRequest(
   assetId: string,
   formData: FormData
 ) {
+  await requireCurrentUser();
   const serviceType = String(
     formData.get("serviceType") ?? ""
   ).trim() as ServiceType;
@@ -99,6 +101,7 @@ export async function authorizeServiceRequest(
   serviceRequestId: string,
   formData: FormData
 ) {
+  await requireCurrentUser();
   const scope = String(formData.get("scope") ?? "").trim();
   const spendingLimitCents = parseOptionalCents(
     formData.get("spendingLimit")
@@ -150,6 +153,7 @@ export async function createInboundShipment(
   serviceRequestId: string,
   formData: FormData
 ) {
+  await requireCurrentUser();
   const carrier = String(formData.get("carrier") ?? "").trim();
   const trackingNumber = String(
     formData.get("trackingNumber") ?? ""
@@ -229,6 +233,7 @@ export async function createInboundShipment(
 }
 
 export async function markShipmentAccepted(shipmentId: string) {
+  await requireCurrentUser();
   const result = await prisma.$transaction(async (tx) => {
     const shipment = await tx.shipment.findUnique({
       where: { id: shipmentId },
@@ -368,6 +373,7 @@ export async function receiveInboundPackage(
   packageId: string,
   formData: FormData
 ) {
+  await requireCurrentUser();
   const storageLocationId = String(
     formData.get("storageLocationId") ?? ""
   ).trim();
