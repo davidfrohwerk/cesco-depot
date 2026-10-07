@@ -143,6 +143,9 @@ export default async function WorkOrderPage({ params }: PageProps) {
       evidence: {
         include: {
           uploader: true,
+          _count: {
+            select: { accessEvents: true },
+          },
         },
         orderBy: { uploadedAt: "desc" },
       },
@@ -1026,6 +1029,9 @@ export default async function WorkOrderPage({ params }: PageProps) {
                       Captured:{" "}
                       {evidence.capturedAt?.toLocaleString() ??
                         "Not recorded"}
+                    </div>
+                    <div>
+                      Downloads: {evidence._count.accessEvents}
                     </div>
                     <div className="md:col-span-2 break-all">
                       SHA-256: {evidence.sha256 ?? "Not recorded"}
