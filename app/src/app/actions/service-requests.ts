@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireCurrentUser } from "@/lib/auth";
+import { currentUserLabel, requireCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   ReceiptCondition,
@@ -32,7 +32,8 @@ export async function createServiceRequest(
   assetId: string,
   formData: FormData
 ) {
-  await requireCurrentUser();
+  const user = await requireCurrentUser();
+  const userLabel = currentUserLabel(user);
   const serviceType = String(
     formData.get("serviceType") ?? ""
   ).trim() as ServiceType;
@@ -74,7 +75,7 @@ export async function createServiceRequest(
           eventType: "OWNERSHIP_BASELINE_RECORDED",
           fromStatus: asset.status,
           toStatus: asset.status,
-          actor: "system",
+          actor: userLabel,
           notes:
             "Legacy prototype asset reconciled: account organization recorded as owner before the first service request.",
         },
@@ -85,6 +86,7 @@ export async function createServiceRequest(
       data: {
         organizationId: asset.organizationId,
         assetId: asset.id,
+        requestedByUserId: user.id,
         serviceType,
         status: "PENDING_AUTHORIZATION",
         customerNotes: customerNotes || null,
@@ -101,7 +103,7 @@ export async function authorizeServiceRequest(
   serviceRequestId: string,
   formData: FormData
 ) {
-  await requireCurrentUser();
+  const user = await requireCurrentUser();
   const scope = String(formData.get("scope") ?? "").trim();
   const spendingLimitCents = parseOptionalCents(
     formData.get("spendingLimit")
@@ -132,6 +134,7 @@ export async function authorizeServiceRequest(
     await tx.authorization.create({
       data: {
         serviceRequestId,
+        authorizedByUserId: user.id,
         status: "APPROVED",
         scope,
         spendingLimitCents,
@@ -233,7 +236,8 @@ export async function createInboundShipment(
 }
 
 export async function markShipmentAccepted(shipmentId: string) {
-  await requireCurrentUser();
+  const user = await requireCurrentUser();
+  const userLabel = currentUserLabel(user);
   const result = await prisma.$transaction(async (tx) => {
     const shipment = await tx.shipment.findUnique({
       where: { id: shipmentId },
@@ -317,7 +321,7 @@ export async function markShipmentAccepted(shipmentId: string) {
         eventType: "SHIPMENT_ACCEPTED_BY_CARRIER",
         fromStatus: asset.status,
         toStatus: "IN_TRANSIT_TO_DEPOT",
-        actor: "system",
+        actor: userLabel,
         notes: shipment.trackingNumber
           ? `Inbound shipment accepted by ${shipment.carrier ?? "carrier"}; tracking ${shipment.trackingNumber}.`
           : "Inbound shipment accepted by carrier.",
@@ -345,8 +349,9 @@ export async function markShipmentAccepted(shipmentId: string) {
         eventType: "WORK_ORDER_OPENED",
         fromStatus: null,
         toStatus: "IN_TRANSIT",
-        actorLabel: "system",
-        systemGenerated: true,
+        actorUserId: user.id,
+        actorLabel: userLabel,
+        systemGenerated: false,
         notes: shipment.trackingNumber
           ? `Work order opened when carrier acceptance was confirmed for tracking ${shipment.trackingNumber}.`
           : "Work order opened when carrier acceptance was confirmed.",
@@ -373,7 +378,8 @@ export async function receiveInboundPackage(
   packageId: string,
   formData: FormData
 ) {
-  await requireCurrentUser();
+  const user = await requireCurrentUser();
+  const userLabel = currentUserLabel(user);
   const storageLocationId = String(
     formData.get("storageLocationId") ?? ""
   ).trim();
@@ -469,6 +475,7 @@ export async function receiveInboundPackage(
     await tx.receipt.create({
       data: {
         packageId: pkg.id,
+        receivedByUserId: user.id,
         storageLocationId,
         receivedAt: now,
         condition,
@@ -528,8 +535,9 @@ export async function receiveInboundPackage(
             eventType: "PACKAGE_RECEIVED",
             fromStatus: workOrder.status,
             toStatus: "RECEIVED",
-            actorLabel: "system",
-            systemGenerated: true,
+            actorUserId: user.id,
+            actorLabel: userLabel,
+            systemGenerated: false,
             notes: [
               `Package received at ${pkg.shipment.destinationSite.name}.`,
               `Condition: ${condition}.`,
@@ -557,7 +565,7 @@ export async function receiveInboundPackage(
         eventType: "PACKAGE_RECEIVED",
         fromStatus: asset.status,
         toStatus: "RECEIVED",
-        actor: "system",
+        actor: userLabel,
         notes: [
           `Package received at ${pkg.shipment.destinationSite.name}.`,
           `Condition: ${condition}.`,
