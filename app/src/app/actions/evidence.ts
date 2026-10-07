@@ -455,3 +455,294 @@ export async function uploadAssetEvidence(
 
   revalidatePath(`/assets/${asset.id}`);
 }
+
+
+const AUTHORIZATION_EVIDENCE_TYPES = new Set<EvidenceType>([
+  "SIGNED_AUTHORIZATION",
+  "OTHER",
+]);
+
+export async function uploadAuthorizationEvidence(
+  authorizationId: string,
+  formData: FormData
+) {
+  const authorization = await prisma.authorization.findUnique({
+    where: { id: authorizationId },
+    select: {
+      id: true,
+      serviceRequestId: true,
+      serviceRequest: {
+        select: {
+          organizationId: true,
+          assetId: true,
+        },
+      },
+    },
+  });
+
+  if (!authorization) {
+    throw new Error("Authorization not found.");
+  }
+
+  const organizationId =
+    authorization.serviceRequest.organizationId;
+  const user = await requireOrganizationPermission(
+    "evidence.upload",
+    organizationId
+  );
+
+  const fileEntry = formData.get("file");
+  const evidenceTypeRaw = String(
+    formData.get("evidenceType") ?? ""
+  ).trim();
+  const description = String(
+    formData.get("description") ?? ""
+  ).trim();
+  const capturedAtRaw = String(
+    formData.get("capturedAt") ?? ""
+  ).trim();
+
+  if (!(fileEntry instanceof File) || fileEntry.size === 0) {
+    throw new Error("Evidence file is required.");
+  }
+
+  if (fileEntry.size > MAX_EVIDENCE_FILE_BYTES) {
+    throw new Error("Evidence file exceeds the 25 MB limit.");
+  }
+
+  const evidenceType = evidenceTypeRaw as EvidenceType;
+
+  if (!AUTHORIZATION_EVIDENCE_TYPES.has(evidenceType)) {
+    throw new Error(
+      "That evidence type is not valid for authorization evidence."
+    );
+  }
+
+  let capturedAt: Date | null = null;
+
+  if (capturedAtRaw) {
+    const parsed = new Date(capturedAtRaw);
+
+    if (Number.isNaN(parsed.getTime())) {
+      throw new Error("Captured-at timestamp is invalid.");
+    }
+
+    capturedAt = parsed;
+  }
+
+  const bytes = Buffer.from(await fileEntry.arrayBuffer());
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const storageKey = path.posix.join(
+    organizationId,
+    "authorizations",
+    authorization.id,
+    randomUUID()
+  );
+  const absolutePath = evidenceAbsolutePath(storageKey);
+
+  await mkdir(path.dirname(absolutePath), {
+    recursive: true,
+    mode: 0o750,
+  });
+
+  await writeFile(absolutePath, bytes, {
+    flag: "wx",
+    mode: 0o640,
+  });
+
+  try {
+    await prisma.evidence.create({
+      data: {
+        organizationId,
+        assetId: authorization.serviceRequest.assetId ?? null,
+        authorizationId: authorization.id,
+        uploaderUserId: user.id,
+        evidenceType,
+        description: description || null,
+        originalFilename: fileEntry.name || null,
+        mimeType:
+          fileEntry.type || "application/octet-stream",
+        sizeBytes: fileEntry.size,
+        storageKey,
+        sha256,
+        capturedAt,
+        isOriginal: true,
+      },
+    });
+  } catch (error) {
+    await unlink(absolutePath).catch(() => undefined);
+    throw error;
+  }
+
+  revalidatePath(
+    `/service-requests/${authorization.serviceRequestId}`
+  );
+}
+
+const SHIPMENT_EVIDENCE_TYPES = new Set<EvidenceType>([
+  "SHIPPING_LABEL",
+  "PACKAGE_EXTERIOR",
+  "DAMAGE",
+  "PACKING",
+  "OUTBOUND_SHIPMENT",
+  "OTHER",
+]);
+
+export async function uploadShipmentEvidence(
+  shipmentId: string,
+  formData: FormData
+) {
+  const shipment = await prisma.shipment.findUnique({
+    where: { id: shipmentId },
+    select: {
+      id: true,
+      serviceRequestId: true,
+      direction: true,
+      serviceRequest: {
+        select: {
+          organizationId: true,
+          assetId: true,
+        },
+      },
+      workOrders: {
+        select: {
+          id: true,
+          status: true,
+        },
+        orderBy: { openedAt: "desc" },
+        take: 1,
+      },
+    },
+  });
+
+  if (!shipment) {
+    throw new Error("Shipment not found.");
+  }
+
+  const organizationId =
+    shipment.serviceRequest.organizationId;
+  const user = await requireOrganizationPermission(
+    "evidence.upload",
+    organizationId
+  );
+
+  const fileEntry = formData.get("file");
+  const evidenceTypeRaw = String(
+    formData.get("evidenceType") ?? ""
+  ).trim();
+  const description = String(
+    formData.get("description") ?? ""
+  ).trim();
+  const capturedAtRaw = String(
+    formData.get("capturedAt") ?? ""
+  ).trim();
+
+  if (!(fileEntry instanceof File) || fileEntry.size === 0) {
+    throw new Error("Evidence file is required.");
+  }
+
+  if (fileEntry.size > MAX_EVIDENCE_FILE_BYTES) {
+    throw new Error("Evidence file exceeds the 25 MB limit.");
+  }
+
+  const evidenceType = evidenceTypeRaw as EvidenceType;
+
+  if (!SHIPMENT_EVIDENCE_TYPES.has(evidenceType)) {
+    throw new Error(
+      "That evidence type is not valid for shipment evidence."
+    );
+  }
+
+  let capturedAt: Date | null = null;
+
+  if (capturedAtRaw) {
+    const parsed = new Date(capturedAtRaw);
+
+    if (Number.isNaN(parsed.getTime())) {
+      throw new Error("Captured-at timestamp is invalid.");
+    }
+
+    capturedAt = parsed;
+  }
+
+  const bytes = Buffer.from(await fileEntry.arrayBuffer());
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const storageKey = path.posix.join(
+    organizationId,
+    "shipments",
+    shipment.id,
+    randomUUID()
+  );
+  const absolutePath = evidenceAbsolutePath(storageKey);
+
+  await mkdir(path.dirname(absolutePath), {
+    recursive: true,
+    mode: 0o750,
+  });
+
+  await writeFile(absolutePath, bytes, {
+    flag: "wx",
+    mode: 0o640,
+  });
+
+  const workOrder = shipment.workOrders[0] ?? null;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      let workOrderEventId: string | null = null;
+
+      if (workOrder) {
+        const event = await tx.workOrderEvent.create({
+          data: {
+            workOrderId: workOrder.id,
+            actorUserId: user.id,
+            actorLabel: currentUserLabel(user),
+            eventType: "EVIDENCE_ADDED",
+            fromStatus: workOrder.status,
+            toStatus: workOrder.status,
+            notes: [
+              `${shipment.direction} shipment evidence: ${evidenceTypeRaw}.`,
+              description || null,
+            ]
+              .filter(Boolean)
+              .join(" "),
+          },
+        });
+
+        workOrderEventId = event.id;
+      }
+
+      await tx.evidence.create({
+        data: {
+          organizationId,
+          assetId: shipment.serviceRequest.assetId ?? null,
+          workOrderId: workOrder?.id ?? null,
+          workOrderEventId,
+          shipmentId: shipment.id,
+          uploaderUserId: user.id,
+          evidenceType,
+          description: description || null,
+          originalFilename: fileEntry.name || null,
+          mimeType:
+            fileEntry.type || "application/octet-stream",
+          sizeBytes: fileEntry.size,
+          storageKey,
+          sha256,
+          capturedAt,
+          isOriginal: true,
+        },
+      });
+    });
+  } catch (error) {
+    await unlink(absolutePath).catch(() => undefined);
+    throw error;
+  }
+
+  revalidatePath(
+    `/service-requests/${shipment.serviceRequestId}`
+  );
+
+  if (workOrder) {
+    revalidatePath(`/work-orders/${workOrder.id}`);
+  }
+}
