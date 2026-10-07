@@ -199,7 +199,8 @@ export default async function OrganizationUsersPage({
                   </div>
                 </div>
 
-                {membership.userId !== currentUser.id && (
+                {membership.userId !== currentUser.id &&
+                  membership.status !== "INVITED" && (
                   <form
                     action={setMembershipStatus.bind(
                       null,
