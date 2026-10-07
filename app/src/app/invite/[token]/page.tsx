@@ -24,16 +24,13 @@ export default async function InvitePage({
       tokenHash: inviteTokenHash(token),
     },
     include: {
-      user: {
+      user: true,
+      membership: {
         include: {
-          memberships: {
+          organization: true,
+          roles: {
             include: {
-              organization: true,
-              roles: {
-                include: {
-                  role: true,
-                },
-              },
+              role: true,
             },
           },
         },
@@ -50,9 +47,7 @@ export default async function InvitePage({
     redirect("/login?error=invite");
   }
 
-  const membership = invite.user.memberships.find(
-    (candidate) => candidate.status === "INVITED"
-  );
+  const membership = invite.membership;
 
   return (
     <main className="mx-auto max-w-md p-8">
