@@ -2,10 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import {
-  currentUserLabel,
-  requireCurrentUser,
-} from "@/lib/auth";
+import { currentUserLabel } from "@/lib/auth";
+import { requireOrganizationPermission } from "@/lib/access-scope";
 import {
   AssetCondition,
   WorkActivityType,
@@ -40,8 +38,14 @@ async function revalidateWorkOrder(workOrderId: string) {
   revalidatePath(`/work-orders/${workOrderId}`);
 }
 
-async function authenticatedActor() {
-  const user = await requireCurrentUser();
+async function actorForOrganization(
+  organizationId: string,
+  permissionKey: string
+) {
+  const user = await requireOrganizationPermission(
+    permissionKey,
+    organizationId
+  );
 
   return {
     user,
@@ -49,11 +53,82 @@ async function authenticatedActor() {
   };
 }
 
+async function actorForWorkOrder(
+  workOrderId: string,
+  permissionKey = "work_order.manage"
+) {
+  const workOrder = await prisma.workOrder.findUnique({
+    where: { id: workOrderId },
+    select: {
+      organizationId: true,
+      serviceRequest: {
+        select: { organizationId: true },
+      },
+    },
+  });
+
+  const organizationId =
+    workOrder?.organizationId ??
+    workOrder?.serviceRequest?.organizationId;
+
+  if (!workOrder || !organizationId) {
+    throw new Error("Work order organization could not be resolved.");
+  }
+
+  return actorForOrganization(organizationId, permissionKey);
+}
+
+async function actorForPart(partId: string) {
+  const part = await prisma.workOrderPart.findUnique({
+    where: { id: partId },
+    select: { workOrderId: true },
+  });
+
+  if (!part) {
+    throw new Error("Part not found.");
+  }
+
+  return actorForWorkOrder(part.workOrderId);
+}
+
+async function actorForActivity(activityId: string) {
+  const activity = await prisma.workActivity.findUnique({
+    where: { id: activityId },
+    select: { workOrderId: true },
+  });
+
+  if (!activity) {
+    throw new Error("Activity not found.");
+  }
+
+  return actorForWorkOrder(activity.workOrderId);
+}
+
+async function actorForShipment(shipmentId: string) {
+  const shipment = await prisma.shipment.findUnique({
+    where: { id: shipmentId },
+    select: {
+      serviceRequest: {
+        select: { organizationId: true },
+      },
+    },
+  });
+
+  if (!shipment) {
+    throw new Error("Shipment not found.");
+  }
+
+  return actorForOrganization(
+    shipment.serviceRequest.organizationId,
+    "shipment.manage"
+  );
+}
+
 export async function beginWorkOrderIntake(
   workOrderId: string,
   formData: FormData
 ) {
-  const actor = await authenticatedActor();
+  const actor = await actorForWorkOrder(workOrderId);
   const actorLabel = actor.label;
   const notes = String(formData.get("notes") ?? "").trim();
 
@@ -110,7 +185,7 @@ export async function recordAssetObservation(
   workOrderId: string,
   formData: FormData
 ) {
-  const actor = await authenticatedActor();
+  const actor = await actorForWorkOrder(workOrderId);
   const observerLabel = actor.label;
   const observationType = String(
     formData.get("observationType") ?? ""
@@ -169,7 +244,7 @@ export async function startWorkActivity(
   workOrderId: string,
   formData: FormData
 ) {
-  const actor = await authenticatedActor();
+  const actor = await actorForWorkOrder(workOrderId);
   const workerLabel = actor.label;
   const activityType = String(
     formData.get("activityType") ?? ""
@@ -236,7 +311,7 @@ export async function startWorkActivity(
 }
 
 export async function stopWorkActivity(activityId: string) {
-  const actor = await authenticatedActor();
+  const actor = await actorForActivity(activityId);
 
   const result = await prisma.$transaction(async (tx) => {
     const activity = await tx.workActivity.findUnique({
@@ -291,7 +366,7 @@ export async function addRequiredPart(
   workOrderId: string,
   formData: FormData
 ) {
-  const actor = await authenticatedActor();
+  const actor = await actorForWorkOrder(workOrderId);
   const description = String(
     formData.get("description") ?? ""
   ).trim();
@@ -364,7 +439,7 @@ export async function setWorkOrderWaitingParts(
   workOrderId: string,
   formData: FormData
 ) {
-  const actor = await authenticatedActor();
+  const actor = await actorForWorkOrder(workOrderId);
   const actorLabel = actor.label;
   const notes = String(formData.get("notes") ?? "").trim();
 
@@ -422,7 +497,7 @@ export async function markPartReceived(
   partId: string,
   formData: FormData
 ) {
-  const actor = await authenticatedActor();
+  const actor = await actorForPart(partId);
   const actorLabel = actor.label;
 
 
@@ -470,7 +545,7 @@ export async function resumeRepair(
   workOrderId: string,
   formData: FormData
 ) {
-  const actor = await authenticatedActor();
+  const actor = await actorForWorkOrder(workOrderId);
   const actorLabel = actor.label;
   const notes = String(formData.get("notes") ?? "").trim();
 
@@ -512,7 +587,7 @@ export async function markPartInstalled(
   partId: string,
   formData: FormData
 ) {
-  const actor = await authenticatedActor();
+  const actor = await actorForPart(partId);
   const actorLabel = actor.label;
   const notes = String(formData.get("notes") ?? "").trim();
 
@@ -568,7 +643,7 @@ export async function completeRepairForTesting(
   workOrderId: string,
   formData: FormData
 ) {
-  const actor = await authenticatedActor();
+  const actor = await actorForWorkOrder(workOrderId);
   const actorLabel = actor.label;
   const resolution = String(
     formData.get("resolution") ?? ""
@@ -657,7 +732,7 @@ export async function recordQaResult(
   workOrderId: string,
   formData: FormData
 ) {
-  const actor = await authenticatedActor();
+  const actor = await actorForWorkOrder(workOrderId);
   const actorLabel = actor.label;
   const result = String(
     formData.get("result") ?? ""
@@ -753,7 +828,7 @@ export async function packReadyAsset(
   workOrderId: string,
   formData: FormData
 ) {
-  const actor = await authenticatedActor();
+  const actor = await actorForWorkOrder(workOrderId);
   const actorLabel = actor.label;
   const notes = String(formData.get("notes") ?? "").trim();
 
@@ -802,7 +877,7 @@ export async function createOutboundShipment(
   workOrderId: string,
   formData: FormData
 ) {
-  const actor = await authenticatedActor();
+  const actor = await actorForWorkOrder(workOrderId, "shipment.manage");
   const actorLabel = actor.label;
   const carrier = String(formData.get("carrier") ?? "").trim();
   const trackingNumber = String(
@@ -929,7 +1004,7 @@ export async function markOutboundShipmentAccepted(
   shipmentId: string,
   formData: FormData
 ) {
-  const actor = await authenticatedActor();
+  const actor = await actorForShipment(shipmentId);
   const actorLabel = actor.label;
 
 
@@ -1058,7 +1133,7 @@ export async function confirmOutboundDelivery(
   shipmentId: string,
   formData: FormData
 ) {
-  const actor = await authenticatedActor();
+  const actor = await actorForShipment(shipmentId);
   const actorLabel = actor.label;
   const notes = String(formData.get("notes") ?? "").trim();
 
@@ -1196,7 +1271,7 @@ export async function acknowledgeCustomerReceipt(
   shipmentId: string,
   formData: FormData
 ) {
-  const actor = await authenticatedActor();
+  const actor = await actorForShipment(shipmentId);
   const recipientLabel = String(
     formData.get("recipientLabel") ?? ""
   ).trim();
