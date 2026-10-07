@@ -138,7 +138,7 @@ export async function inviteOrganizationUser(
 
     await tx.userInvite.deleteMany({
       where: {
-        userId: user.id,
+        membershipId: membership.id,
         acceptedAt: null,
       },
     });
