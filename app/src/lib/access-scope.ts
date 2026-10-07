@@ -10,6 +10,25 @@ const INTERNAL_ROLE_KEYS = new Set([
   "RECEIVING_LOGISTICS",
 ]);
 
+export function userHasCrossOrganizationPermission(
+  user: Awaited<ReturnType<typeof requireCurrentUser>>,
+  permissionKey: string
+) {
+  return user.memberships.some(
+    (membership) =>
+      membership.organization.kind === "INTERNAL" &&
+      membership.roles.some(
+        ({ role }) =>
+          role.key === "SYSTEM_ADMIN" ||
+          (INTERNAL_ROLE_KEYS.has(role.key) &&
+            role.permissions.some(
+              ({ permission }) =>
+                permission.key === permissionKey
+            ))
+      )
+  );
+}
+
 export function userHasOrganizationPermission(
   user: Awaited<ReturnType<typeof requireCurrentUser>>,
   permissionKey: string,
@@ -19,17 +38,9 @@ export function userHasOrganizationPermission(
     return true;
   }
 
-  return user.memberships.some(
-    (membership) =>
-      membership.organization.kind === "INTERNAL" &&
-      membership.roles.some(
-        ({ role }) =>
-          INTERNAL_ROLE_KEYS.has(role.key) &&
-          role.permissions.some(
-            ({ permission }) =>
-              permission.key === permissionKey
-          )
-      )
+  return userHasCrossOrganizationPermission(
+    user,
+    permissionKey
   );
 }
 
