@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createServiceRequest } from "@/app/actions/service-requests";
+import { uploadAssetEvidence } from "@/app/actions/evidence";
 import {
   requireOrganizationPermission,
   userHasOrganizationPermission,
@@ -54,6 +55,15 @@ export default async function AssetPage({ params }: PageProps) {
       workOrders: {
         orderBy: { createdAt: "desc" },
       },
+      evidence: {
+        include: {
+          uploader: true,
+          _count: {
+            select: { accessEvents: true },
+          },
+        },
+        orderBy: { uploadedAt: "desc" },
+      },
     },
   });
 
@@ -69,6 +79,16 @@ export default async function AssetPage({ params }: PageProps) {
   const canCreateServiceRequest = userHasOrganizationPermission(
     currentUser,
     "service_request.create",
+    asset.organizationId
+  );
+  const canViewEvidence = userHasOrganizationPermission(
+    currentUser,
+    "evidence.view",
+    asset.organizationId
+  );
+  const canUploadEvidence = userHasOrganizationPermission(
+    currentUser,
+    "evidence.upload",
     asset.organizationId
   );
 
@@ -223,6 +243,137 @@ export default async function AssetPage({ params }: PageProps) {
           </button>
         </form>
       </section>
+      )}
+
+      {canViewEvidence && (
+        <section className="mt-10 rounded border p-5">
+          <h2 className="text-2xl font-semibold">Asset evidence</h2>
+          <p className="mt-2 text-sm opacity-70">
+            Keep durable evidence with the asset record even when it is not
+            tied to a particular service request or work order.
+          </p>
+
+          {canUploadEvidence && (
+            <form
+              action={uploadAssetEvidence.bind(null, asset.id)}
+              className="mt-5 grid gap-3 md:grid-cols-2"
+            >
+              <input
+                name="file"
+                type="file"
+                required
+                className="rounded border px-3 py-2 md:col-span-2"
+              />
+
+              <select
+                name="evidenceType"
+                required
+                defaultValue=""
+                className="rounded border px-3 py-2"
+              >
+                <option value="" disabled>
+                  Select evidence type
+                </option>
+                <option value="SERIAL_ASSET_TAG">
+                  Serial / asset tag
+                </option>
+                <option value="DAMAGE">Damage</option>
+                <option value="TITLE_TRANSFER">
+                  Title transfer
+                </option>
+                <option value="DATA_DESTRUCTION_CERTIFICATE">
+                  Data destruction certificate
+                </option>
+                <option value="SIGNED_AUTHORIZATION">
+                  Signed authorization
+                </option>
+                <option value="OTHER">Other</option>
+              </select>
+
+              <input
+                name="capturedAt"
+                type="datetime-local"
+                className="rounded border px-3 py-2"
+              />
+
+              <textarea
+                name="description"
+                placeholder="What this file shows or proves"
+                className="rounded border px-3 py-2 md:col-span-2"
+              />
+
+              <button
+                type="submit"
+                className="rounded border px-4 py-2 font-medium md:col-span-2"
+              >
+                Upload asset evidence
+              </button>
+            </form>
+          )}
+
+          <div className="mt-6 space-y-3">
+            {asset.evidence.length === 0 ? (
+              <p className="text-sm opacity-70">
+                No asset-level evidence recorded.
+              </p>
+            ) : (
+              asset.evidence.map((evidence) => (
+                <article
+                  key={evidence.id}
+                  className="rounded border p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">
+                        {evidence.evidenceType.replaceAll("_", " ")}
+                      </div>
+                      <div className="mt-1 text-sm opacity-70">
+                        {evidence.originalFilename ?? "Unnamed evidence file"}
+                      </div>
+                    </div>
+
+                    <a
+                      href={`/evidence/${evidence.id}/download`}
+                      download
+                      className="text-sm underline"
+                    >
+                      Download original
+                    </a>
+                  </div>
+
+                  {evidence.description && (
+                    <div className="mt-3 text-sm">
+                      {evidence.description}
+                    </div>
+                  )}
+
+                  <div className="mt-3 grid gap-1 text-xs opacity-60 md:grid-cols-2">
+                    <div>
+                      Uploaded: {evidence.uploadedAt.toLocaleString()}
+                    </div>
+                    <div>
+                      By:{" "}
+                      {evidence.uploader?.displayName ??
+                        evidence.uploader?.email ??
+                        "Unknown uploader"}
+                    </div>
+                    <div>
+                      Captured:{" "}
+                      {evidence.capturedAt?.toLocaleString() ??
+                        "Not recorded"}
+                    </div>
+                    <div>
+                      Downloads: {evidence._count.accessEvents}
+                    </div>
+                    <div className="md:col-span-2 break-all">
+                      SHA-256: {evidence.sha256 ?? "Not recorded"}
+                    </div>
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        </section>
       )}
 
       <section className="mt-10">
