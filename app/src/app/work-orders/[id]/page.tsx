@@ -994,12 +994,13 @@ export default async function WorkOrderPage({ params }: PageProps) {
                         {evidence.originalFilename ?? "Unnamed evidence file"}
                       </div>
                     </div>
-                    <Link
+                    <a
                       href={`/evidence/${evidence.id}/download`}
+                      download
                       className="text-sm underline"
                     >
                       Download original
-                    </Link>
+                    </a>
                   </div>
 
                   {evidence.description && (
