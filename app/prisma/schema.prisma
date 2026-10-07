@@ -244,16 +244,19 @@ model User {
 model UserInvite {
   id              String   @id @default(cuid())
   userId          String
+  membershipId    String
   createdByUserId String
   tokenHash       String   @unique
   expiresAt       DateTime
   acceptedAt      DateTime?
   createdAt       DateTime @default(now())
 
-  user      User @relation("InvitedUser", fields: [userId], references: [id], onDelete: Cascade)
-  createdBy User @relation("InviteCreator", fields: [createdByUserId], references: [id])
+  user       User       @relation("InvitedUser", fields: [userId], references: [id], onDelete: Cascade)
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  createdBy  User       @relation("InviteCreator", fields: [createdByUserId], references: [id])
 
   @@index([userId])
+  @@index([membershipId])
   @@index([createdByUserId])
   @@index([expiresAt])
 }
@@ -298,6 +301,7 @@ model Membership {
   user         User             @relation(fields: [userId], references: [id])
   organization Organization     @relation(fields: [organizationId], references: [id])
   roles        MembershipRole[]
+  invites      UserInvite[]
 
   @@unique([userId, organizationId])
   @@index([organizationId])
