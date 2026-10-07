@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { requireCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { StorageLocationType } from "../../../generated/prisma/client";
 
@@ -8,6 +9,7 @@ export async function createStorageLocation(
   siteId: string,
   formData: FormData
 ) {
+  await requireCurrentUser();
   const name = String(formData.get("name") ?? "").trim();
   const code = String(formData.get("code") ?? "").trim();
   const type = String(
