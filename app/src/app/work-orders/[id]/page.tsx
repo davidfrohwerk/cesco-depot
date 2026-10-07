@@ -18,6 +18,7 @@ import {
   stopWorkActivity,
   packReadyAsset,
 } from "@/app/actions/work-orders";
+import { requireCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 type PageProps = {
@@ -69,6 +70,8 @@ function moneyFromCents(value: number | null) {
 }
 
 export default async function WorkOrderPage({ params }: PageProps) {
+  await requireCurrentUser();
+
   const { id } = await params;
 
   const workOrder = await prisma.workOrder.findUnique({
