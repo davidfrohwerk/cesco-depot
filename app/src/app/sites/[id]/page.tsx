@@ -29,6 +29,20 @@ const locationTypes = [
 export default async function SitePage({ params }: PageProps) {
   const { id } = await params;
 
+  const siteScope = await prisma.site.findUnique({
+    where: { id },
+    select: { organizationId: true },
+  });
+
+  if (!siteScope) {
+    notFound();
+  }
+
+  const currentUser = await requireOrganizationPermission(
+    "organization.view",
+    siteScope.organizationId
+  );
+
   const site = await prisma.site.findUnique({
     where: { id },
     include: {
@@ -42,11 +56,6 @@ export default async function SitePage({ params }: PageProps) {
   if (!site) {
     notFound();
   }
-
-  const currentUser = await requireOrganizationPermission(
-    "organization.view",
-    site.organizationId
-  );
 
   const canManageStorage = userHasOrganizationPermission(
     currentUser,
