@@ -20,7 +20,7 @@ import {
 } from "@/app/actions/work-orders";
 import { uploadWorkOrderEvidence } from "@/app/actions/evidence";
 import {
-  requireOrganizationPermission,
+  requireOrganizationPagePermission,
   userHasOrganizationPermission,
 } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
@@ -124,7 +124,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
     workOrderScope.serviceRequest?.organizationId ??
     workOrderScope.asset.organizationId;
 
-  const currentUser = await requireOrganizationPermission(
+  const currentUser = await requireOrganizationPagePermission(
     "work_order.view",
     organizationId
   );
