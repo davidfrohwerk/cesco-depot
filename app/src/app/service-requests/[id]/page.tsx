@@ -48,6 +48,20 @@ export default async function ServiceRequestPage({
 }: PageProps) {
   const { id } = await params;
 
+  const requestScope = await prisma.serviceRequest.findUnique({
+    where: { id },
+    select: { organizationId: true },
+  });
+
+  if (!requestScope) {
+    notFound();
+  }
+
+  const currentUser = await requireOrganizationPermission(
+    "organization.view",
+    requestScope.organizationId
+  );
+
   const request = await prisma.serviceRequest.findUnique({
     where: { id },
     include: {
@@ -112,11 +126,6 @@ export default async function ServiceRequestPage({
   if (!request) {
     notFound();
   }
-
-  const currentUser = await requireOrganizationPermission(
-    "organization.view",
-    request.organizationId
-  );
 
   const canAuthorize = userHasOrganizationPermission(
     currentUser,
