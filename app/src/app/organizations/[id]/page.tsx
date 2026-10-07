@@ -4,7 +4,7 @@ import { createSite } from "@/app/actions/sites";
 import { createAsset } from "@/app/actions/assets";
 import { requireCurrentUser } from "@/lib/auth";
 import {
-  requireOrganizationPermission,
+  requireOrganizationPagePermission,
   userHasOrganizationPermission,
 } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
@@ -19,7 +19,7 @@ export default async function OrganizationPage({ params }: PageProps) {
   const currentUser = await requireCurrentUser();
 
   const { id } = await params;
-  await requireOrganizationPermission("organization.view", id);
+  await requireOrganizationPagePermission("organization.view", id);
 
   const organization = await prisma.organization.findUnique({
     where: { id },
