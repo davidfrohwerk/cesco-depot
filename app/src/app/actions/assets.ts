@@ -2,17 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import {
-  currentUserLabel,
-  requirePermission,
-} from "@/lib/auth";
+import { currentUserLabel } from "@/lib/auth";
+import { requireOrganizationPermission } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 
 export async function createAsset(
   organizationId: string,
   formData: FormData
 ) {
-  const user = await requirePermission(
+  const user = await requireOrganizationPermission(
     "asset.manage",
     organizationId
   );
