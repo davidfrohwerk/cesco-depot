@@ -103,23 +103,34 @@ export async function setupInitialAdmin(formData: FormData) {
     redirect("/setup?error=password");
   }
 
-  const organization =
-    (await prisma.organization.findFirst({
+  let organization = await prisma.organization.findFirst({
+    where: {
+      kind: "INTERNAL",
+    },
+  });
+
+  if (!organization) {
+    const legacyInternal = await prisma.organization.findFirst({
       where: {
         name: {
           equals: "CESCo Internal",
           mode: "insensitive",
         },
       },
-    })) ??
-    (await prisma.organization.findFirst({
-      orderBy: { createdAt: "asc" },
-    })) ??
-    (await prisma.organization.create({
-      data: {
-        name: "CESCo Internal",
-      },
-    }));
+    });
+
+    organization = legacyInternal
+      ? await prisma.organization.update({
+          where: { id: legacyInternal.id },
+          data: { kind: "INTERNAL" },
+        })
+      : await prisma.organization.create({
+          data: {
+            name: "CESCo Internal",
+            kind: "INTERNAL",
+          },
+        });
+  }
 
   const role = await ensureSystemAdminRole();
 
