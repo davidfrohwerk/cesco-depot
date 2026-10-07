@@ -6,7 +6,11 @@ import {
   markShipmentAccepted,
   receiveInboundPackage,
 } from "@/app/actions/service-requests";
-import { uploadPackageEvidence } from "@/app/actions/evidence";
+import {
+  uploadAuthorizationEvidence,
+  uploadPackageEvidence,
+  uploadShipmentEvidence,
+} from "@/app/actions/evidence";
 import {
   requireOrganizationPermission,
   userHasOrganizationPermission,
@@ -51,11 +55,31 @@ export default async function ServiceRequestPage({
       asset: true,
       authorizations: {
         orderBy: { createdAt: "desc" },
+        include: {
+          evidence: {
+            include: {
+              uploader: true,
+              _count: {
+                select: { accessEvents: true },
+              },
+            },
+            orderBy: { uploadedAt: "desc" },
+          },
+        },
       },
       shipments: {
         orderBy: { createdAt: "desc" },
         include: {
           destinationSite: true,
+          evidence: {
+            include: {
+              uploader: true,
+              _count: {
+                select: { accessEvents: true },
+              },
+            },
+            orderBy: { uploadedAt: "desc" },
+          },
           packages: {
             include: {
               receipt: {
@@ -286,6 +310,108 @@ export default async function ServiceRequestPage({
             You can view this request, but your role cannot authorize service.
           </p>
         )}
+
+        {approvedAuthorization && canViewEvidence && (
+          <div className="mt-6 border-t pt-5">
+            <h3 className="font-semibold">Authorization evidence</h3>
+
+            {canUploadEvidence && (
+              <form
+                action={uploadAuthorizationEvidence.bind(
+                  null,
+                  approvedAuthorization.id
+                )}
+                className="mt-4 grid gap-3 md:grid-cols-2"
+              >
+                <input
+                  name="file"
+                  type="file"
+                  required
+                  className="rounded border px-3 py-2 md:col-span-2"
+                />
+                <select
+                  name="evidenceType"
+                  required
+                  defaultValue="SIGNED_AUTHORIZATION"
+                  className="rounded border px-3 py-2"
+                >
+                  <option value="SIGNED_AUTHORIZATION">
+                    Signed authorization
+                  </option>
+                  <option value="OTHER">Other</option>
+                </select>
+                <input
+                  name="capturedAt"
+                  type="datetime-local"
+                  className="rounded border px-3 py-2"
+                />
+                <textarea
+                  name="description"
+                  placeholder="What this document proves"
+                  className="rounded border px-3 py-2 md:col-span-2"
+                />
+                <button
+                  type="submit"
+                  className="rounded border px-4 py-2 font-medium md:col-span-2"
+                >
+                  Upload authorization evidence
+                </button>
+              </form>
+            )}
+
+            <div className="mt-4 space-y-3">
+              {approvedAuthorization.evidence.length === 0 ? (
+                <p className="text-sm opacity-70">
+                  No authorization evidence recorded.
+                </p>
+              ) : (
+                approvedAuthorization.evidence.map((evidence) => (
+                  <article key={evidence.id} className="rounded border p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold">
+                          {evidence.evidenceType.replaceAll("_", " ")}
+                        </div>
+                        <div className="mt-1 text-sm opacity-70">
+                          {evidence.originalFilename ?? "Unnamed evidence file"}
+                        </div>
+                      </div>
+                      <a
+                        href={`/evidence/${evidence.id}/download`}
+                        download
+                        className="text-sm underline"
+                      >
+                        Download original
+                      </a>
+                    </div>
+                    {evidence.description && (
+                      <div className="mt-3 text-sm">
+                        {evidence.description}
+                      </div>
+                    )}
+                    <div className="mt-3 grid gap-1 text-xs opacity-60 md:grid-cols-2">
+                      <div>
+                        Uploaded: {evidence.uploadedAt.toLocaleString()}
+                      </div>
+                      <div>
+                        By:{" "}
+                        {evidence.uploader?.displayName ??
+                          evidence.uploader?.email ??
+                          "Unknown uploader"}
+                      </div>
+                      <div>
+                        Downloads: {evidence._count.accessEvents}
+                      </div>
+                      <div className="md:col-span-2 break-all">
+                        SHA-256: {evidence.sha256 ?? "Not recorded"}
+                      </div>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="mt-6 rounded border p-5">
@@ -368,6 +494,89 @@ export default async function ServiceRequestPage({
                 <div className="mt-2 opacity-70">
                   Delivered:{" "}
                   {inboundShipment.deliveredAt?.toLocaleString() ?? "—"}
+                </div>
+              </div>
+            )}
+
+            {canViewEvidence && (
+              <div className="mt-5 rounded border p-4">
+                <div className="font-medium">Inbound shipment evidence</div>
+
+                {canUploadEvidence && (
+                  <form
+                    action={uploadShipmentEvidence.bind(
+                      null,
+                      inboundShipment.id
+                    )}
+                    className="mt-4 grid gap-3 md:grid-cols-2"
+                  >
+                    <input
+                      name="file"
+                      type="file"
+                      required
+                      className="rounded border px-3 py-2 md:col-span-2"
+                    />
+                    <select
+                      name="evidenceType"
+                      required
+                      defaultValue="SHIPPING_LABEL"
+                      className="rounded border px-3 py-2"
+                    >
+                      <option value="SHIPPING_LABEL">Shipping label</option>
+                      <option value="PACKAGE_EXTERIOR">Package exterior</option>
+                      <option value="DAMAGE">Damage</option>
+                      <option value="OTHER">Other</option>
+                    </select>
+                    <input
+                      name="capturedAt"
+                      type="datetime-local"
+                      className="rounded border px-3 py-2"
+                    />
+                    <textarea
+                      name="description"
+                      placeholder="What this shipment evidence shows"
+                      className="rounded border px-3 py-2 md:col-span-2"
+                    />
+                    <button
+                      type="submit"
+                      className="rounded border px-4 py-2 font-medium md:col-span-2"
+                    >
+                      Upload inbound shipment evidence
+                    </button>
+                  </form>
+                )}
+
+                <div className="mt-4 space-y-3">
+                  {inboundShipment.evidence.length === 0 ? (
+                    <p className="opacity-70">
+                      No inbound shipment evidence recorded.
+                    </p>
+                  ) : (
+                    inboundShipment.evidence.map((evidence) => (
+                      <article key={evidence.id} className="rounded border p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div className="font-medium">
+                              {evidence.evidenceType.replaceAll("_", " ")}
+                            </div>
+                            <div className="mt-1 opacity-70">
+                              {evidence.originalFilename ?? "Unnamed evidence file"}
+                            </div>
+                          </div>
+                          <a
+                            href={`/evidence/${evidence.id}/download`}
+                            download
+                            className="underline"
+                          >
+                            Download original
+                          </a>
+                        </div>
+                        <div className="mt-2 text-xs opacity-60">
+                          Downloads: {evidence._count.accessEvents}
+                        </div>
+                      </article>
+                    ))
+                  )}
                 </div>
               </div>
             )}
@@ -694,6 +903,92 @@ export default async function ServiceRequestPage({
               {outboundShipment.trackingNumber ?? "—"}
             </div>
           </div>
+
+          {canViewEvidence && (
+            <div className="mt-5 border-t pt-5">
+              <div className="font-medium">Outbound shipment evidence</div>
+
+              {canUploadEvidence && (
+                <form
+                  action={uploadShipmentEvidence.bind(
+                    null,
+                    outboundShipment.id
+                  )}
+                  className="mt-4 grid gap-3 md:grid-cols-2"
+                >
+                  <input
+                    name="file"
+                    type="file"
+                    required
+                    className="rounded border px-3 py-2 md:col-span-2"
+                  />
+                  <select
+                    name="evidenceType"
+                    required
+                    defaultValue="OUTBOUND_SHIPMENT"
+                    className="rounded border px-3 py-2"
+                  >
+                    <option value="OUTBOUND_SHIPMENT">
+                      Outbound shipment
+                    </option>
+                    <option value="PACKING">Packing</option>
+                    <option value="SHIPPING_LABEL">Shipping label</option>
+                    <option value="DAMAGE">Damage</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                  <input
+                    name="capturedAt"
+                    type="datetime-local"
+                    className="rounded border px-3 py-2"
+                  />
+                  <textarea
+                    name="description"
+                    placeholder="Packing, seal, label, handoff, or exception evidence"
+                    className="rounded border px-3 py-2 md:col-span-2"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded border px-4 py-2 font-medium md:col-span-2"
+                  >
+                    Upload outbound shipment evidence
+                  </button>
+                </form>
+              )}
+
+              <div className="mt-4 space-y-3">
+                {outboundShipment.evidence.length === 0 ? (
+                  <p className="text-sm opacity-70">
+                    No outbound shipment evidence recorded.
+                  </p>
+                ) : (
+                  outboundShipment.evidence.map((evidence) => (
+                    <article key={evidence.id} className="rounded border p-3 text-sm">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="font-medium">
+                            {evidence.evidenceType.replaceAll("_", " ")}
+                          </div>
+                          <div className="mt-1 opacity-70">
+                            {evidence.originalFilename ?? "Unnamed evidence file"}
+                          </div>
+                        </div>
+                        <a
+                          href={`/evidence/${evidence.id}/download`}
+                          download
+                          className="underline"
+                        >
+                          Download original
+                        </a>
+                      </div>
+                      <div className="mt-2 text-xs opacity-60">
+                        Downloads: {evidence._count.accessEvents}
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </section>
       )}
 
