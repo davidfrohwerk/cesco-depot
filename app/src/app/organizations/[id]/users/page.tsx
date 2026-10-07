@@ -63,7 +63,7 @@ export default async function OrganizationUsersPage({
 
   const canUseInternalRoles =
     canAssignInternalRoles &&
-    organization.name.toLowerCase() === "cesco internal";
+    organization.kind === "INTERNAL";
 
   const roles = await prisma.role.findMany({
     where: canUseInternalRoles
