@@ -239,6 +239,7 @@ model User {
   supervisedActivities WorkActivity[]     @relation("WorkActivitySupervisor")
   assetObservations    AssetObservation[] @relation("AssetObservationObserver")
   uploadedEvidence     Evidence[]         @relation("EvidenceUploader")
+  evidenceAccessEvents EvidenceAccessEvent[] @relation("EvidenceAccessActor")
 }
 
 model UserInvite {
@@ -748,6 +749,7 @@ model Evidence {
   package       Package?       @relation(fields: [packageId], references: [id])
   receipt       Receipt?       @relation(fields: [receiptId], references: [id])
   uploader      User?          @relation("EvidenceUploader", fields: [uploaderUserId], references: [id])
+  accessEvents  EvidenceAccessEvent[]
 
   @@index([organizationId])
   @@index([assetId])
@@ -756,4 +758,21 @@ model Evidence {
   @@index([packageId])
   @@index([receiptId])
   @@index([evidenceType])
+}
+
+
+model EvidenceAccessEvent {
+  id                String   @id @default(cuid())
+  evidenceId        String
+  actorUserId       String
+  action            String   @default("DOWNLOAD")
+  integrityVerified Boolean  @default(true)
+  accessedAt        DateTime @default(now())
+
+  evidence Evidence @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+  actor    User     @relation("EvidenceAccessActor", fields: [actorUserId], references: [id])
+
+  @@index([evidenceId, accessedAt])
+  @@index([actorUserId, accessedAt])
+  @@index([action])
 }
