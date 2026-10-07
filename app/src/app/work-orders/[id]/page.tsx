@@ -18,7 +18,7 @@ import {
   stopWorkActivity,
   packReadyAsset,
 } from "@/app/actions/work-orders";
-import { requireCurrentUser } from "@/lib/auth";
+import { requireOrganizationPermission } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 
 type PageProps = {
@@ -70,8 +70,6 @@ function moneyFromCents(value: number | null) {
 }
 
 export default async function WorkOrderPage({ params }: PageProps) {
-  await requireCurrentUser();
-
   const { id } = await params;
 
   const workOrder = await prisma.workOrder.findUnique({
@@ -118,6 +116,19 @@ export default async function WorkOrderPage({ params }: PageProps) {
   if (!workOrder) {
     notFound();
   }
+
+  const organizationId =
+    workOrder.organizationId ??
+    workOrder.serviceRequest?.organizationId;
+
+  if (!organizationId) {
+    throw new Error("Work order organization could not be resolved.");
+  }
+
+  await requireOrganizationPermission(
+    "work_order.view",
+    organizationId
+  );
 
   const activeActivity =
     workOrder.activities.find((activity) => !activity.endedAt) ?? null;
