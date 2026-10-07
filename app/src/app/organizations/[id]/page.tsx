@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createSite } from "@/app/actions/sites";
 import { createAsset } from "@/app/actions/assets";
+import { requireCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 type PageProps = {
@@ -11,6 +12,8 @@ type PageProps = {
 };
 
 export default async function OrganizationPage({ params }: PageProps) {
+  await requireCurrentUser();
+
   const { id } = await params;
 
   const organization = await prisma.organization.findUnique({
