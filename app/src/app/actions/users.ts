@@ -82,7 +82,7 @@ export async function inviteOrganizationUser(
     }),
     prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { name: true },
+      select: { name: true, kind: true },
     }),
   ]);
 
@@ -96,10 +96,10 @@ export async function inviteOrganizationUser(
 
   if (
     INTERNAL_ROLE_KEYS.has(role.key) &&
-    organization.name.toLowerCase() !== "cesco internal"
+    organization.kind !== "INTERNAL"
   ) {
     throw new Error(
-      "CESCo operational roles may only be assigned within CESCo Internal."
+      "CESCo operational roles may only be assigned within an internal organization."
     );
   }
 
