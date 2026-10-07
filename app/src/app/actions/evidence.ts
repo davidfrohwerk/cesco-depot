@@ -320,3 +320,138 @@ export async function uploadPackageEvidence(
     revalidatePath(`/work-orders/${workOrder.id}`);
   }
 }
+
+
+const ASSET_EVIDENCE_TYPES = new Set<EvidenceType>([
+  "SERIAL_ASSET_TAG",
+  "DAMAGE",
+  "TITLE_TRANSFER",
+  "DATA_DESTRUCTION_CERTIFICATE",
+  "SIGNED_AUTHORIZATION",
+  "OTHER",
+]);
+
+export async function uploadAssetEvidence(
+  assetId: string,
+  formData: FormData
+) {
+  const asset = await prisma.asset.findUnique({
+    where: { id: assetId },
+    select: {
+      id: true,
+      organizationId: true,
+      status: true,
+    },
+  });
+
+  if (!asset) {
+    throw new Error("Asset not found.");
+  }
+
+  const user = await requireOrganizationPermission(
+    "evidence.upload",
+    asset.organizationId
+  );
+
+  const fileEntry = formData.get("file");
+  const evidenceTypeRaw = String(
+    formData.get("evidenceType") ?? ""
+  ).trim();
+  const description = String(
+    formData.get("description") ?? ""
+  ).trim();
+  const capturedAtRaw = String(
+    formData.get("capturedAt") ?? ""
+  ).trim();
+
+  if (!(fileEntry instanceof File) || fileEntry.size === 0) {
+    throw new Error("Evidence file is required.");
+  }
+
+  if (fileEntry.size > MAX_EVIDENCE_FILE_BYTES) {
+    throw new Error("Evidence file exceeds the 25 MB limit.");
+  }
+
+  const evidenceType = evidenceTypeRaw as EvidenceType;
+
+  if (!ASSET_EVIDENCE_TYPES.has(evidenceType)) {
+    throw new Error(
+      "That evidence type is not valid for asset-level evidence."
+    );
+  }
+
+  let capturedAt: Date | null = null;
+
+  if (capturedAtRaw) {
+    const parsed = new Date(capturedAtRaw);
+
+    if (Number.isNaN(parsed.getTime())) {
+      throw new Error("Captured-at timestamp is invalid.");
+    }
+
+    capturedAt = parsed;
+  }
+
+  const bytes = Buffer.from(await fileEntry.arrayBuffer());
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const storageKey = path.posix.join(
+    asset.organizationId,
+    "assets",
+    asset.id,
+    randomUUID()
+  );
+  const absolutePath = evidenceAbsolutePath(storageKey);
+
+  await mkdir(path.dirname(absolutePath), {
+    recursive: true,
+    mode: 0o750,
+  });
+
+  await writeFile(absolutePath, bytes, {
+    flag: "wx",
+    mode: 0o640,
+  });
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.evidence.create({
+        data: {
+          organizationId: asset.organizationId,
+          assetId: asset.id,
+          uploaderUserId: user.id,
+          evidenceType,
+          description: description || null,
+          originalFilename: fileEntry.name || null,
+          mimeType:
+            fileEntry.type || "application/octet-stream",
+          sizeBytes: fileEntry.size,
+          storageKey,
+          sha256,
+          capturedAt,
+          isOriginal: true,
+        },
+      });
+
+      await tx.assetEvent.create({
+        data: {
+          assetId: asset.id,
+          eventType: "ASSET_EVIDENCE_ADDED",
+          fromStatus: asset.status,
+          toStatus: asset.status,
+          actor: currentUserLabel(user),
+          notes: [
+            `Evidence type: ${evidenceTypeRaw}.`,
+            description || null,
+          ]
+            .filter(Boolean)
+            .join(" "),
+        },
+      });
+    });
+  } catch (error) {
+    await unlink(absolutePath).catch(() => undefined);
+    throw error;
+  }
+
+  revalidatePath(`/assets/${asset.id}`);
+}
