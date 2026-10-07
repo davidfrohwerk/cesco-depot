@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createStorageLocation } from "@/app/actions/storage-locations";
 import {
-  requireOrganizationPermission,
+  requireOrganizationPagePermission,
   userHasOrganizationPermission,
 } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
@@ -38,7 +38,7 @@ export default async function SitePage({ params }: PageProps) {
     notFound();
   }
 
-  const currentUser = await requireOrganizationPermission(
+  const currentUser = await requireOrganizationPagePermission(
     "organization.view",
     siteScope.organizationId
   );
