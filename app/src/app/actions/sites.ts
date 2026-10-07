@@ -1,14 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requirePermission } from "@/lib/auth";
+import { requireOrganizationPermission } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 
 export async function createSite(
   organizationId: string,
   formData: FormData
 ) {
-  await requirePermission("organization.manage", organizationId);
+  await requireOrganizationPermission("organization.manage", organizationId);
 
   const name = String(formData.get("name") ?? "").trim();
   const addressLine1 = String(formData.get("addressLine1") ?? "").trim();
