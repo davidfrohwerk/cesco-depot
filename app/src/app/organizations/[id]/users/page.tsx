@@ -5,7 +5,7 @@ import {
   setMembershipStatus,
 } from "@/app/actions/users";
 import { userHasPermission } from "@/lib/auth";
-import { requireOrganizationPermission } from "@/lib/access-scope";
+import { requireOrganizationPagePermission } from "@/lib/access-scope";
 import { ensureDefaultAccessControl } from "@/lib/access-control";
 import { prisma } from "@/lib/prisma";
 
@@ -29,7 +29,7 @@ export default async function OrganizationUsersPage({
   searchParams,
 }: PageProps) {
   const { id } = await params;
-  const currentUser = await requireOrganizationPermission(
+  const currentUser = await requireOrganizationPagePermission(
     "organization.manage_users",
     id
   );
