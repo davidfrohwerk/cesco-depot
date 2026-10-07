@@ -31,6 +31,20 @@ const serviceOptions = [
 export default async function AssetPage({ params }: PageProps) {
   const { id } = await params;
 
+  const assetScope = await prisma.asset.findUnique({
+    where: { id },
+    select: { organizationId: true },
+  });
+
+  if (!assetScope) {
+    notFound();
+  }
+
+  const currentUser = await requireOrganizationPermission(
+    "asset.view",
+    assetScope.organizationId
+  );
+
   const asset = await prisma.asset.findUnique({
     where: { id },
     include: {
@@ -70,11 +84,6 @@ export default async function AssetPage({ params }: PageProps) {
   if (!asset) {
     notFound();
   }
-
-  const currentUser = await requireOrganizationPermission(
-    "asset.view",
-    asset.organizationId
-  );
 
   const canCreateServiceRequest = userHasOrganizationPermission(
     currentUser,
