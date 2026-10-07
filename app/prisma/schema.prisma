@@ -734,6 +734,7 @@ model Evidence {
   description     String?
   originalFilename String?
   mimeType        String?
+  sizeBytes       Int?
   storageKey      String?
   sha256          String?
   capturedAt      DateTime?
