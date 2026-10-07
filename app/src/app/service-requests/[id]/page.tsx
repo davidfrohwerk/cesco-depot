@@ -537,6 +537,8 @@ export default async function ServiceRequestPage({
             </button>
           </form>
         )}
+      </section>
+
       {pkg && canViewEvidence && (
         <section className="mt-6 rounded border p-5">
           <h2 className="text-xl font-semibold">
@@ -662,8 +664,6 @@ export default async function ServiceRequestPage({
           </div>
         </section>
       )}
-
-      </section>
 
       {outboundShipment && (
         <section className="mt-6 rounded border p-5">
