@@ -143,6 +143,11 @@ export default async function WorkOrderPage({ params }: PageProps) {
     "shipment.manage",
     organizationId
   );
+  const canAcknowledgeReceipt = userHasOrganizationPermission(
+    currentUser,
+    "shipment.acknowledge_receipt",
+    organizationId
+  );
 
   const activeActivity =
     workOrder.activities.find((activity) => !activity.endedAt) ?? null;
@@ -833,7 +838,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
                     </div>
                   )}
                 </div>
-              ) : canManageShipment ? (
+              ) : canAcknowledgeReceipt ? (
                 <form
                   action={acknowledgeCustomerReceipt.bind(
                     null,
