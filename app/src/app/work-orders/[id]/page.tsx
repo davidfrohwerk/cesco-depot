@@ -102,6 +102,33 @@ function moneyFromCents(value: number | null) {
 export default async function WorkOrderPage({ params }: PageProps) {
   const { id } = await params;
 
+  const workOrderScope = await prisma.workOrder.findUnique({
+    where: { id },
+    select: {
+      organizationId: true,
+      asset: {
+        select: { organizationId: true },
+      },
+      serviceRequest: {
+        select: { organizationId: true },
+      },
+    },
+  });
+
+  if (!workOrderScope) {
+    notFound();
+  }
+
+  const organizationId =
+    workOrderScope.organizationId ??
+    workOrderScope.serviceRequest?.organizationId ??
+    workOrderScope.asset.organizationId;
+
+  const currentUser = await requireOrganizationPermission(
+    "work_order.view",
+    organizationId
+  );
+
   const workOrder = await prisma.workOrder.findUnique({
     where: { id },
     include: {
@@ -155,19 +182,6 @@ export default async function WorkOrderPage({ params }: PageProps) {
   if (!workOrder) {
     notFound();
   }
-
-  const organizationId =
-    workOrder.organizationId ??
-    workOrder.serviceRequest?.organizationId;
-
-  if (!organizationId) {
-    throw new Error("Work order organization could not be resolved.");
-  }
-
-  const currentUser = await requireOrganizationPermission(
-    "work_order.view",
-    organizationId
-  );
 
   const canManageWork = userHasOrganizationPermission(
     currentUser,
