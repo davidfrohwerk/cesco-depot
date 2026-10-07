@@ -196,6 +196,14 @@ export function userHasPermission(
   permissionKey: string,
   organizationId?: string | null
 ) {
+  const isSystemAdmin = user.memberships.some((membership) =>
+    membership.roles.some(({ role }) => role.key === "SYSTEM_ADMIN")
+  );
+
+  if (isSystemAdmin) {
+    return true;
+  }
+
   const memberships = organizationId
     ? user.memberships.filter(
         (membership) =>
@@ -204,13 +212,11 @@ export function userHasPermission(
     : user.memberships;
 
   return memberships.some((membership) =>
-    membership.roles.some(
-      ({ role }) =>
-        role.key === "SYSTEM_ADMIN" ||
-        role.permissions.some(
-          ({ permission }) =>
-            permission.key === permissionKey
-        )
+    membership.roles.some(({ role }) =>
+      role.permissions.some(
+        ({ permission }) =>
+          permission.key === permissionKey
+      )
     )
   );
 }
