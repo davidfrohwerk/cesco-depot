@@ -12,7 +12,7 @@ import {
   uploadShipmentEvidence,
 } from "@/app/actions/evidence";
 import {
-  requireOrganizationPermission,
+  requireOrganizationPagePermission,
   userHasOrganizationPermission,
 } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
@@ -57,7 +57,7 @@ export default async function ServiceRequestPage({
     notFound();
   }
 
-  const currentUser = await requireOrganizationPermission(
+  const currentUser = await requireOrganizationPagePermission(
     "organization.view",
     requestScope.organizationId
   );
