@@ -47,6 +47,11 @@ enum WorkOrderStatus {
   CANCELLED
 }
 
+enum OrganizationKind {
+  INTERNAL
+  CLIENT
+}
+
 enum UserStatus {
   INVITED
   ACTIVE
@@ -277,9 +282,10 @@ model AuthSession {
 }
 
 model Organization {
-  id        String   @id @default(cuid())
+  id        String           @id @default(cuid())
   name      String
-  createdAt DateTime @default(now())
+  kind      OrganizationKind @default(CLIENT)
+  createdAt DateTime         @default(now())
   updatedAt DateTime @updatedAt
 
   sites           Site[]
