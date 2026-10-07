@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createStorageLocation } from "@/app/actions/storage-locations";
-import { requireOrganizationPermission } from "@/lib/access-scope";
+import {
+  requireOrganizationPermission,
+  userHasOrganizationPermission,
+} from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 
 type PageProps = {
@@ -40,8 +43,14 @@ export default async function SitePage({ params }: PageProps) {
     notFound();
   }
 
-  await requireOrganizationPermission(
+  const currentUser = await requireOrganizationPermission(
     "organization.view",
+    site.organizationId
+  );
+
+  const canManageStorage = userHasOrganizationPermission(
+    currentUser,
+    "inventory.receive",
     site.organizationId
   );
 
@@ -67,6 +76,7 @@ export default async function SitePage({ params }: PageProps) {
           .join(", ") || "No address recorded"}
       </p>
 
+      {canManageStorage && (
       <section className="mt-10 rounded border p-5">
         <h2 className="text-xl font-semibold">
           Add storage location
@@ -122,6 +132,7 @@ export default async function SitePage({ params }: PageProps) {
           </button>
         </form>
       </section>
+      )}
 
       <section className="mt-10">
         <h2 className="text-2xl font-semibold">
