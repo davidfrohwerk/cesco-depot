@@ -86,7 +86,6 @@ export async function beginWorkOrderIntake(
         fromStatus: "RECEIVED",
         toStatus: "INTAKE",
         actorUserId: actor.user.id,
-        actorUserId: actor.user.id,
         actorLabel,
         notes: notes || null,
       },
@@ -1207,9 +1206,6 @@ export async function acknowledgeCustomerReceipt(
     throw new Error("Customer recipient name or label is required.");
   }
 
-  if (!actorLabel) {
-    throw new Error("Customer recipient name or label is required.");
-  }
 
   const result = await prisma.$transaction(async (tx) => {
     const shipment = await tx.shipment.findUnique({
