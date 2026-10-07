@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createOrganization } from "@/app/actions/organizations";
-import { requireCurrentUser } from "@/lib/auth";
+import { requireCurrentUser, userHasPermission } from "@/lib/auth";
 import { userHasOrganizationPermission } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 
@@ -19,6 +19,11 @@ export default async function OrganizationsPage() {
     )
   );
 
+  const canCreateOrganization = userHasPermission(
+    currentUser,
+    "organization.manage"
+  );
+
   return (
     <main className="mx-auto max-w-5xl p-8">
       <h1 className="text-3xl font-bold">Organizations</h1>
@@ -27,6 +32,7 @@ export default async function OrganizationsPage() {
         Clients and participating organizations using CESCo Depot services.
       </p>
 
+      {canCreateOrganization && (
       <form action={createOrganization} className="mt-8 flex gap-3">
         <input
           name="name"
@@ -42,6 +48,7 @@ export default async function OrganizationsPage() {
           Add organization
         </button>
       </form>
+      )}
 
       <section className="mt-8 space-y-3">
         {organizations.length === 0 ? (
