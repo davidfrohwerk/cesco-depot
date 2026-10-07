@@ -1,17 +1,23 @@
 import Link from "next/link";
 import { createOrganization } from "@/app/actions/organizations";
-import {
-  requireCurrentUser,
-  userHasPermission,
-} from "@/lib/auth";
+import { requireCurrentUser } from "@/lib/auth";
+import { userHasOrganizationPermission } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 
 export default async function OrganizationsPage() {
   const currentUser = await requireCurrentUser();
 
-  const organizations = await prisma.organization.findMany({
+  const allOrganizations = await prisma.organization.findMany({
     orderBy: { createdAt: "desc" },
   });
+
+  const organizations = allOrganizations.filter((organization) =>
+    userHasOrganizationPermission(
+      currentUser,
+      "organization.view",
+      organization.id
+    )
+  );
 
   return (
     <main className="mx-auto max-w-5xl p-8">
@@ -61,7 +67,7 @@ export default async function OrganizationsPage() {
                   </div>
                 </div>
 
-                {userHasPermission(
+                {userHasOrganizationPermission(
                   currentUser,
                   "organization.manage_users",
                   org.id
