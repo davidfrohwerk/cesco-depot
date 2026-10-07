@@ -40,6 +40,17 @@ export default async function OrganizationPage({ params }: PageProps) {
     notFound();
   }
 
+  const canManageOrganization = userHasOrganizationPermission(
+    currentUser,
+    "organization.manage",
+    organization.id
+  );
+  const canManageAssets = userHasOrganizationPermission(
+    currentUser,
+    "asset.manage",
+    organization.id
+  );
+
   const createSiteForOrganization = createSite.bind(
     null,
     organization.id
@@ -81,6 +92,7 @@ export default async function OrganizationPage({ params }: PageProps) {
       <section className="mt-10">
         <h2 className="text-2xl font-semibold">Sites</h2>
 
+        {canManageOrganization && (
         <form
           action={createSiteForOrganization}
           className="mt-5 grid gap-3 md:grid-cols-2"
@@ -123,6 +135,7 @@ export default async function OrganizationPage({ params }: PageProps) {
             Add site
           </button>
         </form>
+        )}
 
         <div className="mt-8 space-y-3">
           {organization.sites.length === 0 ? (
@@ -156,6 +169,7 @@ export default async function OrganizationPage({ params }: PageProps) {
       <section className="mt-14">
         <h2 className="text-2xl font-semibold">Assets</h2>
 
+        {canManageAssets && (
         <form
           action={createAssetForOrganization}
           className="mt-5 grid gap-3 md:grid-cols-2"
@@ -211,6 +225,7 @@ export default async function OrganizationPage({ params }: PageProps) {
             Register asset
           </button>
         </form>
+        )}
 
         <div className="mt-8 space-y-3">
           {organization.assets.length === 0 ? (
