@@ -89,6 +89,11 @@ export default async function ServiceRequestPage({
     "service_request.authorize",
     request.organizationId
   );
+  const canPrepareShipment = userHasOrganizationPermission(
+    currentUser,
+    "shipment.prepare",
+    request.organizationId
+  );
   const canManageShipment = userHasOrganizationPermission(
     currentUser,
     "shipment.manage",
@@ -347,7 +352,7 @@ export default async function ServiceRequestPage({
               </div>
             )}
           </div>
-        ) : canManageShipment ? (
+        ) : canPrepareShipment ? (
           <form
             action={createInboundShipment.bind(null, request.id)}
             className="mt-5 grid gap-3 md:grid-cols-2"
@@ -391,7 +396,7 @@ export default async function ServiceRequestPage({
           </form>
         ) : (
           <p className="mt-4 text-sm opacity-70">
-            Your role cannot create or update shipments.
+            Your role cannot prepare shipment records.
           </p>
         )}
       </section>
