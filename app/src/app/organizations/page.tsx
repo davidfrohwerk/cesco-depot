@@ -1,23 +1,46 @@
 import Link from "next/link";
 import { createOrganization } from "@/app/actions/organizations";
 import { requireCurrentUser, userHasPermission } from "@/lib/auth";
-import { userHasOrganizationPermission } from "@/lib/access-scope";
+import {
+  userHasCrossOrganizationPermission,
+  userHasOrganizationPermission,
+} from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 
 export default async function OrganizationsPage() {
   const currentUser = await requireCurrentUser();
 
-  const allOrganizations = await prisma.organization.findMany({
-    orderBy: { createdAt: "desc" },
-  });
-
-  const organizations = allOrganizations.filter((organization) =>
-    userHasOrganizationPermission(
+  const canViewAllOrganizations =
+    userHasCrossOrganizationPermission(
       currentUser,
-      "organization.view",
-      organization.id
+      "organization.view"
+    );
+
+  const directlyVisibleOrganizationIds = Array.from(
+    new Set(
+      currentUser.memberships
+        .filter((membership) =>
+          membership.roles.some(({ role }) =>
+            role.permissions.some(
+              ({ permission }) =>
+                permission.key === "organization.view"
+            )
+          )
+        )
+        .map((membership) => membership.organizationId)
     )
   );
+
+  const organizations = await prisma.organization.findMany({
+    where: canViewAllOrganizations
+      ? undefined
+      : {
+          id: {
+            in: directlyVisibleOrganizationIds,
+          },
+        },
+    orderBy: { createdAt: "desc" },
+  });
 
   const canCreateOrganization = userHasPermission(
     currentUser,
