@@ -260,12 +260,6 @@ export default async function WorkOrderPage({ params }: PageProps) {
             className="mt-5 grid gap-3 md:grid-cols-2"
           >
             <input
-              name="actorLabel"
-              required
-              placeholder="Operator name"
-              className="rounded border px-3 py-2"
-            />
-            <input
               name="notes"
               placeholder="Optional intake note"
               className="rounded border px-3 py-2"
@@ -290,12 +284,6 @@ export default async function WorkOrderPage({ params }: PageProps) {
             action={recordAssetObservation.bind(null, workOrder.id)}
             className="mt-5 space-y-3"
           >
-            <input
-              name="observerLabel"
-              required
-              placeholder="Observer name"
-              className="w-full rounded border px-3 py-2"
-            />
 
             <input
               name="observationType"
@@ -367,12 +355,6 @@ export default async function WorkOrderPage({ params }: PageProps) {
               action={startWorkActivity.bind(null, workOrder.id)}
               className="mt-5 space-y-3"
             >
-              <input
-                name="workerLabel"
-                required
-                placeholder="Worker name"
-                className="w-full rounded border px-3 py-2"
-              />
 
               <select
                 name="activityType"
@@ -498,12 +480,6 @@ export default async function WorkOrderPage({ params }: PageProps) {
                     action={markPartReceived.bind(null, part.id)}
                     className="mt-4 flex flex-wrap gap-2"
                   >
-                    <input
-                      name="actorLabel"
-                      required
-                      placeholder="Receiver name"
-                      className="rounded border px-3 py-2"
-                    />
                     <button
                       type="submit"
                       className="rounded border px-4 py-2 font-medium"
@@ -518,12 +494,6 @@ export default async function WorkOrderPage({ params }: PageProps) {
                     action={markPartInstalled.bind(null, part.id)}
                     className="mt-4 grid gap-2 md:grid-cols-2"
                   >
-                    <input
-                      name="actorLabel"
-                      required
-                      placeholder="Installer name"
-                      className="rounded border px-3 py-2"
-                    />
                     <input
                       name="notes"
                       placeholder="Installation note"
@@ -548,12 +518,6 @@ export default async function WorkOrderPage({ params }: PageProps) {
             className="mt-6 grid gap-3 md:grid-cols-2"
           >
             <input
-              name="actorLabel"
-              required
-              placeholder="Operator name"
-              className="rounded border px-3 py-2"
-            />
-            <input
               name="notes"
               placeholder="Why work is waiting for parts"
               className="rounded border px-3 py-2"
@@ -572,12 +536,6 @@ export default async function WorkOrderPage({ params }: PageProps) {
             action={resumeRepair.bind(null, workOrder.id)}
             className="mt-6 grid gap-3 md:grid-cols-2"
           >
-            <input
-              name="actorLabel"
-              required
-              placeholder="Operator name"
-              className="rounded border px-3 py-2"
-            />
             <input
               name="notes"
               placeholder="Repair resume note"
@@ -608,12 +566,6 @@ export default async function WorkOrderPage({ params }: PageProps) {
             action={completeRepairForTesting.bind(null, workOrder.id)}
             className="mt-5 grid gap-3 md:grid-cols-2"
           >
-            <input
-              name="actorLabel"
-              required
-              placeholder="Technician name"
-              className="rounded border px-3 py-2"
-            />
             <textarea
               name="resolution"
               required
@@ -644,12 +596,6 @@ export default async function WorkOrderPage({ params }: PageProps) {
             action={recordQaResult.bind(null, workOrder.id)}
             className="mt-5 grid gap-3 md:grid-cols-2"
           >
-            <input
-              name="actorLabel"
-              required
-              placeholder="Tester name"
-              className="rounded border px-3 py-2"
-            />
             <select
               name="result"
               required
@@ -692,12 +638,6 @@ export default async function WorkOrderPage({ params }: PageProps) {
             className="mt-5 grid gap-3 md:grid-cols-2"
           >
             <input
-              name="actorLabel"
-              required
-              placeholder="Packer name"
-              className="rounded border px-3 py-2"
-            />
-            <input
               name="notes"
               placeholder="Packing note, box/seal condition, included accessories"
               className="rounded border px-3 py-2"
@@ -728,12 +668,6 @@ export default async function WorkOrderPage({ params }: PageProps) {
               action={createOutboundShipment.bind(null, workOrder.id)}
               className="mt-5 grid gap-3 md:grid-cols-2"
             >
-              <input
-                name="actorLabel"
-                required
-                placeholder="Operator name"
-                className="rounded border px-3 py-2"
-              />
               <select
                 name="destinationSiteId"
                 required
@@ -805,12 +739,6 @@ export default async function WorkOrderPage({ params }: PageProps) {
               )}
               className="mt-5 flex flex-wrap gap-3"
             >
-              <input
-                name="actorLabel"
-                required
-                placeholder="Operator name"
-                className="rounded border px-3 py-2"
-              />
               <button
                 type="submit"
                 className="rounded border px-4 py-2 font-medium"
@@ -828,12 +756,6 @@ export default async function WorkOrderPage({ params }: PageProps) {
               )}
               className="mt-5 grid gap-3 md:grid-cols-2"
             >
-              <input
-                name="actorLabel"
-                required
-                placeholder="Delivery confirmer"
-                className="rounded border px-3 py-2"
-              />
               <input
                 name="notes"
                 placeholder="Delivery note / carrier confirmation"
@@ -881,7 +803,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
                   className="mt-4 grid gap-3 md:grid-cols-2"
                 >
                   <input
-                    name="actorLabel"
+                    name="recipientLabel"
                     required
                     placeholder="Customer recipient name"
                     className="rounded border px-3 py-2"
