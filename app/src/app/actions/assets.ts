@@ -2,14 +2,22 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireCurrentUser } from "@/lib/auth";
+import {
+  currentUserLabel,
+  requirePermission,
+} from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function createAsset(
   organizationId: string,
   formData: FormData
 ) {
-  await requireCurrentUser();
+  const user = await requirePermission(
+    "asset.manage",
+    organizationId
+  );
+  const actorLabel = currentUserLabel(user);
+
   const assetTag = String(formData.get("assetTag") ?? "").trim();
   const siteId = String(formData.get("siteId") ?? "").trim();
   const manufacturer = String(formData.get("manufacturer") ?? "").trim();
@@ -19,6 +27,19 @@ export async function createAsset(
 
   if (!assetTag) {
     throw new Error("Asset tag is required.");
+  }
+
+  if (siteId) {
+    const site = await prisma.site.findUnique({
+      where: { id: siteId },
+      select: { organizationId: true },
+    });
+
+    if (!site || site.organizationId !== organizationId) {
+      throw new Error(
+        "Asset site must belong to the selected organization."
+      );
+    }
   }
 
   const asset = await prisma.$transaction(async (tx) => {
@@ -43,7 +64,7 @@ export async function createAsset(
         eventType: "ASSET_REGISTERED",
         fromStatus: null,
         toStatus: "REGISTERED",
-        actor: "system",
+        actor: actorLabel,
         notes:
           "Asset registered in CESCo Depot. Account organization recorded as initial owner; custody remains with customer until an explicit custody event occurs.",
       },
