@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createServiceRequest } from "@/app/actions/service-requests";
-import { requireCurrentUser } from "@/lib/auth";
+import { requireOrganizationPermission } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 
 type PageProps = {
@@ -25,8 +25,6 @@ const serviceOptions = [
 ] as const;
 
 export default async function AssetPage({ params }: PageProps) {
-  await requireCurrentUser();
-
   const { id } = await params;
 
   const asset = await prisma.asset.findUnique({
@@ -59,6 +57,11 @@ export default async function AssetPage({ params }: PageProps) {
   if (!asset) {
     notFound();
   }
+
+  await requireOrganizationPermission(
+    "asset.view",
+    asset.organizationId
+  );
 
   const createRequestForAsset = createServiceRequest.bind(
     null,
