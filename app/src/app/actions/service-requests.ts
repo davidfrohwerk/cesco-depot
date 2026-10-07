@@ -3,7 +3,8 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { currentUserLabel, requirePermission } from "@/lib/auth";
+import { currentUserLabel } from "@/lib/auth";
+import { requireOrganizationPermission } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 import {
   ReceiptCondition,
@@ -41,7 +42,7 @@ export async function createServiceRequest(
     throw new Error("Asset not found.");
   }
 
-  const user = await requirePermission(
+  const user = await requireOrganizationPermission(
     "service_request.create",
     assetForAccess.organizationId
   );
@@ -124,7 +125,7 @@ export async function authorizeServiceRequest(
     throw new Error("Service request not found.");
   }
 
-  const user = await requirePermission(
+  const user = await requireOrganizationPermission(
     "service_request.authorize",
     requestForAccess.organizationId
   );
@@ -189,7 +190,7 @@ export async function createInboundShipment(
     throw new Error("Service request not found.");
   }
 
-  await requirePermission(
+  await requireOrganizationPermission(
     "shipment.manage",
     requestForAccess.organizationId
   );
@@ -286,7 +287,7 @@ export async function markShipmentAccepted(shipmentId: string) {
     throw new Error("Shipment not found.");
   }
 
-  const user = await requirePermission(
+  const user = await requireOrganizationPermission(
     "shipment.manage",
     shipmentForAccess.serviceRequest.organizationId
   );
@@ -449,7 +450,7 @@ export async function receiveInboundPackage(
     throw new Error("Package not found.");
   }
 
-  const user = await requirePermission(
+  const user = await requireOrganizationPermission(
     "inventory.receive",
     packageForAccess.shipment.serviceRequest.organizationId
   );
