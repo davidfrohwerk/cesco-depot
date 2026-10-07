@@ -3,7 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { currentUserLabel, requireCurrentUser } from "@/lib/auth";
+import { currentUserLabel, requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   ReceiptCondition,
@@ -32,7 +32,19 @@ export async function createServiceRequest(
   assetId: string,
   formData: FormData
 ) {
-  const user = await requireCurrentUser();
+  const assetForAccess = await prisma.asset.findUnique({
+    where: { id: assetId },
+    select: { organizationId: true },
+  });
+
+  if (!assetForAccess) {
+    throw new Error("Asset not found.");
+  }
+
+  const user = await requirePermission(
+    "service_request.create",
+    assetForAccess.organizationId
+  );
   const userLabel = currentUserLabel(user);
   const serviceType = String(
     formData.get("serviceType") ?? ""
@@ -103,7 +115,19 @@ export async function authorizeServiceRequest(
   serviceRequestId: string,
   formData: FormData
 ) {
-  const user = await requireCurrentUser();
+  const requestForAccess = await prisma.serviceRequest.findUnique({
+    where: { id: serviceRequestId },
+    select: { organizationId: true },
+  });
+
+  if (!requestForAccess) {
+    throw new Error("Service request not found.");
+  }
+
+  const user = await requirePermission(
+    "service_request.authorize",
+    requestForAccess.organizationId
+  );
   const scope = String(formData.get("scope") ?? "").trim();
   const spendingLimitCents = parseOptionalCents(
     formData.get("spendingLimit")
@@ -156,7 +180,20 @@ export async function createInboundShipment(
   serviceRequestId: string,
   formData: FormData
 ) {
-  await requireCurrentUser();
+  const requestForAccess = await prisma.serviceRequest.findUnique({
+    where: { id: serviceRequestId },
+    select: { organizationId: true },
+  });
+
+  if (!requestForAccess) {
+    throw new Error("Service request not found.");
+  }
+
+  await requirePermission(
+    "shipment.manage",
+    requestForAccess.organizationId
+  );
+
   const carrier = String(formData.get("carrier") ?? "").trim();
   const trackingNumber = String(
     formData.get("trackingNumber") ?? ""
@@ -236,8 +273,25 @@ export async function createInboundShipment(
 }
 
 export async function markShipmentAccepted(shipmentId: string) {
-  const user = await requireCurrentUser();
+  const shipmentForAccess = await prisma.shipment.findUnique({
+    where: { id: shipmentId },
+    select: {
+      serviceRequest: {
+        select: { organizationId: true },
+      },
+    },
+  });
+
+  if (!shipmentForAccess) {
+    throw new Error("Shipment not found.");
+  }
+
+  const user = await requirePermission(
+    "shipment.manage",
+    shipmentForAccess.serviceRequest.organizationId
+  );
   const userLabel = currentUserLabel(user);
+
   const result = await prisma.$transaction(async (tx) => {
     const shipment = await tx.shipment.findUnique({
       where: { id: shipmentId },
@@ -378,7 +432,27 @@ export async function receiveInboundPackage(
   packageId: string,
   formData: FormData
 ) {
-  const user = await requireCurrentUser();
+  const packageForAccess = await prisma.package.findUnique({
+    where: { id: packageId },
+    select: {
+      shipment: {
+        select: {
+          serviceRequest: {
+            select: { organizationId: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (!packageForAccess) {
+    throw new Error("Package not found.");
+  }
+
+  const user = await requirePermission(
+    "inventory.receive",
+    packageForAccess.shipment.serviceRequest.organizationId
+  );
   const userLabel = currentUserLabel(user);
   const storageLocationId = String(
     formData.get("storageLocationId") ?? ""
