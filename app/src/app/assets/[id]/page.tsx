@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createServiceRequest } from "@/app/actions/service-requests";
+import { requireCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 type PageProps = {
@@ -24,6 +25,8 @@ const serviceOptions = [
 ] as const;
 
 export default async function AssetPage({ params }: PageProps) {
+  await requireCurrentUser();
+
   const { id } = await params;
 
   const asset = await prisma.asset.findUnique({
