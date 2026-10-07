@@ -18,7 +18,10 @@ import {
   stopWorkActivity,
   packReadyAsset,
 } from "@/app/actions/work-orders";
-import { requireOrganizationPermission } from "@/lib/access-scope";
+import {
+  requireOrganizationPermission,
+  userHasOrganizationPermission,
+} from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 
 type PageProps = {
@@ -125,8 +128,19 @@ export default async function WorkOrderPage({ params }: PageProps) {
     throw new Error("Work order organization could not be resolved.");
   }
 
-  await requireOrganizationPermission(
+  const currentUser = await requireOrganizationPermission(
     "work_order.view",
+    organizationId
+  );
+
+  const canManageWork = userHasOrganizationPermission(
+    currentUser,
+    "work_order.manage",
+    organizationId
+  );
+  const canManageShipment = userHasOrganizationPermission(
+    currentUser,
+    "shipment.manage",
     organizationId
   );
 
@@ -266,7 +280,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
         </div>
       </section>
 
-      {workOrder.status === "RECEIVED" && (
+      {canManageWork && workOrder.status === "RECEIVED" && (
         <section id="next-action" className="mt-8 rounded border p-5">
           <h2 className="text-xl font-semibold">
             Begin depot intake
@@ -295,6 +309,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
         </section>
       )}
 
+      {canManageWork && (
       <section className="mt-8 grid gap-6 lg:grid-cols-2">
         <div className="rounded border p-5">
           <h2 className="text-xl font-semibold">
@@ -421,10 +436,12 @@ export default async function WorkOrderPage({ params }: PageProps) {
           )}
         </div>
       </section>
+      )}
 
       <section className="mt-8 rounded border p-5">
         <h2 className="text-xl font-semibold">Parts</h2>
 
+        {canManageWork && (
         <form
           action={addRequiredPart.bind(null, workOrder.id)}
           className="mt-5 grid gap-3 md:grid-cols-2"
@@ -472,6 +489,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
             Add required part
           </button>
         </form>
+        )}
 
         <div className="mt-6 space-y-3">
           {workOrder.parts.length === 0 ? (
@@ -496,7 +514,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
                   Unit cost: {moneyFromCents(part.unitCostCents)}
                 </div>
 
-                {part.status === "REQUIRED" && (
+                {canManageWork && part.status === "REQUIRED" && (
                   <form
                     action={markPartReceived.bind(null, part.id)}
                     className="mt-4 flex flex-wrap gap-2"
@@ -510,7 +528,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
                   </form>
                 )}
 
-                {part.status === "RECEIVED" && (
+                {canManageWork && part.status === "RECEIVED" && (
                   <form
                     action={markPartInstalled.bind(null, part.id)}
                     className="mt-4 grid gap-2 md:grid-cols-2"
@@ -533,7 +551,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
           )}
         </div>
 
-        {["INTAKE", "OPEN", "IN_PROGRESS"].includes(workOrder.status) && (
+        {canManageWork && ["INTAKE", "OPEN", "IN_PROGRESS"].includes(workOrder.status) && (
           <form
             action={setWorkOrderWaitingParts.bind(null, workOrder.id)}
             className="mt-6 grid gap-3 md:grid-cols-2"
@@ -552,7 +570,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
           </form>
         )}
 
-        {workOrder.status === "WAITING_PARTS" && (
+        {canManageWork && workOrder.status === "WAITING_PARTS" && (
           <form
             action={resumeRepair.bind(null, workOrder.id)}
             className="mt-6 grid gap-3 md:grid-cols-2"
@@ -572,7 +590,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
         )}
       </section>
 
-      {["INTAKE", "OPEN", "IN_PROGRESS"].includes(workOrder.status) && (
+      {canManageWork && ["INTAKE", "OPEN", "IN_PROGRESS"].includes(workOrder.status) && (
         <section className="mt-8 rounded border p-5">
           <h2 className="text-xl font-semibold">
             Complete repair and send to testing
@@ -603,7 +621,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
         </section>
       )}
 
-      {workOrder.status === "TESTING" && (
+      {canManageWork && workOrder.status === "TESTING" && (
         <section className="mt-8 rounded border p-5">
           <h2 className="text-xl font-semibold">
             Quality assurance / functional test
@@ -644,7 +662,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
         </section>
       )}
 
-      {workOrder.status === "READY" && (
+      {canManageWork && workOrder.status === "READY" && (
         <section id="next-action" className="mt-8 rounded border p-5">
           <h2 className="text-xl font-semibold">
             Prepare return to customer
@@ -673,7 +691,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
         </section>
       )}
 
-      {workOrder.status === "PACKED" && !outboundShipment && (
+      {canManageShipment && workOrder.status === "PACKED" && !outboundShipment && (
         <section id="next-action" className="mt-8 rounded border p-5">
           <h2 className="text-xl font-semibold">
             Create outbound shipment
@@ -752,7 +770,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
             </div>
           </div>
 
-          {outboundShipment.status === "TRACKING_ENTERED" && (
+          {canManageShipment && outboundShipment.status === "TRACKING_ENTERED" && (
             <form
               action={markOutboundShipmentAccepted.bind(
                 null,
@@ -769,7 +787,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
             </form>
           )}
 
-          {outboundShipment.status === "IN_TRANSIT" && (
+          {canManageShipment && outboundShipment.status === "IN_TRANSIT" && (
             <form
               action={confirmOutboundDelivery.bind(
                 null,
@@ -815,7 +833,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
                     </div>
                   )}
                 </div>
-              ) : (
+              ) : canManageShipment ? (
                 <form
                   action={acknowledgeCustomerReceipt.bind(
                     null,
@@ -841,6 +859,10 @@ export default async function WorkOrderPage({ params }: PageProps) {
                     Acknowledge customer receipt
                   </button>
                 </form>
+              ) : (
+                <p className="mt-4 text-sm opacity-70">
+                  Customer acknowledgment has not yet been recorded.
+                </p>
               )}
             </div>
           )}
