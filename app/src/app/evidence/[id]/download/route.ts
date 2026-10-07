@@ -33,7 +33,7 @@ export async function GET(
     notFound();
   }
 
-  await requireOrganizationPermission(
+  const user = await requireOrganizationPermission(
     "evidence.view",
     evidence.organizationId
   );
@@ -68,6 +68,15 @@ export async function GET(
       }
     );
   }
+
+  await prisma.evidenceAccessEvent.create({
+    data: {
+      evidenceId: id,
+      actorUserId: user.id,
+      action: "DOWNLOAD",
+      integrityVerified: true,
+    },
+  });
 
   const filename = safeDownloadFilename(
     evidence.originalFilename
