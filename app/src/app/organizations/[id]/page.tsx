@@ -2,7 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createSite } from "@/app/actions/sites";
 import { createAsset } from "@/app/actions/assets";
-import { requireCurrentUser } from "@/lib/auth";
+import {
+  requireCurrentUser,
+  userHasPermission,
+} from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 type PageProps = {
@@ -12,7 +15,7 @@ type PageProps = {
 };
 
 export default async function OrganizationPage({ params }: PageProps) {
-  await requireCurrentUser();
+  const currentUser = await requireCurrentUser();
 
   const { id } = await params;
 
@@ -55,9 +58,23 @@ export default async function OrganizationPage({ params }: PageProps) {
         {organization.name}
       </h1>
 
-      <p className="mt-2 text-sm opacity-60">
-        Organization ID: {organization.id}
-      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
+        <span className="opacity-60">
+          Organization ID: {organization.id}
+        </span>
+        {userHasPermission(
+          currentUser,
+          "organization.manage_users",
+          organization.id
+        ) && (
+          <Link
+            href={`/organizations/${organization.id}/users`}
+            className="underline"
+          >
+            Manage users & roles
+          </Link>
+        )}
+      </div>
 
       <section className="mt-10">
         <h2 className="text-2xl font-semibold">Sites</h2>
