@@ -2,10 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createSite } from "@/app/actions/sites";
 import { createAsset } from "@/app/actions/assets";
+import { requireCurrentUser } from "@/lib/auth";
 import {
-  requireCurrentUser,
-  userHasPermission,
-} from "@/lib/auth";
+  requireOrganizationPermission,
+  userHasOrganizationPermission,
+} from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 
 type PageProps = {
@@ -18,6 +19,7 @@ export default async function OrganizationPage({ params }: PageProps) {
   const currentUser = await requireCurrentUser();
 
   const { id } = await params;
+  await requireOrganizationPermission("organization.view", id);
 
   const organization = await prisma.organization.findUnique({
     where: { id },
@@ -62,7 +64,7 @@ export default async function OrganizationPage({ params }: PageProps) {
         <span className="opacity-60">
           Organization ID: {organization.id}
         </span>
-        {userHasPermission(
+        {userHasOrganizationPermission(
           currentUser,
           "organization.manage_users",
           organization.id
