@@ -196,8 +196,12 @@ export function userHasPermission(
   permissionKey: string,
   organizationId?: string | null
 ) {
-  const isSystemAdmin = user.memberships.some((membership) =>
-    membership.roles.some(({ role }) => role.key === "SYSTEM_ADMIN")
+  const isSystemAdmin = user.memberships.some(
+    (membership) =>
+      membership.organization.kind === "INTERNAL" &&
+      membership.roles.some(
+        ({ role }) => role.key === "SYSTEM_ADMIN"
+      )
   );
 
   if (isSystemAdmin) {
