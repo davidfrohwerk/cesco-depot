@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import {
   requireCurrentUser,
   userHasPermission,
@@ -58,6 +59,26 @@ export async function requireOrganizationPermission(
     )
   ) {
     throw new Error("Insufficient access for this operation.");
+  }
+
+  return user;
+}
+
+
+export async function requireOrganizationPagePermission(
+  permissionKey: string,
+  organizationId: string
+) {
+  const user = await requireCurrentUser();
+
+  if (
+    !userHasOrganizationPermission(
+      user,
+      permissionKey,
+      organizationId
+    )
+  ) {
+    notFound();
   }
 
   return user;
