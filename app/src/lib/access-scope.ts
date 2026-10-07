@@ -19,15 +19,17 @@ export function userHasOrganizationPermission(
     return true;
   }
 
-  return user.memberships.some((membership) =>
-    membership.roles.some(
-      ({ role }) =>
-        INTERNAL_ROLE_KEYS.has(role.key) &&
-        role.permissions.some(
-          ({ permission }) =>
-            permission.key === permissionKey
-        )
-    )
+  return user.memberships.some(
+    (membership) =>
+      membership.organization.kind === "INTERNAL" &&
+      membership.roles.some(
+        ({ role }) =>
+          INTERNAL_ROLE_KEYS.has(role.key) &&
+          role.permissions.some(
+            ({ permission }) =>
+              permission.key === permissionKey
+          )
+      )
   );
 }
 
