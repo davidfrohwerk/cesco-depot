@@ -1,11 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireCurrentUser } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
 export async function createOrganization(formData: FormData) {
-  await requireCurrentUser();
+  await requirePermission("organization.manage");
+
   const name = String(formData.get("name") ?? "").trim();
 
   if (!name) {
