@@ -61,8 +61,12 @@ export default async function OrganizationUsersPage({
     userHasPermission(currentUser, "system.admin") ||
     userHasPermission(currentUser, "organization.manage");
 
+  const canUseInternalRoles =
+    canAssignInternalRoles &&
+    organization.name.toLowerCase() === "cesco internal";
+
   const roles = await prisma.role.findMany({
-    where: canAssignInternalRoles
+    where: canUseInternalRoles
       ? undefined
       : {
           key: {
