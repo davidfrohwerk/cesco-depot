@@ -5,6 +5,8 @@ export const permissionDefinitions = [
   ["organization.view", "View organization records"],
   ["organization.manage", "Manage organization records"],
   ["organization.manage_users", "Manage organization users and roles"],
+  ["service_request.create", "Create service requests"],
+  ["service_request.authorize", "Authorize service requests"],
   ["asset.view", "View assets"],
   ["asset.manage", "Manage asset lifecycle records"],
   ["work_order.view", "View work orders"],
@@ -31,6 +33,8 @@ export const roleDefinitions = [
       "organization.view",
       "organization.manage",
       "organization.manage_users",
+      "service_request.create",
+      "service_request.authorize",
       "asset.view",
       "asset.manage",
       "work_order.view",
@@ -47,6 +51,8 @@ export const roleDefinitions = [
     description: "Manages depot execution, inventory, and shipments.",
     permissions: [
       "organization.view",
+      "service_request.create",
+      "service_request.authorize",
       "asset.view",
       "asset.manage",
       "work_order.view",
@@ -89,6 +95,8 @@ export const roleDefinitions = [
     permissions: [
       "organization.view",
       "organization.manage_users",
+      "service_request.create",
+      "service_request.authorize",
       "asset.view",
       "work_order.view",
       "shipment.manage",
@@ -102,6 +110,7 @@ export const roleDefinitions = [
     description: "Creates and follows operational service activity.",
     permissions: [
       "organization.view",
+      "service_request.create",
       "asset.view",
       "work_order.view",
       "shipment.manage",
