@@ -66,6 +66,9 @@ export default async function ServiceRequestPage({
               evidence: {
                 include: {
                   uploader: true,
+                  _count: {
+                    select: { accessEvents: true },
+                  },
                 },
                 orderBy: { uploadedAt: "desc" },
               },
