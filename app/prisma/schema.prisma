@@ -732,6 +732,8 @@ model Evidence {
   workOrderEventId String?
   packageId       String?
   receiptId       String?
+  authorizationId String?
+  shipmentId      String?
   uploaderUserId  String?
   evidenceType    EvidenceType
   description     String?
