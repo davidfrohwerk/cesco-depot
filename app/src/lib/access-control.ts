@@ -163,6 +163,39 @@ export const roleDefinitions = [
     ],
   },
   {
+    key: "CLIENT_HELPDESK",
+    name: "Client Helpdesk",
+    description:
+      "Opens service and spare requests and follows operational status without financial authority.",
+    permissions: [
+      "spare_requisition.create",
+      "spare_requisition.view",
+      "endpoint.view",
+      "organization.view",
+      "service_request.create",
+      "asset.view",
+      "work_order.view",
+      "evidence.view",
+    ],
+  },
+  {
+    key: "CLIENT_FIELD_TECHNICIAN",
+    name: "Client Field Technician",
+    description:
+      "Records assigned field movement, condition, custody, delivery, and evidence without financial authority.",
+    permissions: [
+      "spare_requisition.view",
+      "endpoint.view",
+      "organization.view",
+      "asset.view",
+      "asset.move",
+      "work_order.view",
+      "shipment.acknowledge_receipt",
+      "evidence.view",
+      "evidence.upload",
+    ],
+  },
+  {
     key: "CLIENT_DISPATCHER",
     name: "Client Dispatcher",
     description: "Creates and follows operational service activity.",
