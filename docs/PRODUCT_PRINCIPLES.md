@@ -502,3 +502,35 @@ Examples:
 - a client administrator may grant and revoke these organization-scoped roles
 
 CESCo retains exclusive control of internal platform/system roles, CESCo operational roles, security policy, and privileged escalation.
+
+
+## CESCo as operational middleware plus field execution
+
+CESCo Depot should be designed as valuable operational middleware between the client's helpdesk/dispatch function, the client's distributed asset fleet, carriers, storage providers, field-service networks, repair resources, and downstream customer locations.
+
+CESCo may provide the physical hands directly, through CESCo personnel, or indirectly through authorized field technicians, couriers, repair partners, storage operators, or national service networks. The platform's job is to preserve the same control, provenance, and accountability regardless of who performs the physical step.
+
+The movement model must be bidirectional and composable.
+
+Examples:
+
+Endpoint A
+-> carrier / field technician
+-> CESCo or partner service location
+-> storage position
+-> repair / readiness / stocking
+-> carrier / field technician
+-> Endpoint B
+
+and the reverse:
+
+Endpoint B
+-> carrier / field technician
+-> service location / receiving position
+-> repair / restock / disposition
+-> carrier / field technician
+-> Endpoint A or another endpoint
+
+No direction should be treated as exceptional. The same primitives - ownership, custody, placement, condition, evidence, authorization, and movement - should describe both forward deployment and reverse logistics.
+
+The customer value is not merely shipping or storage. It is the ability to ask the system what needs to happen next, who can do it, which asset is appropriate, where that asset is, what condition it is in, what evidence proves each handoff, and whether the action is operationally or financially authorized.
