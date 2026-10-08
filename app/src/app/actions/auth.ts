@@ -8,6 +8,7 @@ import {
   hashPassword,
   verifyPassword,
 } from "@/lib/auth";
+import { ensureDefaultAccessControl } from "@/lib/access-control";
 
 const permissions = [
   ["system.admin", "Full system administration"],
@@ -209,4 +210,96 @@ export async function login(formData: FormData) {
 export async function logout() {
   await destroySession();
   redirect("/login");
+}
+
+
+export async function registerClientAccount(formData: FormData) {
+  const displayName = String(
+    formData.get("displayName") ?? ""
+  ).trim();
+  const email = String(
+    formData.get("email") ?? ""
+  )
+    .trim()
+    .toLowerCase();
+  const password = String(
+    formData.get("password") ?? ""
+  );
+  const organizationName = String(
+    formData.get("organizationName") ?? ""
+  ).trim();
+
+  if (!displayName || !email || !password || !organizationName) {
+    redirect("/register?error=missing");
+  }
+
+  let passwordHash: string;
+
+  try {
+    passwordHash = hashPassword(password);
+  } catch {
+    redirect("/register?error=password");
+  }
+
+  const existingUser = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true },
+  });
+
+  if (existingUser) {
+    redirect("/register?error=account_exists");
+  }
+
+  await ensureDefaultAccessControl();
+
+  const clientAdminRole = await prisma.role.findUnique({
+    where: { key: "CLIENT_ADMIN" },
+    select: { id: true },
+  });
+
+  if (!clientAdminRole) {
+    throw new Error("Client administrator role is unavailable.");
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const organization = await tx.organization.create({
+      data: {
+        name: organizationName,
+        kind: "CLIENT",
+      },
+    });
+
+    const user = await tx.user.create({
+      data: {
+        email,
+        displayName,
+        passwordHash,
+        status: "ACTIVE",
+        lastLoginAt: new Date(),
+      },
+    });
+
+    const membership = await tx.membership.create({
+      data: {
+        userId: user.id,
+        organizationId: organization.id,
+        status: "ACTIVE",
+      },
+    });
+
+    await tx.membershipRole.create({
+      data: {
+        membershipId: membership.id,
+        roleId: clientAdminRole.id,
+      },
+    });
+
+    return {
+      userId: user.id,
+      organizationId: organization.id,
+    };
+  });
+
+  await createSession(result.userId);
+  redirect(`/organizations/${result.organizationId}`);
 }
