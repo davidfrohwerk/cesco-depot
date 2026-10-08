@@ -96,6 +96,7 @@ export const roleDefinitions = [
     permissions: [
       "organization.view",
       "asset.view",
+      "asset.manage",
       "work_order.view",
       "inventory.receive",
       "shipment.prepare",
@@ -112,6 +113,7 @@ export const roleDefinitions = [
     description: "Manages client organization users and operational visibility.",
     permissions: [
       "organization.view",
+      "organization.manage",
       "organization.manage_users",
       "service_request.create",
       "service_request.authorize",
