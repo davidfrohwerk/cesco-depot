@@ -264,6 +264,7 @@ model User {
   workActivities       WorkActivity[]     @relation("WorkActivityWorker")
   supervisedActivities WorkActivity[]     @relation("WorkActivitySupervisor")
   assetObservations    AssetObservation[] @relation("AssetObservationObserver")
+  assetMovements       AssetMovement[]    @relation("AssetMovementActor")
   uploadedEvidence     Evidence[]         @relation("EvidenceUploader")
   evidenceAccessEvents EvidenceAccessEvent[] @relation("EvidenceAccessActor")
 }
@@ -406,6 +407,8 @@ model Endpoint {
 
   organization Organization @relation(fields: [organizationId], references: [id])
   currentAssets Asset[]      @relation("AssetCurrentEndpoint")
+  movementsFrom AssetMovement[] @relation("AssetMovementFromEndpoint")
+  movementsTo   AssetMovement[] @relation("AssetMovementToEndpoint")
 
   @@unique([organizationId, externalCode])
   @@index([organizationId])
@@ -428,6 +431,8 @@ model ServiceLocation {
   region                  String?
   climateControlled       Boolean             @default(false)
   secureStorage           Boolean             @default(false)
+  custodyType             CustodyType          @default(CESCO)
+  custodianLabel          String?
   accessInstructions      String?
   capabilities            String?
   notes                   String?
@@ -479,6 +484,8 @@ model StoragePosition {
   children              StoragePosition[] @relation("StoragePositionTree")
   dedicatedOrganization Organization?    @relation("StoragePositionDedicatedOrganization", fields: [dedicatedOrganizationId], references: [id])
   currentAssets         Asset[]          @relation("AssetCurrentStoragePosition")
+  movementsFrom         AssetMovement[]  @relation("AssetMovementFromStoragePosition")
+  movementsTo           AssetMovement[]  @relation("AssetMovementToStoragePosition")
 
   @@unique([serviceLocationId, code])
   @@index([serviceLocationId])
@@ -567,6 +574,7 @@ model Asset {
   packageContents        PackageContent[]
   observations           AssetObservation[]
   evidence               Evidence[]
+  movements              AssetMovement[]
 
   @@index([serialNumber])
   @@index([organizationId])
@@ -575,6 +583,37 @@ model Asset {
   @@index([currentEndpointId])
   @@index([currentStoragePositionId])
   @@index([status])
+}
+
+model AssetMovement {
+  id                    String      @id @default(cuid())
+  assetId               String
+  actorUserId           String?
+  fromEndpointId        String?
+  toEndpointId          String?
+  fromStoragePositionId String?
+  toStoragePositionId   String?
+  fromCustodyType       CustodyType?
+  toCustodyType         CustodyType?
+  fromCustodianLabel    String?
+  toCustodianLabel      String?
+  reason                String?
+  occurredAt            DateTime    @default(now())
+  createdAt             DateTime    @default(now())
+
+  asset               Asset            @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  actor               User?            @relation("AssetMovementActor", fields: [actorUserId], references: [id])
+  fromEndpoint        Endpoint?        @relation("AssetMovementFromEndpoint", fields: [fromEndpointId], references: [id])
+  toEndpoint          Endpoint?        @relation("AssetMovementToEndpoint", fields: [toEndpointId], references: [id])
+  fromStoragePosition StoragePosition? @relation("AssetMovementFromStoragePosition", fields: [fromStoragePositionId], references: [id])
+  toStoragePosition   StoragePosition? @relation("AssetMovementToStoragePosition", fields: [toStoragePositionId], references: [id])
+
+  @@index([assetId, occurredAt])
+  @@index([actorUserId])
+  @@index([fromEndpointId])
+  @@index([toEndpointId])
+  @@index([fromStoragePositionId])
+  @@index([toStoragePositionId])
 }
 
 model AssetEvent {
