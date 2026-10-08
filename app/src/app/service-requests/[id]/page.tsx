@@ -85,6 +85,8 @@ export default async function ServiceRequestPage({
         orderBy: { createdAt: "desc" },
         include: {
           destinationSite: true,
+          destinationEndpoint: true,
+          destinationServiceLocation: true,
           evidence: {
             include: {
               uploader: true,
@@ -99,6 +101,11 @@ export default async function ServiceRequestPage({
               receipt: {
                 include: {
                   storageLocation: true,
+                  storagePosition: {
+                    include: {
+                      serviceLocation: true,
+                    },
+                  },
                 },
               },
               evidence: {
@@ -158,10 +165,25 @@ export default async function ServiceRequestPage({
     request.organizationId
   );
 
-  const sites = await prisma.site.findMany({
-    orderBy: [{ organization: { name: "asc" } }, { name: "asc" }],
-    include: {
-      organization: true,
+  const serviceLocations = await prisma.serviceLocation.findMany({
+    where: {
+      isActive: true,
+      clientAccess: {
+        some: {
+          organizationId: request.organizationId,
+        },
+      },
+    },
+    orderBy: [{ region: "asc" }, { name: "asc" }],
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      city: true,
+      state: true,
+      region: true,
+      climateControlled: true,
+      secureStorage: true,
     },
   });
 
@@ -182,15 +204,25 @@ export default async function ServiceRequestPage({
   const workOrder = request.workOrders[0] ?? null;
   const pkg = inboundShipment?.packages[0] ?? null;
 
-  const storageLocations = inboundShipment
-    ? await prisma.storageLocation.findMany({
-        where: {
-          siteId: inboundShipment.destinationSiteId,
-          isActive: true,
-        },
-        orderBy: { name: "asc" },
-      })
-    : [];
+  const storagePositions =
+    canReceiveInventory &&
+    inboundShipment?.destinationServiceLocationId
+      ? await prisma.storagePosition.findMany({
+          where: {
+            serviceLocationId:
+              inboundShipment.destinationServiceLocationId,
+            isActive: true,
+            OR: [
+              { dedicatedOrganizationId: null },
+              {
+                dedicatedOrganizationId:
+                  request.organizationId,
+              },
+            ],
+          },
+          orderBy: [{ type: "asc" }, { name: "asc" }],
+        })
+      : [];
 
   return (
     <main className="mx-auto max-w-5xl p-8">
@@ -442,7 +474,10 @@ export default async function ServiceRequestPage({
               Shipment status: {inboundShipment.status}
             </div>
             <div className="mt-1">
-              Destination: {inboundShipment.destinationSite.name}
+              Destination:{" "}
+              {inboundShipment.destinationServiceLocation?.name ??
+                inboundShipment.destinationSite?.name ??
+                "Not recorded"}
             </div>
 
             {inboundShipment.status === "TRACKING_ENTERED" && (
@@ -610,17 +645,25 @@ export default async function ServiceRequestPage({
             />
 
             <select
-              name="destinationSiteId"
+              name="destinationServiceLocationId"
               required
               defaultValue=""
               className="rounded border px-3 py-2 md:col-span-2"
             >
               <option value="" disabled>
-                Select CESCo service destination
+                Select CESCo service / stocking destination
               </option>
-              {sites.map((site) => (
-                <option key={site.id} value={site.id}>
-                  {site.organization.name} — {site.name}
+              {serviceLocations.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.name}
+                  {location.city || location.state
+                    ? ` — ${[location.city, location.state]
+                        .filter(Boolean)
+                        .join(", ")}`
+                    : ""}
+                  {location.climateControlled
+                    ? " · climate controlled"
+                    : ""}
                 </option>
               ))}
             </select>
@@ -659,7 +702,10 @@ export default async function ServiceRequestPage({
             </div>
             <div className="mt-1">
               Location:{" "}
-              {pkg.receipt.storageLocation?.name ?? "Not assigned"}
+              {pkg.receipt.storagePosition
+                ? `${pkg.receipt.storagePosition.serviceLocation.name} / ${pkg.receipt.storagePosition.name}`
+                : pkg.receipt.storageLocation?.name ??
+                  "Not assigned"}
             </div>
             <div className="mt-1">
               Seal intact:{" "}
@@ -680,26 +726,28 @@ export default async function ServiceRequestPage({
           <p className="mt-4 text-sm opacity-70">
             Package receipt becomes available after carrier acceptance.
           </p>
-        ) : storageLocations.length === 0 ? (
-          <div className="mt-4 text-sm">
-            <p className="font-medium">
-              The destination site has no storage locations yet.
-            </p>
-            <p className="mt-2 opacity-70">
-              Define at least one receiving, cage, shelf, bin, or other
-              physical location before accepting custody.
-            </p>
-            <Link
-              href={`/sites/${inboundShipment.destinationSiteId}`}
-              className="mt-4 inline-block underline"
-            >
-              Manage {inboundShipment.destinationSite.name} storage locations
-            </Link>
-          </div>
         ) : !canReceiveInventory ? (
           <p className="mt-4 text-sm opacity-70">
             Your role can view receipt status but cannot receive inventory.
           </p>
+        ) : storagePositions.length === 0 ? (
+          <div className="mt-4 text-sm">
+            <p className="font-medium">
+              The destination service location has no eligible storage positions yet.
+            </p>
+            <p className="mt-2 opacity-70">
+              Define a receiving, cage, rack, shelf, bin, or other position
+              before accepting custody.
+            </p>
+            {inboundShipment.destinationServiceLocationId && (
+              <Link
+                href={`/service-locations/${inboundShipment.destinationServiceLocationId}`}
+                className="mt-4 inline-block underline"
+              >
+                Manage service-location storage positions
+              </Link>
+            )}
+          </div>
         ) : (
           <form
             action={receiveInboundPackage.bind(null, pkg.id)}
@@ -718,18 +766,18 @@ export default async function ServiceRequestPage({
             </select>
 
             <select
-              name="storageLocationId"
+              name="storagePositionId"
               required
               defaultValue=""
               className="rounded border px-3 py-2"
             >
               <option value="" disabled>
-                Select receiving/storage location
+                Select receiving/storage position
               </option>
-              {storageLocations.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name} —{" "}
-                  {location.type.replaceAll("_", " ")}
+              {storagePositions.map((position) => (
+                <option key={position.id} value={position.id}>
+                  {position.name} —{" "}
+                  {position.type.replaceAll("_", " ")}
                 </option>
               ))}
             </select>
@@ -901,7 +949,9 @@ export default async function ServiceRequestPage({
             </div>
             <div>
               <span className="opacity-60">Destination:</span>{" "}
-              {outboundShipment.destinationSite.name}
+              {outboundShipment.destinationEndpoint?.name ??
+                outboundShipment.destinationSite?.name ??
+                "Not recorded"}
             </div>
             <div>
               <span className="opacity-60">Carrier:</span>{" "}
