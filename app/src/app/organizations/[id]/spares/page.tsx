@@ -6,6 +6,11 @@ import {
   reserveSpareForRequisition,
 } from "@/app/actions/spare-requisitions";
 import {
+  acceptDispatchCustody,
+  completeDispatch,
+  createDispatchForReservedSpare,
+} from "@/app/actions/dispatch-assignments";
+import {
   requireOrganizationPagePermission,
   userHasOrganizationPermission,
 } from "@/lib/access-scope";
@@ -48,6 +53,11 @@ export default async function SpareRequisitionsPage({
     "spare_requisition.manage",
     organizationId
   );
+  const canManageDispatch = userHasOrganizationPermission(
+    currentUser,
+    "dispatch.manage",
+    organizationId
+  );
 
   const [endpoints, requisitions] = await Promise.all([
     prisma.endpoint.findMany({
@@ -76,6 +86,19 @@ export default async function SpareRequisitionsPage({
           include: {
             serviceLocation: true,
           },
+        },
+        dispatchAssignments: {
+          include: {
+            originEndpoint: true,
+            originStoragePosition: {
+              include: { serviceLocation: true },
+            },
+            destinationEndpoint: true,
+            destinationStoragePosition: {
+              include: { serviceLocation: true },
+            },
+          },
+          orderBy: { assignedAt: "desc" },
         },
       },
       orderBy: { requestedAt: "desc" },
@@ -320,6 +343,129 @@ export default async function SpareRequisitionsPage({
                     </div>
                   </div>
                 )}
+
+                {canManageDispatch &&
+                  requisition.status === "RESERVED" &&
+                  requisition.dispatchAssignments.every(
+                    (dispatch) =>
+                      !["ASSIGNED", "IN_TRANSIT"].includes(
+                        dispatch.status
+                      )
+                  ) && (
+                    <form
+                      action={createDispatchForReservedSpare.bind(
+                        null,
+                        requisition.id
+                      )}
+                      className="mt-4 grid gap-3 md:grid-cols-2"
+                    >
+                      <select
+                        name="providerCustodyType"
+                        defaultValue="FIELD_TECHNICIAN"
+                        className="rounded border px-3 py-2"
+                      >
+                        <option value="FIELD_TECHNICIAN">
+                          Field technician
+                        </option>
+                        <option value="CARRIER">Carrier</option>
+                        <option value="PARTNER">Partner</option>
+                        <option value="OTHER">Other</option>
+                      </select>
+                      <input
+                        name="providerLabel"
+                        required
+                        placeholder="Provider / technician / courier"
+                        className="rounded border px-3 py-2"
+                      />
+                      <input
+                        name="externalReference"
+                        placeholder="WorkMarket / courier / dispatch reference"
+                        className="rounded border px-3 py-2"
+                      />
+                      <input
+                        name="instructions"
+                        placeholder="Pickup / delivery instructions"
+                        className="rounded border px-3 py-2"
+                      />
+                      <button
+                        type="submit"
+                        className="rounded border px-4 py-2 font-medium md:col-span-2"
+                      >
+                        Create dispatch assignment
+                      </button>
+                    </form>
+                  )}
+
+                {requisition.dispatchAssignments.map((dispatch) => (
+                  <div
+                    key={dispatch.id}
+                    className="mt-4 rounded border p-4 text-sm"
+                  >
+                    <div className="flex flex-wrap justify-between gap-3">
+                      <div className="font-medium">
+                        Dispatch via {dispatch.providerLabel}
+                      </div>
+                      <div>{dispatch.status}</div>
+                    </div>
+                    <div className="mt-2 opacity-70">
+                      {dispatch.originStoragePosition
+                        ? `${dispatch.originStoragePosition.serviceLocation.name} / ${dispatch.originStoragePosition.name}`
+                        : dispatch.originEndpoint?.name ??
+                          "Origin not recorded"}
+                      {" → "}
+                      {dispatch.destinationEndpoint?.name ??
+                        (dispatch.destinationStoragePosition
+                          ? `${dispatch.destinationStoragePosition.serviceLocation.name} / ${dispatch.destinationStoragePosition.name}`
+                          : "Destination not recorded")}
+                    </div>
+                    {dispatch.externalReference && (
+                      <div className="mt-1 opacity-70">
+                        Reference: {dispatch.externalReference}
+                      </div>
+                    )}
+
+                    {canManageDispatch &&
+                      dispatch.status === "ASSIGNED" && (
+                        <form
+                          action={acceptDispatchCustody.bind(
+                            null,
+                            dispatch.id
+                          )}
+                          className="mt-3"
+                        >
+                          <button
+                            type="submit"
+                            className="rounded border px-3 py-2 font-medium"
+                          >
+                            Record provider custody
+                          </button>
+                        </form>
+                      )}
+
+                    {canManageDispatch &&
+                      dispatch.status === "IN_TRANSIT" && (
+                        <form
+                          action={completeDispatch.bind(
+                            null,
+                            dispatch.id
+                          )}
+                          className="mt-3 grid gap-2 md:grid-cols-2"
+                        >
+                          <input
+                            name="completionNotes"
+                            placeholder="Delivery / installation / handoff note"
+                            className="rounded border px-3 py-2"
+                          />
+                          <button
+                            type="submit"
+                            className="rounded border px-3 py-2 font-medium"
+                          >
+                            Complete dispatch
+                          </button>
+                        </form>
+                      )}
+                  </div>
+                ))}
 
                 {canManage && requisition.status === "OPEN" && (
                   <form
