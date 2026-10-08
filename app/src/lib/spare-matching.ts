@@ -62,8 +62,9 @@ export function scoreSpareCandidate(
       score += 30;
       reasons.push("Exact manufacturer");
     } else if (
-      candidateManufacturer.includes(requestedManufacturer) ||
-      requestedManufacturer.includes(candidateManufacturer)
+      candidateManufacturer &&
+      (candidateManufacturer.includes(requestedManufacturer) ||
+        requestedManufacturer.includes(candidateManufacturer))
     ) {
       score += 20;
       reasons.push("Manufacturer text match");
@@ -80,8 +81,9 @@ export function scoreSpareCandidate(
       score += 40;
       reasons.push("Exact model");
     } else if (
-      candidateModel.includes(requestedModel) ||
-      requestedModel.includes(candidateModel)
+      candidateModel &&
+      (candidateModel.includes(requestedModel) ||
+        requestedModel.includes(candidateModel))
     ) {
       score += 25;
       reasons.push("Model text match");
