@@ -17,7 +17,7 @@ export async function createAsset(
   const actorLabel = currentUserLabel(user);
 
   const assetTag = String(formData.get("assetTag") ?? "").trim();
-  const siteId = String(formData.get("siteId") ?? "").trim();
+  const endpointId = String(formData.get("endpointId") ?? "").trim();
   const manufacturer = String(formData.get("manufacturer") ?? "").trim();
   const model = String(formData.get("model") ?? "").trim();
   const serialNumber = String(formData.get("serialNumber") ?? "").trim();
@@ -27,15 +27,19 @@ export async function createAsset(
     throw new Error("Asset tag is required.");
   }
 
-  if (siteId) {
-    const site = await prisma.site.findUnique({
-      where: { id: siteId },
-      select: { organizationId: true },
+  if (endpointId) {
+    const endpoint = await prisma.endpoint.findUnique({
+      where: { id: endpointId },
+      select: { organizationId: true, isActive: true },
     });
 
-    if (!site || site.organizationId !== organizationId) {
+    if (
+      !endpoint ||
+      !endpoint.isActive ||
+      endpoint.organizationId !== organizationId
+    ) {
       throw new Error(
-        "Asset site must belong to the selected organization."
+        "Asset endpoint must be an active endpoint for the selected organization."
       );
     }
   }
@@ -46,7 +50,8 @@ export async function createAsset(
         assetTag,
         organizationId,
         ownerOrganizationId: organizationId,
-        siteId: siteId || null,
+        currentEndpointId: endpointId || null,
+        currentStoragePositionId: null,
         currentCustodyType: "CUSTOMER",
         manufacturer: manufacturer || null,
         model: model || null,
@@ -63,8 +68,9 @@ export async function createAsset(
         fromStatus: null,
         toStatus: "REGISTERED",
         actor: actorLabel,
-        notes:
-          "Asset registered in CESCo Depot. Account organization recorded as initial owner; custody remains with customer until an explicit custody event occurs.",
+        notes: endpointId
+          ? "Asset registered in CESCo Depot at a client/downstream endpoint. Account organization recorded as initial owner; custody remains with customer until an explicit custody event occurs."
+          : "Asset registered in CESCo Depot. Account organization recorded as initial owner; custody remains with customer until an explicit custody event occurs.",
       },
     });
 
