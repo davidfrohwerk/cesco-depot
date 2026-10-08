@@ -25,11 +25,25 @@ export async function createSpareRequisition(
   const compatibilityNotes = String(
     formData.get("compatibilityNotes") ?? ""
   ).trim();
+  const compatibilityClass = String(
+    formData.get("compatibilityClass") ?? ""
+  ).trim();
+  const configurationVersion = String(
+    formData.get("configurationVersion") ?? ""
+  ).trim();
   const troubleTicketReference = String(
     formData.get("troubleTicketReference") ?? ""
   ).trim();
   const priority = String(
     formData.get("priority") ?? ""
+  ).trim();
+  const returnExpected =
+    formData.get("returnExpected") === "on";
+  const returnAssetId = String(
+    formData.get("returnAssetId") ?? ""
+  ).trim();
+  const returnInstructions = String(
+    formData.get("returnInstructions") ?? ""
   ).trim();
   const notes = String(formData.get("notes") ?? "").trim();
 
@@ -37,7 +51,12 @@ export async function createSpareRequisition(
     throw new Error("Destination endpoint is required.");
   }
 
-  if (!manufacturer && !model && !compatibilityNotes) {
+  if (
+    !manufacturer &&
+    !model &&
+    !compatibilityClass &&
+    !compatibilityNotes
+  ) {
     throw new Error(
       "Describe the required spare by manufacturer, model, or compatibility notes."
     );
@@ -61,6 +80,26 @@ export async function createSpareRequisition(
     );
   }
 
+  if (returnAssetId) {
+    const returnAsset = await prisma.asset.findUnique({
+      where: { id: returnAssetId },
+      select: {
+        organizationId: true,
+        currentEndpointId: true,
+      },
+    });
+
+    if (
+      !returnAsset ||
+      returnAsset.organizationId !== organizationId ||
+      returnAsset.currentEndpointId !== destinationEndpointId
+    ) {
+      throw new Error(
+        "Expected return asset must belong to this organization and currently be placed at the destination endpoint."
+      );
+    }
+  }
+
   await prisma.spareRequisition.create({
     data: {
       organizationId,
@@ -69,8 +108,13 @@ export async function createSpareRequisition(
       manufacturer: manufacturer || null,
       model: model || null,
       compatibilityNotes: compatibilityNotes || null,
+      compatibilityClass: compatibilityClass || null,
+      configurationVersion: configurationVersion || null,
       troubleTicketReference: troubleTicketReference || null,
       priority: priority || null,
+      returnExpected,
+      returnAssetId: returnAssetId || null,
+      returnInstructions: returnInstructions || null,
       notes: notes || null,
     },
   });
@@ -148,6 +192,35 @@ export async function reserveSpareForRequisition(
     ) {
       throw new Error(
         "Candidate must be a ready or stocked asset belonging to this organization and stored at a managed position."
+      );
+    }
+
+    if (
+      requisition.compatibilityClass &&
+      asset.compatibilityClass?.trim().toLowerCase() !==
+        requisition.compatibilityClass.trim().toLowerCase()
+    ) {
+      throw new Error(
+        "Candidate spare does not match the requested compatibility class."
+      );
+    }
+
+    if (
+      requisition.configurationVersion &&
+      asset.configurationVersion?.trim().toLowerCase() !==
+        requisition.configurationVersion.trim().toLowerCase()
+    ) {
+      throw new Error(
+        "Candidate spare does not match the requested configuration version."
+      );
+    }
+
+    if (
+      asset.nextReadinessDueAt &&
+      asset.nextReadinessDueAt.getTime() < Date.now()
+    ) {
+      throw new Error(
+        "Candidate spare has an overdue readiness verification."
       );
     }
 
