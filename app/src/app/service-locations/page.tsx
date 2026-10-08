@@ -57,6 +57,12 @@ export default async function ServiceLocationsPage() {
             <input name="postalCode" placeholder="Postal code" className="rounded border px-3 py-2" />
             <input name="region" placeholder="Region / market" className="rounded border px-3 py-2" />
             <input name="capabilities" placeholder="Capabilities (storage, repair, staging...)" className="rounded border px-3 py-2" />
+            <select name="custodyType" defaultValue="CESCO" className="rounded border px-3 py-2">
+              {["CESCO", "PARTNER", "FIELD_TECHNICIAN", "OTHER"].map((type) => (
+                <option key={type} value={type}>{type.replaceAll("_", " ")}</option>
+              ))}
+            </select>
+            <input name="custodianLabel" placeholder="Custodian label (CESCo, partner name...)" className="rounded border px-3 py-2" />
             <textarea name="accessInstructions" placeholder="Access instructions" className="rounded border px-3 py-2 md:col-span-2" />
             <label className="flex items-center gap-2 text-sm">
               <input name="climateControlled" type="checkbox" />
