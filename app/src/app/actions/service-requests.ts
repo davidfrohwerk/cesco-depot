@@ -510,6 +510,9 @@ export async function receiveInboundPackage(
   const storagePositionId = String(
     formData.get("storagePositionId") ?? ""
   ).trim();
+  const legacyStorageLocationId = String(
+    formData.get("storageLocationId") ?? ""
+  ).trim();
 
   const condition = String(
     formData.get("condition") ?? "UNKNOWN"
@@ -521,7 +524,7 @@ export async function receiveInboundPackage(
 
   const notes = String(formData.get("notes") ?? "").trim();
 
-  if (!storagePositionId) {
+  if (!storagePositionId && !legacyStorageLocationId) {
     throw new Error("A receiving storage position is required.");
   }
 
@@ -565,55 +568,72 @@ export async function receiveInboundPackage(
       );
     }
 
-    if (!pkg.shipment.destinationServiceLocationId) {
-      throw new Error(
-        "This shipment uses the legacy site-routing model and cannot be received through the new service-location workflow."
-      );
-    }
-
-    const storagePosition = await tx.storagePosition.findUnique({
-      where: { id: storagePositionId },
-      include: {
-        serviceLocation: {
-          include: {
-            clientAccess: {
-              where: {
-                organizationId: pkg.shipment.serviceRequest.organizationId,
+    const storagePosition =
+      pkg.shipment.destinationServiceLocationId && storagePositionId
+        ? await tx.storagePosition.findUnique({
+            where: { id: storagePositionId },
+            include: {
+              serviceLocation: {
+                include: {
+                  clientAccess: {
+                    where: {
+                      organizationId:
+                        pkg.shipment.serviceRequest.organizationId,
+                    },
+                    select: { organizationId: true },
+                  },
+                },
               },
-              select: { organizationId: true },
             },
-          },
-        },
-      },
-    });
+          })
+        : null;
 
-    if (
-      !storagePosition ||
-      !storagePosition.isActive ||
-      storagePosition.serviceLocationId !==
-        pkg.shipment.destinationServiceLocationId
+    const legacyStorageLocation =
+      !pkg.shipment.destinationServiceLocationId &&
+      pkg.shipment.destinationSiteId &&
+      legacyStorageLocationId
+        ? await tx.storageLocation.findUnique({
+            where: { id: legacyStorageLocationId },
+            include: { site: true },
+          })
+        : null;
+
+    if (pkg.shipment.destinationServiceLocationId) {
+      if (
+        !storagePosition ||
+        !storagePosition.isActive ||
+        storagePosition.serviceLocationId !==
+          pkg.shipment.destinationServiceLocationId
+      ) {
+        throw new Error(
+          "Receiving position must belong to the shipment destination service location."
+        );
+      }
+
+      if (
+        storagePosition.dedicatedOrganizationId &&
+        storagePosition.dedicatedOrganizationId !==
+          pkg.shipment.serviceRequest.organizationId
+      ) {
+        throw new Error(
+          "Receiving position is dedicated to another client organization."
+        );
+      }
+
+      if (
+        !storagePosition.dedicatedOrganizationId &&
+        storagePosition.serviceLocation.clientAccess.length === 0
+      ) {
+        throw new Error(
+          "Shipment organization is not authorized to use this shared service location."
+        );
+      }
+    } else if (
+      !legacyStorageLocation ||
+      legacyStorageLocation.siteId !== pkg.shipment.destinationSiteId
     ) {
       throw new Error(
-        "Receiving position must belong to the shipment destination service location."
-      );
-    }
-
-    if (
-      storagePosition.dedicatedOrganizationId &&
-      storagePosition.dedicatedOrganizationId !==
-        pkg.shipment.serviceRequest.organizationId
-    ) {
-      throw new Error(
-        "Receiving position is dedicated to another client organization."
-      );
-    }
-
-    if (
-      !storagePosition.dedicatedOrganizationId &&
-      storagePosition.serviceLocation.clientAccess.length === 0
-    ) {
-      throw new Error(
-        "Shipment organization is not authorized to use this shared service location."
+        "Legacy receiving location must belong to the shipment destination site."
       );
     }
 
@@ -638,17 +658,30 @@ export async function receiveInboundPackage(
     }
 
     const now = new Date();
-    const serviceLocation = storagePosition.serviceLocation;
+    const serviceLocation = storagePosition?.serviceLocation ?? null;
+    const destinationLabel =
+      serviceLocation?.name ??
+      legacyStorageLocation?.site.name ??
+      pkg.shipment.destinationSite?.name ??
+      "service destination";
+    const positionLabel =
+      storagePosition?.name ??
+      legacyStorageLocation?.name ??
+      "receiving location";
+    const custodyType =
+      serviceLocation?.custodyType ?? "CESCO";
     const custodianLabel =
-      serviceLocation.custodianLabel ??
-      serviceLocation.operatorLabel ??
-      serviceLocation.name;
+      serviceLocation?.custodianLabel ??
+      serviceLocation?.operatorLabel ??
+      serviceLocation?.name ??
+      "CESCo";
 
     await tx.receipt.create({
       data: {
         packageId: pkg.id,
         receivedByUserId: user.id,
-        storagePositionId,
+        storagePositionId: storagePosition?.id ?? null,
+        storageLocationId: legacyStorageLocation?.id ?? null,
         receivedAt: now,
         condition,
         sealIntact:
@@ -711,9 +744,9 @@ export async function receiveInboundPackage(
             actorLabel: userLabel,
             systemGenerated: false,
             notes: [
-              `Package received at ${serviceLocation.name}.`,
+              `Package received at ${destinationLabel}.`,
               `Condition: ${condition}.`,
-              `Position: ${storagePosition.name}.`,
+              `Position: ${positionLabel}.`,
             ].join(" "),
           },
         });
@@ -727,12 +760,12 @@ export async function receiveInboundPackage(
         fromEndpointId: asset.currentEndpointId,
         fromStoragePositionId: asset.currentStoragePositionId,
         toEndpointId: null,
-        toStoragePositionId: storagePosition.id,
+        toStoragePositionId: storagePosition?.id ?? null,
         fromCustodyType: asset.currentCustodyType,
-        toCustodyType: serviceLocation.custodyType,
+        toCustodyType: custodyType,
         fromCustodianLabel: asset.currentCustodianLabel,
         toCustodianLabel: custodianLabel,
-        reason: `Package received at ${serviceLocation.name}; position ${storagePosition.name}.`,
+        reason: `Package received at ${destinationLabel}; position ${positionLabel}.`,
         occurredAt: now,
       },
     });
@@ -742,10 +775,12 @@ export async function receiveInboundPackage(
       data: {
         status: "RECEIVED",
         currentEndpointId: null,
-        currentStoragePositionId: storagePosition.id,
-        currentStorageLocationId: null,
-        siteId: null,
-        currentCustodyType: serviceLocation.custodyType,
+        currentStoragePositionId: storagePosition?.id ?? null,
+        currentStorageLocationId:
+          legacyStorageLocation?.id ?? null,
+        siteId:
+          legacyStorageLocation?.siteId ?? null,
+        currentCustodyType: custodyType,
         currentCustodianLabel: custodianLabel,
       },
     });
@@ -758,9 +793,9 @@ export async function receiveInboundPackage(
         toStatus: "RECEIVED",
         actor: userLabel,
         notes: [
-          `Package received at ${serviceLocation.name}.`,
+          `Package received at ${destinationLabel}.`,
           `Condition: ${condition}.`,
-          `Position: ${storagePosition.name}.`,
+          `Position: ${positionLabel}.`,
           notes ? `Receiving note: ${notes}` : null,
         ]
           .filter(Boolean)
