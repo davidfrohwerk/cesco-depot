@@ -215,6 +215,14 @@ enum WorkActivityType {
   OTHER
 }
 
+enum SpareRequisitionStatus {
+  OPEN
+  RESERVED
+  DISPATCHED
+  FULFILLED
+  CANCELLED
+}
+
 enum WorkOrderPartStatus {
   REQUIRED
   ORDERED
@@ -265,6 +273,8 @@ model User {
   supervisedActivities WorkActivity[]     @relation("WorkActivitySupervisor")
   assetObservations    AssetObservation[] @relation("AssetObservationObserver")
   assetMovements       AssetMovement[]    @relation("AssetMovementActor")
+  spareRequisitions     SpareRequisition[] @relation("SpareRequisitionRequester")
+  spareAssignments      SpareRequisition[] @relation("SpareRequisitionAssigner")
   uploadedEvidence     Evidence[]         @relation("EvidenceUploader")
   evidenceAccessEvents EvidenceAccessEvent[] @relation("EvidenceAccessActor")
 }
@@ -318,9 +328,10 @@ model Organization {
   assets          Asset[]          @relation("AssetAccountOrganization")
   ownedAssets     Asset[]          @relation("AssetOwnerOrganization")
   memberships     Membership[]
-  serviceRequests ServiceRequest[]
-  workOrders      WorkOrder[]
-  evidence        Evidence[]
+  serviceRequests    ServiceRequest[]
+  workOrders         WorkOrder[]
+  spareRequisitions  SpareRequisition[]
+  evidence           Evidence[]
 }
 
 model Membership {
@@ -491,6 +502,7 @@ model StoragePosition {
   movementsFrom         AssetMovement[]  @relation("AssetMovementFromStoragePosition")
   movementsTo           AssetMovement[]  @relation("AssetMovementToStoragePosition")
   receipts               Receipt[]
+  spareSources           SpareRequisition[]
 
   @@unique([serviceLocationId, code])
   @@index([serviceLocationId])
@@ -580,6 +592,7 @@ model Asset {
   observations           AssetObservation[]
   evidence               Evidence[]
   movements              AssetMovement[]
+  spareAssignments       SpareRequisition[] @relation("SpareRequisitionAssignedAsset")
 
   @@index([serialNumber])
   @@index([organizationId])
@@ -634,6 +647,43 @@ model AssetEvent {
   asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
   @@index([assetId, createdAt])
+}
+
+model SpareRequisition {
+  id                      String                 @id @default(cuid())
+  organizationId          String
+  requestedByUserId       String
+  destinationEndpointId   String
+  assignedByUserId        String?
+  assignedAssetId         String?
+  sourceStoragePositionId String?
+  status                  SpareRequisitionStatus @default(OPEN)
+  manufacturer            String?
+  model                   String?
+  compatibilityNotes      String?
+  troubleTicketReference  String?
+  priority                String?
+  notes                   String?
+  requestedAt             DateTime               @default(now())
+  reservedAt              DateTime?
+  dispatchedAt            DateTime?
+  fulfilledAt             DateTime?
+  cancelledAt             DateTime?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+
+  organization          Organization    @relation(fields: [organizationId], references: [id])
+  requestedBy           User            @relation("SpareRequisitionRequester", fields: [requestedByUserId], references: [id])
+  destinationEndpoint   Endpoint        @relation(fields: [destinationEndpointId], references: [id])
+  assignedBy            User?           @relation("SpareRequisitionAssigner", fields: [assignedByUserId], references: [id])
+  assignedAsset         Asset?          @relation("SpareRequisitionAssignedAsset", fields: [assignedAssetId], references: [id])
+  sourceStoragePosition StoragePosition? @relation(fields: [sourceStoragePositionId], references: [id])
+
+  @@index([organizationId, status])
+  @@index([destinationEndpointId])
+  @@index([assignedAssetId])
+  @@index([sourceStoragePositionId])
+  @@index([requestedAt])
 }
 
 model ServiceRequest {
