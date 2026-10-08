@@ -6,33 +6,24 @@ export default async function Home() {
 
   return (
     <main>
-      <section className="border-b">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-5">
-          <div className="font-semibold">CESCo Depot</div>
-          <div className="flex items-center gap-4 text-sm">
-            {user ? (
+      {!user && (
+        <section className="border-b">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-5">
+            <div className="font-semibold">CESCo Depot</div>
+            <div className="flex items-center gap-4 text-sm">
+              <Link href="/login" className="underline">
+                Sign in
+              </Link>
               <Link
-                href="/organizations"
+                href="/register"
                 className="rounded border px-4 py-2 font-medium"
               >
-                Open workspace
+                Create free account
               </Link>
-            ) : (
-              <>
-                <Link href="/login" className="underline">
-                  Sign in
-                </Link>
-                <Link
-                  href="/register"
-                  className="rounded border px-4 py-2 font-medium"
-                >
-                  Create free account
-                </Link>
-              </>
-            )}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       <section className="mx-auto max-w-6xl px-6 py-20">
         <div className="max-w-4xl">
