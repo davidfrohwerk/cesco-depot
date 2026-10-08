@@ -4,6 +4,7 @@ import {
   createStoragePosition,
   grantServiceLocationClientAccess,
 } from "@/app/actions/service-locations";
+import { placeAssetInStoragePosition } from "@/app/actions/asset-movements";
 import {
   requireInternalPagePermission,
   userHasInternalPermission,
@@ -76,7 +77,8 @@ export default async function ServiceLocationPage({ params }: PageProps) {
         </div>
         <div className="rounded border px-4 py-2 text-sm">
           {location.climateControlled ? "Climate controlled" : "No climate flag"} ·{" "}
-          {location.secureStorage ? "Secure" : "No secure-storage flag"}
+          {location.secureStorage ? "Secure" : "No secure-storage flag"} ·{" "}
+          Custody: {location.custodyType.replaceAll("_", " ")}
         </div>
       </div>
 
@@ -202,6 +204,31 @@ export default async function ServiceLocationPage({ params }: PageProps) {
                     ? `Dedicated to ${position.dedicatedOrganization.name}`
                     : "Shared"}
                 </div>
+
+                {canManage && (
+                  <form
+                    action={placeAssetInStoragePosition.bind(null, position.id)}
+                    className="mt-4 grid gap-2 md:grid-cols-2"
+                  >
+                    <input
+                      name="assetTag"
+                      required
+                      placeholder="Asset tag to place here"
+                      className="rounded border px-3 py-2"
+                    />
+                    <input
+                      name="reason"
+                      placeholder="Reason / ticket / instruction"
+                      className="rounded border px-3 py-2"
+                    />
+                    <button
+                      type="submit"
+                      className="rounded border px-3 py-2 text-sm font-medium md:col-span-2"
+                    >
+                      Record asset placement
+                    </button>
+                  </form>
+                )}
               </article>
             ))
           )}
