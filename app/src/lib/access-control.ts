@@ -14,6 +14,9 @@ export const permissionDefinitions = [
   ["asset.view", "View assets"],
   ["asset.manage", "Manage asset lifecycle records"],
   ["asset.move", "Record organization-authorized asset placement and movement"],
+  ["spare_requisition.view", "View strategic spare requisitions"],
+  ["spare_requisition.create", "Request strategic spare dispatch"],
+  ["spare_requisition.manage", "Reserve and manage strategic spare fulfillment"],
   ["work_order.view", "View work orders"],
   ["work_order.manage", "Manage work-order execution"],
   ["inventory.receive", "Receive packages and inventory"],
@@ -39,6 +42,8 @@ export const roleDefinitions = [
     name: "CESCo Operations Administrator",
     description: "Manages CESCo operational records, users, and workflows.",
     permissions: [
+      "spare_requisition.manage",
+      "spare_requisition.view",
       "service_location.manage",
       "service_location.view",
       "endpoint.manage",
@@ -68,6 +73,8 @@ export const roleDefinitions = [
     name: "Depot Manager",
     description: "Manages depot execution, inventory, and shipments.",
     permissions: [
+      "spare_requisition.manage",
+      "spare_requisition.view",
       "service_location.manage",
       "service_location.view",
       "endpoint.view",
@@ -111,6 +118,8 @@ export const roleDefinitions = [
     name: "Receiving / Logistics",
     description: "Receives packages, manages storage, and records shipments.",
     permissions: [
+      "spare_requisition.manage",
+      "spare_requisition.view",
       "service_location.manage",
       "service_location.view",
       "endpoint.view",
@@ -133,6 +142,8 @@ export const roleDefinitions = [
     name: "Client Administrator",
     description: "Manages client organization users and operational visibility.",
     permissions: [
+      "spare_requisition.create",
+      "spare_requisition.view",
       "endpoint.manage",
       "endpoint.view",
       "organization.view",
@@ -156,6 +167,8 @@ export const roleDefinitions = [
     name: "Client Dispatcher",
     description: "Creates and follows operational service activity.",
     permissions: [
+      "spare_requisition.create",
+      "spare_requisition.view",
       "endpoint.view",
       "organization.view",
       "service_request.create",
@@ -186,6 +199,7 @@ export const roleDefinitions = [
     name: "Client Auditor",
     description: "Read-only access to lifecycle and provenance records.",
     permissions: [
+      "spare_requisition.view",
       "endpoint.view",
       "organization.view",
       "asset.view",
