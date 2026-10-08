@@ -188,6 +188,9 @@ export async function login(formData: FormData) {
     redirect("/login?error=credentials");
   }
 
+  // Keep role/permission definitions aligned when an existing user signs in.
+  await ensureDefaultAccessControl();
+
   await prisma.$transaction([
     prisma.authSession.deleteMany({
       where: {
