@@ -107,6 +107,19 @@ export default async function OrganizationPage({ params }: PageProps) {
             Manage users & roles
           </Link>
         )}
+        {organization.kind === "CLIENT" &&
+          userHasOrganizationPermission(
+            currentUser,
+            "spare_requisition.view",
+            organization.id
+          ) && (
+            <Link
+              href={`/organizations/${organization.id}/spares`}
+              className="underline"
+            >
+              Strategic spares
+            </Link>
+          )}
       </div>
 
       <section className="mt-10">
