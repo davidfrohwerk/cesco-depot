@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createServiceRequest } from "@/app/actions/service-requests";
 import { uploadAssetEvidence } from "@/app/actions/evidence";
+import { moveAssetToEndpoint } from "@/app/actions/asset-movements";
 import {
   requireOrganizationPagePermission,
   userHasOrganizationPermission,
@@ -58,6 +59,20 @@ export default async function AssetPage({ params }: PageProps) {
           serviceLocation: true,
         },
       },
+      movements: {
+        include: {
+          actor: true,
+          fromEndpoint: true,
+          toEndpoint: true,
+          fromStoragePosition: {
+            include: { serviceLocation: true },
+          },
+          toStoragePosition: {
+            include: { serviceLocation: true },
+          },
+        },
+        orderBy: { occurredAt: "desc" },
+      },
       events: {
         orderBy: { createdAt: "desc" },
       },
@@ -90,6 +105,21 @@ export default async function AssetPage({ params }: PageProps) {
   if (!asset) {
     notFound();
   }
+
+  const canMoveAsset = userHasOrganizationPermission(
+    currentUser,
+    "asset.move",
+    asset.organizationId
+  );
+  const endpoints = canMoveAsset
+    ? await prisma.endpoint.findMany({
+        where: {
+          organizationId: asset.organizationId,
+          isActive: true,
+        },
+        orderBy: { name: "asc" },
+      })
+    : [];
 
   const canCreateServiceRequest = userHasOrganizationPermission(
     currentUser,
@@ -208,6 +238,36 @@ export default async function AssetPage({ params }: PageProps) {
           </dl>
         </div>
       </section>
+
+      {canMoveAsset && endpoints.length > 0 && (
+        <section className="mt-10 rounded border p-5">
+          <h2 className="text-xl font-semibold">Change endpoint placement</h2>
+          <p className="mt-2 text-sm opacity-70">
+            Record an asset as deployed or held at another client/downstream
+            endpoint. Service-network storage placement is recorded by CESCo
+            operations from the service-location workspace.
+          </p>
+          <form
+            action={moveAssetToEndpoint.bind(null, asset.id)}
+            className="mt-5 grid gap-3 md:grid-cols-2"
+          >
+            <select name="endpointId" required defaultValue="" className="rounded border px-3 py-2">
+              <option value="" disabled>Select endpoint</option>
+              {endpoints.map((endpoint) => (
+                <option key={endpoint.id} value={endpoint.id}>{endpoint.name}</option>
+              ))}
+            </select>
+            <input
+              name="reason"
+              placeholder="Reason / ticket / dispatch reference"
+              className="rounded border px-3 py-2"
+            />
+            <button type="submit" className="rounded border px-4 py-2 font-medium md:col-span-2">
+              Record endpoint placement
+            </button>
+          </form>
+        </section>
+      )}
 
       {canCreateServiceRequest && (
       <section className="mt-10 rounded border p-5">
@@ -434,6 +494,45 @@ export default async function AssetPage({ params }: PageProps) {
                 </Link>
               );
             })
+          )}
+        </div>
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-2xl font-semibold">Placement & custody history</h2>
+        <div className="mt-5 space-y-3">
+          {asset.movements.length === 0 ? (
+            <p className="text-sm opacity-70">
+              No explicit placement movements recorded yet.
+            </p>
+          ) : (
+            asset.movements.map((movement) => (
+              <article key={movement.id} className="rounded border p-4">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <div className="font-semibold">
+                    {movement.toStoragePosition
+                      ? `${movement.toStoragePosition.serviceLocation.name} / ${movement.toStoragePosition.name}`
+                      : movement.toEndpoint?.name ?? "Transit / unassigned"}
+                  </div>
+                  <time className="text-sm opacity-60">
+                    {movement.occurredAt.toLocaleString()}
+                  </time>
+                </div>
+                <div className="mt-2 text-sm opacity-70">
+                  Custody: {movement.fromCustodyType ?? "—"} →{" "}
+                  {movement.toCustodyType ?? "—"}
+                </div>
+                {movement.reason && (
+                  <div className="mt-2 text-sm">{movement.reason}</div>
+                )}
+                <div className="mt-2 text-xs opacity-50">
+                  Actor:{" "}
+                  {movement.actor?.displayName ??
+                    movement.actor?.email ??
+                    "Unknown"}
+                </div>
+              </article>
+            ))
           )}
         </div>
       </section>
