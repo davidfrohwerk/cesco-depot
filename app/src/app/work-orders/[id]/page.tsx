@@ -137,12 +137,20 @@ export default async function WorkOrderPage({ params }: PageProps) {
           organization: true,
           ownerOrganization: true,
           currentStorageLocation: true,
+          currentEndpoint: true,
+          currentStoragePosition: {
+            include: {
+              serviceLocation: true,
+            },
+          },
         },
       },
       serviceRequest: true,
       shipment: {
         include: {
           destinationSite: true,
+          destinationEndpoint: true,
+          destinationServiceLocation: true,
         },
       },
       events: {
@@ -225,20 +233,24 @@ export default async function WorkOrderPage({ params }: PageProps) {
         },
         include: {
           destinationSite: true,
+          destinationEndpoint: true,
           packages: true,
         },
         orderBy: { createdAt: "desc" },
       })
     : null;
 
-  const customerSites = workOrder.asset.ownerOrganizationId
-    ? await prisma.site.findMany({
-        where: {
-          organizationId: workOrder.asset.ownerOrganizationId,
-        },
-        orderBy: { name: "asc" },
-      })
-    : [];
+  const destinationOrganizationId =
+    workOrder.asset.ownerOrganizationId ??
+    workOrder.asset.organizationId;
+
+  const customerEndpoints = await prisma.endpoint.findMany({
+    where: {
+      organizationId: destinationOrganizationId,
+      isActive: true,
+    },
+    orderBy: [{ region: "asc" }, { name: "asc" }],
+  });
 
   return (
     <main className="mx-auto max-w-6xl p-8">
@@ -305,7 +317,11 @@ export default async function WorkOrderPage({ params }: PageProps) {
             <div>
               <dt className="opacity-60">Location</dt>
               <dd>
-                {workOrder.asset.currentStorageLocation?.name ?? "—"}
+                {workOrder.asset.currentStoragePosition
+                  ? `${workOrder.asset.currentStoragePosition.serviceLocation.name} / ${workOrder.asset.currentStoragePosition.name}`
+                  : workOrder.asset.currentEndpoint?.name ??
+                    workOrder.asset.currentStorageLocation?.name ??
+                    "—"}
               </dd>
             </div>
           </dl>
@@ -762,10 +778,10 @@ export default async function WorkOrderPage({ params }: PageProps) {
             Create outbound shipment
           </h2>
 
-          {customerSites.length === 0 ? (
+          {customerEndpoints.length === 0 ? (
             <p className="mt-4 text-sm opacity-70">
-              The asset owner does not yet have a destination site. Add the
-              customer destination before creating the return shipment.
+              The asset owner/account does not yet have an active customer
+              endpoint. Add the destination before creating the return shipment.
             </p>
           ) : (
             <form
@@ -773,7 +789,7 @@ export default async function WorkOrderPage({ params }: PageProps) {
               className="mt-5 grid gap-3 md:grid-cols-2"
             >
               <select
-                name="destinationSiteId"
+                name="destinationEndpointId"
                 required
                 defaultValue=""
                 className="rounded border px-3 py-2"
@@ -781,9 +797,17 @@ export default async function WorkOrderPage({ params }: PageProps) {
                 <option value="" disabled>
                   Select customer destination
                 </option>
-                {customerSites.map((site) => (
-                  <option key={site.id} value={site.id}>
-                    {site.name}
+                {customerEndpoints.map((endpoint) => (
+                  <option key={endpoint.id} value={endpoint.id}>
+                    {endpoint.name}
+                    {endpoint.externalCode
+                      ? ` · ${endpoint.externalCode}`
+                      : ""}
+                    {endpoint.city || endpoint.state
+                      ? ` — ${[endpoint.city, endpoint.state]
+                          .filter(Boolean)
+                          .join(", ")}`
+                      : ""}
                   </option>
                 ))}
               </select>
@@ -819,7 +843,9 @@ export default async function WorkOrderPage({ params }: PageProps) {
           <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
             <div>
               <span className="opacity-60">Destination:</span>{" "}
-              {outboundShipment.destinationSite.name}
+              {outboundShipment.destinationEndpoint?.name ??
+                outboundShipment.destinationSite?.name ??
+                "Not recorded"}
             </div>
             <div>
               <span className="opacity-60">Status:</span>{" "}
