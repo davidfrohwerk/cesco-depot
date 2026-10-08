@@ -4,6 +4,11 @@ import { createServiceRequest } from "@/app/actions/service-requests";
 import { uploadAssetEvidence } from "@/app/actions/evidence";
 import { moveAssetToEndpoint } from "@/app/actions/asset-movements";
 import {
+  acceptDispatchCustody,
+  completeDispatch,
+  createReverseDispatch,
+} from "@/app/actions/dispatch-assignments";
+import {
   requireOrganizationPagePermission,
   userHasOrganizationPermission,
 } from "@/lib/access-scope";
@@ -90,6 +95,19 @@ export default async function AssetPage({ params }: PageProps) {
       workOrders: {
         orderBy: { createdAt: "desc" },
       },
+      dispatchAssignments: {
+        include: {
+          originEndpoint: true,
+          originStoragePosition: {
+            include: { serviceLocation: true },
+          },
+          destinationEndpoint: true,
+          destinationStoragePosition: {
+            include: { serviceLocation: true },
+          },
+        },
+        orderBy: { assignedAt: "desc" },
+      },
       evidence: {
         include: {
           uploader: true,
@@ -120,6 +138,53 @@ export default async function AssetPage({ params }: PageProps) {
         orderBy: { name: "asc" },
       })
     : [];
+
+  const canManageDispatch = userHasOrganizationPermission(
+    currentUser,
+    "dispatch.manage",
+    asset.organizationId
+  );
+
+  const reverseStoragePositions =
+    canManageDispatch && asset.currentEndpointId
+      ? await prisma.storagePosition.findMany({
+          where: {
+            isActive: true,
+            OR: [
+              {
+                dedicatedOrganizationId:
+                  asset.organizationId,
+              },
+              {
+                dedicatedOrganizationId: null,
+                serviceLocation: {
+                  isActive: true,
+                  clientAccess: {
+                    some: {
+                      organizationId:
+                        asset.organizationId,
+                    },
+                  },
+                },
+              },
+            ],
+          },
+          include: {
+            serviceLocation: true,
+          },
+          orderBy: [
+            { serviceLocation: { name: "asc" } },
+            { name: "asc" },
+          ],
+        })
+      : [];
+
+  const activeDispatch =
+    asset.dispatchAssignments.find((dispatch) =>
+      ["ASSIGNED", "IN_TRANSIT"].includes(
+        dispatch.status
+      )
+    ) ?? null;
 
   const canCreateServiceRequest = userHasOrganizationPermission(
     currentUser,
@@ -266,6 +331,148 @@ export default async function AssetPage({ params }: PageProps) {
               Record endpoint placement
             </button>
           </form>
+        </section>
+      )}
+
+      {canManageDispatch &&
+        asset.currentEndpoint &&
+        !activeDispatch &&
+        reverseStoragePositions.length > 0 && (
+          <section className="mt-10 rounded border p-5">
+            <h2 className="text-xl font-semibold">
+              Return / reverse dispatch
+            </h2>
+            <p className="mt-2 text-sm opacity-70">
+              Route this asset from the current client endpoint back into an
+              authorized CESCo/partner service location for repair, restock,
+              storage, decommissioning, or another controlled next step.
+            </p>
+            <form
+              action={createReverseDispatch.bind(
+                null,
+                asset.id
+              )}
+              className="mt-5 grid gap-3 md:grid-cols-2"
+            >
+              <select
+                name="destinationStoragePositionId"
+                required
+                defaultValue=""
+                className="rounded border px-3 py-2 md:col-span-2"
+              >
+                <option value="" disabled>
+                  Select receiving / storage position
+                </option>
+                {reverseStoragePositions.map((position) => (
+                  <option key={position.id} value={position.id}>
+                    {position.serviceLocation.name} / {position.name}
+                    {" · "}
+                    {position.type.replaceAll("_", " ")}
+                  </option>
+                ))}
+              </select>
+              <select
+                name="providerCustodyType"
+                defaultValue="FIELD_TECHNICIAN"
+                className="rounded border px-3 py-2"
+              >
+                <option value="FIELD_TECHNICIAN">
+                  Field technician
+                </option>
+                <option value="CARRIER">Carrier</option>
+                <option value="PARTNER">Partner</option>
+                <option value="OTHER">Other</option>
+              </select>
+              <input
+                name="providerLabel"
+                required
+                placeholder="Provider / technician / courier"
+                className="rounded border px-3 py-2"
+              />
+              <input
+                name="externalReference"
+                placeholder="Trouble ticket / WorkMarket / courier reference"
+                className="rounded border px-3 py-2"
+              />
+              <input
+                name="instructions"
+                placeholder="Pickup and receiving instructions"
+                className="rounded border px-3 py-2"
+              />
+              <button
+                type="submit"
+                className="rounded border px-4 py-2 font-medium md:col-span-2"
+              >
+                Create reverse dispatch
+              </button>
+            </form>
+          </section>
+        )}
+
+      {activeDispatch && (
+        <section className="mt-10 rounded border p-5">
+          <h2 className="text-xl font-semibold">
+            Active dispatch
+          </h2>
+          <div className="mt-4 grid gap-2 text-sm md:grid-cols-2">
+            <div>Status: {activeDispatch.status}</div>
+            <div>Provider: {activeDispatch.providerLabel}</div>
+            <div>
+              Origin:{" "}
+              {activeDispatch.originEndpoint?.name ??
+                (activeDispatch.originStoragePosition
+                  ? `${activeDispatch.originStoragePosition.serviceLocation.name} / ${activeDispatch.originStoragePosition.name}`
+                  : "Not recorded")}
+            </div>
+            <div>
+              Destination:{" "}
+              {activeDispatch.destinationEndpoint?.name ??
+                (activeDispatch.destinationStoragePosition
+                  ? `${activeDispatch.destinationStoragePosition.serviceLocation.name} / ${activeDispatch.destinationStoragePosition.name}`
+                  : "Not recorded")}
+            </div>
+          </div>
+
+          {canManageDispatch &&
+            activeDispatch.status === "ASSIGNED" && (
+              <form
+                action={acceptDispatchCustody.bind(
+                  null,
+                  activeDispatch.id
+                )}
+                className="mt-4"
+              >
+                <button
+                  type="submit"
+                  className="rounded border px-4 py-2 font-medium"
+                >
+                  Record provider custody
+                </button>
+              </form>
+            )}
+
+          {canManageDispatch &&
+            activeDispatch.status === "IN_TRANSIT" && (
+              <form
+                action={completeDispatch.bind(
+                  null,
+                  activeDispatch.id
+                )}
+                className="mt-4 grid gap-3 md:grid-cols-2"
+              >
+                <input
+                  name="completionNotes"
+                  placeholder="Placement / receiving / handoff note"
+                  className="rounded border px-3 py-2"
+                />
+                <button
+                  type="submit"
+                  className="rounded border px-4 py-2 font-medium"
+                >
+                  Complete dispatch
+                </button>
+              </form>
+            )}
         </section>
       )}
 
