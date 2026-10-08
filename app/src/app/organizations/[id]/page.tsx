@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createSite } from "@/app/actions/sites";
 import { createAsset } from "@/app/actions/assets";
+import { createEndpoint } from "@/app/actions/endpoints";
 import { requireCurrentUser } from "@/lib/auth";
 import {
   requireOrganizationPagePermission,
@@ -27,10 +28,19 @@ export default async function OrganizationPage({ params }: PageProps) {
       sites: {
         orderBy: { createdAt: "desc" },
       },
+      endpoints: {
+        orderBy: [{ isActive: "desc" }, { name: "asc" }],
+      },
       assets: {
         orderBy: { createdAt: "desc" },
         include: {
           site: true,
+          currentEndpoint: true,
+          currentStoragePosition: {
+            include: {
+              serviceLocation: true,
+            },
+          },
         },
       },
     },
@@ -50,8 +60,18 @@ export default async function OrganizationPage({ params }: PageProps) {
     "asset.manage",
     organization.id
   );
+  const canManageEndpoints = userHasOrganizationPermission(
+    currentUser,
+    "endpoint.manage",
+    organization.id
+  );
 
   const createSiteForOrganization = createSite.bind(
+    null,
+    organization.id
+  );
+
+  const createEndpointForOrganization = createEndpoint.bind(
     null,
     organization.id
   );
@@ -90,81 +110,147 @@ export default async function OrganizationPage({ params }: PageProps) {
       </div>
 
       <section className="mt-10">
-        <h2 className="text-2xl font-semibold">Sites</h2>
+        <h2 className="text-2xl font-semibold">Customer endpoints</h2>
+        <p className="mt-2 text-sm opacity-70">
+          Stores, clinics, branches, warehouses, offices, and other locations
+          where this organization deploys or supports equipment.
+        </p>
 
-        {canManageOrganization && (
-        <form
-          action={createSiteForOrganization}
-          className="mt-5 grid gap-3 md:grid-cols-2"
-        >
-          <input
-            name="name"
-            placeholder="Site name"
-            required
-            className="rounded border px-3 py-2"
-          />
-
-          <input
-            name="addressLine1"
-            placeholder="Street address"
-            className="rounded border px-3 py-2"
-          />
-
-          <input
-            name="city"
-            placeholder="City"
-            className="rounded border px-3 py-2"
-          />
-
-          <input
-            name="state"
-            placeholder="State"
-            className="rounded border px-3 py-2"
-          />
-
-          <input
-            name="postalCode"
-            placeholder="Postal code"
-            className="rounded border px-3 py-2"
-          />
-
-          <button
-            type="submit"
-            className="rounded border px-4 py-2 font-medium"
+        {canManageEndpoints && (
+          <form
+            action={createEndpointForOrganization}
+            className="mt-5 grid gap-3 md:grid-cols-2"
           >
-            Add site
-          </button>
-        </form>
+            <input
+              name="name"
+              placeholder="Endpoint name (Store 123, Clinic 41...)"
+              required
+              className="rounded border px-3 py-2"
+            />
+            <input
+              name="externalCode"
+              placeholder="Customer/location code"
+              className="rounded border px-3 py-2"
+            />
+            <select
+              name="type"
+              defaultValue="STORE"
+              className="rounded border px-3 py-2"
+            >
+              {["STORE", "CLINIC", "BRANCH", "RESTAURANT", "WAREHOUSE", "OFFICE", "DATA_CENTER", "OTHER"].map((type) => (
+                <option key={type} value={type}>
+                  {type.replaceAll("_", " ")}
+                </option>
+              ))}
+            </select>
+            <input
+              name="region"
+              placeholder="Region / market"
+              className="rounded border px-3 py-2"
+            />
+            <input
+              name="addressLine1"
+              placeholder="Street address"
+              className="rounded border px-3 py-2"
+            />
+            <input
+              name="city"
+              placeholder="City"
+              className="rounded border px-3 py-2"
+            />
+            <input
+              name="state"
+              placeholder="State"
+              className="rounded border px-3 py-2"
+            />
+            <input
+              name="postalCode"
+              placeholder="Postal code"
+              className="rounded border px-3 py-2"
+            />
+            <textarea
+              name="serviceNotes"
+              placeholder="Service/access notes"
+              className="rounded border px-3 py-2 md:col-span-2"
+            />
+            <button
+              type="submit"
+              className="rounded border px-4 py-2 font-medium md:col-span-2"
+            >
+              Add endpoint
+            </button>
+          </form>
         )}
 
         <div className="mt-8 space-y-3">
-          {organization.sites.length === 0 ? (
+          {organization.endpoints.length === 0 ? (
             <p className="text-sm opacity-70">
-              No sites have been created yet.
+              No customer endpoints have been created yet.
             </p>
           ) : (
-            organization.sites.map((site) => (
+            organization.endpoints.map((endpoint) => (
               <Link
-                key={site.id}
-                href={`/sites/${site.id}`}
+                key={endpoint.id}
+                href={`/endpoints/${endpoint.id}`}
                 className="block rounded border p-4 hover:bg-black/5"
               >
-                <div className="font-semibold">{site.name}</div>
-
-                <div className="mt-2 text-sm opacity-70">
-                  {[site.addressLine1, site.city, site.state, site.postalCode]
-                    .filter(Boolean)
-                    .join(", ")}
+                <div className="flex flex-wrap justify-between gap-2">
+                  <div className="font-semibold">{endpoint.name}</div>
+                  <div className="text-sm">{endpoint.type.replaceAll("_", " ")}</div>
                 </div>
-
-                <div className="mt-2 text-xs opacity-50">
-                  Manage storage locations
+                <div className="mt-2 text-sm opacity-70">
+                  {[endpoint.externalCode, endpoint.addressLine1, endpoint.city, endpoint.state, endpoint.postalCode]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </div>
               </Link>
             ))
           )}
         </div>
       </section>
+
+      {organization.kind === "INTERNAL" && (
+        <section className="mt-14">
+          <h2 className="text-2xl font-semibold">Legacy service-routing sites</h2>
+          <p className="mt-2 text-sm opacity-70">
+            Existing prototype shipment destinations remain available while
+            shipment routing is migrated to the new service-location network.
+          </p>
+
+          {canManageOrganization && (
+            <form
+              action={createSiteForOrganization}
+              className="mt-5 grid gap-3 md:grid-cols-2"
+            >
+              <input name="name" placeholder="Site name" required className="rounded border px-3 py-2" />
+              <input name="addressLine1" placeholder="Street address" className="rounded border px-3 py-2" />
+              <input name="city" placeholder="City" className="rounded border px-3 py-2" />
+              <input name="state" placeholder="State" className="rounded border px-3 py-2" />
+              <input name="postalCode" placeholder="Postal code" className="rounded border px-3 py-2" />
+              <button type="submit" className="rounded border px-4 py-2 font-medium">
+                Add legacy site
+              </button>
+            </form>
+          )}
+
+          <div className="mt-8 space-y-3">
+            {organization.sites.map((site) => (
+              <Link
+                key={site.id}
+                href={`/sites/${site.id}`}
+                className="block rounded border p-4 hover:bg-black/5"
+              >
+                <div className="font-semibold">{site.name}</div>
+                <div className="mt-2 text-sm opacity-70">
+                  {[site.addressLine1, site.city, site.state, site.postalCode]
+                    .filter(Boolean)
+                    .join(", ")}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="mt-14">
         <h2 className="text-2xl font-semibold">Assets</h2>
@@ -182,16 +268,18 @@ export default async function OrganizationPage({ params }: PageProps) {
           />
 
           <select
-            name="siteId"
+            name="endpointId"
             className="rounded border px-3 py-2"
             defaultValue=""
           >
-            <option value="">No site assigned</option>
-            {organization.sites.map((site) => (
-              <option key={site.id} value={site.id}>
-                {site.name}
-              </option>
-            ))}
+            <option value="">No endpoint assigned</option>
+            {organization.endpoints
+              .filter((endpoint) => endpoint.isActive)
+              .map((endpoint) => (
+                <option key={endpoint.id} value={endpoint.id}>
+                  {endpoint.name}
+                </option>
+              ))}
           </select>
 
           <input
@@ -261,7 +349,12 @@ export default async function OrganizationPage({ params }: PageProps) {
                 )}
 
                 <div className="mt-1 text-sm opacity-70">
-                  Site: {asset.site?.name ?? "Unassigned"}
+                  Location:{" "}
+                  {asset.currentStoragePosition
+                    ? `${asset.currentStoragePosition.serviceLocation.name} / ${asset.currentStoragePosition.name}`
+                    : asset.currentEndpoint?.name ??
+                      asset.site?.name ??
+                      "Unassigned"}
                 </div>
               </Link>
             ))
