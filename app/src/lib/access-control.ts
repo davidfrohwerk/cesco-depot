@@ -131,7 +131,6 @@ export const roleDefinitions = [
       "endpoint.manage",
       "endpoint.view",
       "organization.view",
-      "organization.manage",
       "organization.manage_users",
       "service_request.create",
       "service_request.authorize",
