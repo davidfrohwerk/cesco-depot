@@ -21,6 +21,13 @@ export async function createAsset(
   const manufacturer = String(formData.get("manufacturer") ?? "").trim();
   const model = String(formData.get("model") ?? "").trim();
   const serialNumber = String(formData.get("serialNumber") ?? "").trim();
+  const assetClass = String(formData.get("assetClass") ?? "").trim();
+  const compatibilityClass = String(
+    formData.get("compatibilityClass") ?? ""
+  ).trim();
+  const configurationVersion = String(
+    formData.get("configurationVersion") ?? ""
+  ).trim();
   const description = String(formData.get("description") ?? "").trim();
 
   if (!assetTag) {
@@ -56,6 +63,9 @@ export async function createAsset(
         manufacturer: manufacturer || null,
         model: model || null,
         serialNumber: serialNumber || null,
+        assetClass: assetClass || null,
+        compatibilityClass: compatibilityClass || null,
+        configurationVersion: configurationVersion || null,
         description: description || null,
         status: "REGISTERED",
       },
