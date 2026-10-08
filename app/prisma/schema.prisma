@@ -407,8 +407,10 @@ model Endpoint {
 
   organization Organization @relation(fields: [organizationId], references: [id])
   currentAssets Asset[]      @relation("AssetCurrentEndpoint")
-  movementsFrom AssetMovement[] @relation("AssetMovementFromEndpoint")
-  movementsTo   AssetMovement[] @relation("AssetMovementToEndpoint")
+  movementsFrom      AssetMovement[] @relation("AssetMovementFromEndpoint")
+  movementsTo        AssetMovement[] @relation("AssetMovementToEndpoint")
+  originShipments    Shipment[]      @relation("ShipmentOriginEndpoint")
+  destinationShipments Shipment[]    @relation("ShipmentDestinationEndpoint")
 
   @@unique([organizationId, externalCode])
   @@index([organizationId])
@@ -441,8 +443,10 @@ model ServiceLocation {
   updatedAt               DateTime            @updatedAt
 
   managedByOrganization Organization?          @relation("ServiceLocationManager", fields: [managedByOrganizationId], references: [id])
-  positions             StoragePosition[]
-  clientAccess          ServiceLocationClient[]
+  positions              StoragePosition[]
+  clientAccess           ServiceLocationClient[]
+  originShipments        Shipment[] @relation("ShipmentOriginServiceLocation")
+  destinationShipments   Shipment[] @relation("ShipmentDestinationServiceLocation")
 
   @@index([managedByOrganizationId])
   @@index([type])
@@ -486,6 +490,7 @@ model StoragePosition {
   currentAssets         Asset[]          @relation("AssetCurrentStoragePosition")
   movementsFrom         AssetMovement[]  @relation("AssetMovementFromStoragePosition")
   movementsTo           AssetMovement[]  @relation("AssetMovementToStoragePosition")
+  receipts               Receipt[]
 
   @@unique([serviceLocationId, code])
   @@index([serviceLocationId])
@@ -680,12 +685,16 @@ model Authorization {
 }
 
 model Shipment {
-  id                String            @id @default(cuid())
-  serviceRequestId  String
-  direction         ShipmentDirection @default(INBOUND)
-  originSiteId      String?
-  destinationSiteId String
-  carrier           String?
+  id                           String            @id @default(cuid())
+  serviceRequestId             String
+  direction                    ShipmentDirection @default(INBOUND)
+  originSiteId                 String?
+  destinationSiteId            String?
+  originEndpointId             String?
+  destinationEndpointId        String?
+  originServiceLocationId      String?
+  destinationServiceLocationId String?
+  carrier                      String?
   trackingNumber    String?
   status            ShipmentStatus    @default(PREPARING)
   labelReference    String?
@@ -699,10 +708,14 @@ model Shipment {
   createdAt                   DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
-  serviceRequest  ServiceRequest @relation(fields: [serviceRequestId], references: [id])
-  originSite      Site?          @relation("ShipmentOriginSite", fields: [originSiteId], references: [id])
-  destinationSite Site           @relation("ShipmentDestinationSite", fields: [destinationSiteId], references: [id])
-  packages        Package[]
+  serviceRequest             ServiceRequest   @relation(fields: [serviceRequestId], references: [id])
+  originSite                 Site?            @relation("ShipmentOriginSite", fields: [originSiteId], references: [id])
+  destinationSite            Site?            @relation("ShipmentDestinationSite", fields: [destinationSiteId], references: [id])
+  originEndpoint             Endpoint?        @relation("ShipmentOriginEndpoint", fields: [originEndpointId], references: [id])
+  destinationEndpoint        Endpoint?        @relation("ShipmentDestinationEndpoint", fields: [destinationEndpointId], references: [id])
+  originServiceLocation      ServiceLocation? @relation("ShipmentOriginServiceLocation", fields: [originServiceLocationId], references: [id])
+  destinationServiceLocation ServiceLocation? @relation("ShipmentDestinationServiceLocation", fields: [destinationServiceLocationId], references: [id])
+  packages                   Package[]
   workOrders      WorkOrder[]
   evidence        Evidence[]
 
@@ -710,6 +723,10 @@ model Shipment {
   @@index([direction])
   @@index([originSiteId])
   @@index([destinationSiteId])
+  @@index([originEndpointId])
+  @@index([destinationEndpointId])
+  @@index([originServiceLocationId])
+  @@index([destinationServiceLocationId])
   @@index([trackingNumber])
   @@index([status])
 }
@@ -757,6 +774,7 @@ model Receipt {
   packageId         String           @unique
   receivedByUserId  String?
   storageLocationId String?
+  storagePositionId String?
   receivedAt        DateTime         @default(now())
   condition         ReceiptCondition @default(UNKNOWN)
   sealIntact        Boolean?
@@ -766,10 +784,12 @@ model Receipt {
   package         Package          @relation(fields: [packageId], references: [id], onDelete: Cascade)
   receivedByUser  User?            @relation("ReceiptReceivedBy", fields: [receivedByUserId], references: [id])
   storageLocation StorageLocation? @relation(fields: [storageLocationId], references: [id])
+  storagePosition StoragePosition? @relation(fields: [storagePositionId], references: [id])
   evidence        Evidence[]
 
   @@index([receivedByUserId])
   @@index([storageLocationId])
+  @@index([storagePositionId])
 }
 
 model WorkOrder {
