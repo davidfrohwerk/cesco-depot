@@ -454,3 +454,51 @@ Before adding more UI, define and implement the next domain layer around:
 11. Billing objects and authorization flow
 
 This design should be validated against the product test: every major feature must improve visibility, reduce downtime, reduce lifecycle cost, preserve accountability, or recover useful value.
+
+
+## Client organizations, customer sites, and CESCo-managed locations
+
+The system must not assume that every physical location belongs to the client organization that owns the assets.
+
+A typical client may operate on behalf of many downstream customer locations. For example, one CESCo client organization may support hundreds or thousands of geographically distributed stores, clinics, branches, restaurants, or other endpoints. Those locations are operational destinations for client-owned assets even when the downstream site is not itself a CESCo customer account.
+
+The platform should distinguish at least three concepts:
+
+1. **Client organization** - the CESCo customer/account that owns or controls the service relationship, users, authorizations, billing authority, and assets.
+2. **Client/customer endpoint** - a geographically distinct location where the client's equipment may be deployed, installed, removed, staged, or returned. These may be the client's own facilities or downstream customer locations.
+3. **CESCo-managed service/storage location** - a depot, repair bench, warehouse, climate-controlled storage unit, partner facility, or other controlled location where CESCo coordinates custody, storage, readiness, movement, or service.
+
+A CESCo-managed location may contain assets belonging to multiple client organizations. Asset ownership and account scope must remain independent from physical location.
+
+## Distributed service without direct CESCo handling
+
+CESCo does not need to physically touch every asset in order to manage its lifecycle.
+
+The service may coordinate distributed work through field technicians, couriers, storage providers, repair partners, or national field-service networks. A valid service event may therefore be performed by an authorized third party and still become part of the CESCo Depot record when the required provenance is captured.
+
+Examples include:
+
+- receive a package at a remote climate-controlled storage facility
+- place a client-owned cold spare into a specific unit, rack, shelf, bin, or labeled position
+- photograph the package, serial number, shelf position, and seal
+- dispatch a field technician to retrieve a spare and deliver or install it at a customer endpoint
+- remove a failed unit and route it to repair, storage, decommissioning, donation, or recycling
+- restock a repaired or returned asset without routing it through a CESCo-owned depot
+
+The customer-facing value is orchestration plus trustworthy state: where the asset is, who controls it, what condition it is in, whether it is ready, what happened to it, and what should happen next.
+
+## Client-controlled operational roles
+
+Client organizations may have administrators, helpdesk users, dispatchers, field technicians, billing users, auditors, and other operational roles.
+
+Client administrators should control routine user membership, role assignment, and organization-scoped permissions within CESCo-defined safety boundaries. Financial authority must not be implied merely by operational access.
+
+Examples:
+
+- a helpdesk user may open a service request or requisition a cold spare without authority to approve spending
+- a dispatcher may create or coordinate shipment and redeployment activity without authority to change billing terms
+- a field technician may record custody, installation, removal, condition, and evidence for assigned work
+- a billing user may view invoices and approve defined financial actions without operational repair permissions
+- a client administrator may grant and revoke these organization-scoped roles
+
+CESCo retains exclusive control of internal platform/system roles, CESCo operational roles, security policy, and privileged escalation.
