@@ -17,6 +17,8 @@ export const permissionDefinitions = [
   ["spare_requisition.view", "View strategic spare requisitions"],
   ["spare_requisition.create", "Request strategic spare dispatch"],
   ["spare_requisition.manage", "Reserve and manage strategic spare fulfillment"],
+  ["dispatch.view", "View distributed dispatch assignments"],
+  ["dispatch.manage", "Create and progress distributed dispatch assignments"],
   ["work_order.view", "View work orders"],
   ["work_order.manage", "Manage work-order execution"],
   ["inventory.receive", "Receive packages and inventory"],
@@ -42,6 +44,8 @@ export const roleDefinitions = [
     name: "CESCo Operations Administrator",
     description: "Manages CESCo operational records, users, and workflows.",
     permissions: [
+      "dispatch.manage",
+      "dispatch.view",
       "spare_requisition.manage",
       "spare_requisition.view",
       "service_location.manage",
@@ -73,6 +77,8 @@ export const roleDefinitions = [
     name: "Depot Manager",
     description: "Manages depot execution, inventory, and shipments.",
     permissions: [
+      "dispatch.manage",
+      "dispatch.view",
       "spare_requisition.manage",
       "spare_requisition.view",
       "service_location.manage",
@@ -118,6 +124,8 @@ export const roleDefinitions = [
     name: "Receiving / Logistics",
     description: "Receives packages, manages storage, and records shipments.",
     permissions: [
+      "dispatch.manage",
+      "dispatch.view",
       "spare_requisition.manage",
       "spare_requisition.view",
       "service_location.manage",
@@ -142,6 +150,7 @@ export const roleDefinitions = [
     name: "Client Administrator",
     description: "Manages client organization users and operational visibility.",
     permissions: [
+      "dispatch.view",
       "spare_requisition.create",
       "spare_requisition.view",
       "endpoint.manage",
@@ -168,6 +177,7 @@ export const roleDefinitions = [
     description:
       "Opens service and spare requests and follows operational status without financial authority.",
     permissions: [
+      "dispatch.view",
       "spare_requisition.create",
       "spare_requisition.view",
       "endpoint.view",
@@ -184,6 +194,7 @@ export const roleDefinitions = [
     description:
       "Records assigned field movement, condition, custody, delivery, and evidence without financial authority.",
     permissions: [
+      "dispatch.view",
       "spare_requisition.view",
       "endpoint.view",
       "organization.view",
@@ -200,6 +211,7 @@ export const roleDefinitions = [
     name: "Client Dispatcher",
     description: "Creates and follows operational service activity.",
     permissions: [
+      "dispatch.view",
       "spare_requisition.create",
       "spare_requisition.view",
       "endpoint.view",
@@ -232,6 +244,7 @@ export const roleDefinitions = [
     name: "Client Auditor",
     description: "Read-only access to lifecycle and provenance records.",
     permissions: [
+      "dispatch.view",
       "spare_requisition.view",
       "endpoint.view",
       "organization.view",
