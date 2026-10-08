@@ -312,6 +312,23 @@ export default async function OrganizationPage({ params }: PageProps) {
             placeholder="Serial number"
             className="rounded border px-3 py-2"
           />
+          <input
+            name="assetClass"
+            placeholder="Asset class (POS terminal, printer, switch...)"
+            className="rounded border px-3 py-2"
+          />
+
+          <input
+            name="compatibilityClass"
+            placeholder="Compatibility class"
+            className="rounded border px-3 py-2"
+          />
+
+          <input
+            name="configurationVersion"
+            placeholder="Configuration / image version"
+            className="rounded border px-3 py-2"
+          />
 
           <input
             name="description"
