@@ -83,3 +83,35 @@ export async function requireOrganizationPagePermission(
 
   return user;
 }
+
+
+export function userHasInternalPermission(
+  user: Awaited<ReturnType<typeof requireCurrentUser>>,
+  permissionKey: string
+) {
+  return userHasCrossOrganizationPermission(user, permissionKey);
+}
+
+export async function requireInternalPermission(
+  permissionKey: string
+) {
+  const user = await requireCurrentUser();
+
+  if (!userHasInternalPermission(user, permissionKey)) {
+    throw new Error("Insufficient internal access for this operation.");
+  }
+
+  return user;
+}
+
+export async function requireInternalPagePermission(
+  permissionKey: string
+) {
+  const user = await requireCurrentUser();
+
+  if (!userHasInternalPermission(user, permissionKey)) {
+    notFound();
+  }
+
+  return user;
+}
