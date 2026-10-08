@@ -42,7 +42,7 @@ export async function createServiceLocation(formData: FormData) {
     (membership) => membership.organization.kind === "INTERNAL"
   );
 
-  const location = await prisma.serviceLocation.create({
+  await prisma.serviceLocation.create({
     data: {
       managedByOrganizationId: internalMembership?.organizationId ?? null,
       name,
@@ -64,7 +64,6 @@ export async function createServiceLocation(formData: FormData) {
   });
 
   revalidatePath("/service-locations");
-  return location.id;
 }
 
 export async function createStoragePosition(
