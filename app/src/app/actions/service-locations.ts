@@ -6,6 +6,7 @@ import {
 } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 import {
+  CustodyType,
   ServiceLocationType,
   StorageLocationType,
 } from "../../../generated/prisma/client";
@@ -26,6 +27,12 @@ export async function createServiceLocation(formData: FormData) {
   const accessInstructions = String(formData.get("accessInstructions") ?? "").trim();
   const climateControlled = formData.get("climateControlled") === "on";
   const secureStorage = formData.get("secureStorage") === "on";
+  const custodyType = String(
+    formData.get("custodyType") ?? "CESCO"
+  ).trim() as CustodyType;
+  const custodianLabel = String(
+    formData.get("custodianLabel") ?? ""
+  ).trim();
 
   if (!name) {
     throw new Error("Service location name is required.");
@@ -51,6 +58,8 @@ export async function createServiceLocation(formData: FormData) {
       accessInstructions: accessInstructions || null,
       climateControlled,
       secureStorage,
+      custodyType,
+      custodianLabel: custodianLabel || null,
     },
   });
 
