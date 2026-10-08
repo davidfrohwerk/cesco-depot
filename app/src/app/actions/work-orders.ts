@@ -886,18 +886,18 @@ export async function createOutboundShipment(
   const trackingNumber = String(
     formData.get("trackingNumber") ?? ""
   ).trim();
-  const destinationSiteId = String(
-    formData.get("destinationSiteId") ?? ""
+  const destinationEndpointId = String(
+    formData.get("destinationEndpointId") ?? ""
   ).trim();
 
   if (
     !actorLabel ||
     !carrier ||
     !trackingNumber ||
-    !destinationSiteId
+    !destinationEndpointId
   ) {
     throw new Error(
-      "Operator, carrier, tracking number, and destination are required."
+      "Operator, carrier, tracking number, and destination endpoint are required."
     );
   }
 
@@ -933,30 +933,41 @@ export async function createOutboundShipment(
       );
     }
 
-    const destination = await tx.site.findUnique({
-      where: { id: destinationSiteId },
+    const destination = await tx.endpoint.findUnique({
+      where: { id: destinationEndpointId },
     });
 
-    if (!destination) {
-      throw new Error("Destination site not found.");
+    if (!destination || !destination.isActive) {
+      throw new Error("Destination endpoint not found or inactive.");
     }
 
-    if (
-      workOrder.asset.ownerOrganizationId &&
-      destination.organizationId !==
-        workOrder.asset.ownerOrganizationId
-    ) {
+    const ownerOrganizationId =
+      workOrder.asset.ownerOrganizationId ??
+      workOrder.asset.organizationId;
+
+    if (destination.organizationId !== ownerOrganizationId) {
       throw new Error(
-        "Outbound destination must belong to the asset owner organization."
+        "Outbound destination must belong to the asset owner/account organization."
       );
     }
+
+    const originServiceLocationId =
+      workOrder.asset.currentStoragePositionId
+        ? (
+            await tx.storagePosition.findUnique({
+              where: { id: workOrder.asset.currentStoragePositionId },
+              select: { serviceLocationId: true },
+            })
+          )?.serviceLocationId ?? null
+        : null;
 
     const shipment = await tx.shipment.create({
       data: {
         serviceRequestId: workOrder.serviceRequest.id,
         direction: "OUTBOUND",
-        originSiteId: workOrder.asset.siteId,
-        destinationSiteId,
+        originEndpointId: workOrder.asset.currentEndpointId,
+        originServiceLocationId,
+        destinationEndpointId,
         carrier,
         trackingNumber,
         status: "TRACKING_ENTERED",
@@ -1010,11 +1021,11 @@ export async function markOutboundShipmentAccepted(
   const actor = await actorForShipment(shipmentId);
   const actorLabel = actor.label;
 
-
   const result = await prisma.$transaction(async (tx) => {
     const shipment = await tx.shipment.findUnique({
       where: { id: shipmentId },
       include: {
+        destinationEndpoint: true,
         destinationSite: true,
         serviceRequest: {
           include: {
@@ -1064,6 +1075,11 @@ export async function markOutboundShipmentAccepted(
     });
 
     const now = new Date();
+    const carrierLabel = shipment.carrier ?? "Outbound carrier";
+    const destinationLabel =
+      shipment.destinationEndpoint?.name ??
+      shipment.destinationSite?.name ??
+      "customer destination";
 
     await tx.shipment.update({
       where: { id: shipment.id },
@@ -1084,14 +1100,35 @@ export async function markOutboundShipmentAccepted(
       data: { status: "OUTBOUND" },
     });
 
+    await tx.assetMovement.create({
+      data: {
+        assetId: asset.id,
+        actorUserId: actor.user.id,
+        fromEndpointId: asset.currentEndpointId,
+        fromStoragePositionId: asset.currentStoragePositionId,
+        toEndpointId: null,
+        toStoragePositionId: null,
+        fromCustodyType: asset.currentCustodyType,
+        toCustodyType: "CARRIER",
+        fromCustodianLabel: asset.currentCustodianLabel,
+        toCustodianLabel: carrierLabel,
+        reason: shipment.trackingNumber
+          ? `Outbound carrier acceptance to ${destinationLabel}; tracking ${shipment.trackingNumber}.`
+          : `Outbound carrier acceptance to ${destinationLabel}.`,
+        occurredAt: now,
+      },
+    });
+
     await tx.asset.update({
       where: { id: asset.id },
       data: {
         status: "DISPATCHED",
         currentCustodyType: "CARRIER",
-        currentCustodianLabel:
-          shipment.carrier ?? "Outbound carrier",
+        currentCustodianLabel: carrierLabel,
+        currentEndpointId: null,
+        currentStoragePositionId: null,
         currentStorageLocationId: null,
+        siteId: null,
       },
     });
 
@@ -1103,7 +1140,7 @@ export async function markOutboundShipmentAccepted(
         toStatus: "OUTBOUND",
         actorUserId: actor.user.id,
         actorLabel,
-        notes: `${shipment.carrier ?? "Carrier"} accepted outbound shipment ${shipment.trackingNumber ?? ""}.`,
+        notes: `${shipment.carrier ?? "Carrier"} accepted outbound shipment ${shipment.trackingNumber ?? ""}; destination ${destinationLabel}.`,
       },
     });
 
@@ -1114,7 +1151,7 @@ export async function markOutboundShipmentAccepted(
         fromStatus: asset.status,
         toStatus: "DISPATCHED",
         actor: actorLabel,
-        notes: `Outbound to ${shipment.destinationSite.name} via ${shipment.carrier ?? "carrier"}; tracking ${shipment.trackingNumber ?? "not recorded"}.`,
+        notes: `Outbound to ${destinationLabel} via ${shipment.carrier ?? "carrier"}; tracking ${shipment.trackingNumber ?? "not recorded"}.`,
       },
     });
 
@@ -1140,11 +1177,11 @@ export async function confirmOutboundDelivery(
   const actorLabel = actor.label;
   const notes = String(formData.get("notes") ?? "").trim();
 
-
   const result = await prisma.$transaction(async (tx) => {
     const shipment = await tx.shipment.findUnique({
       where: { id: shipmentId },
       include: {
+        destinationEndpoint: true,
         destinationSite: true,
         serviceRequest: {
           include: {
@@ -1182,6 +1219,10 @@ export async function confirmOutboundDelivery(
     });
 
     const now = new Date();
+    const destinationLabel =
+      shipment.destinationEndpoint?.name ??
+      shipment.destinationSite?.name ??
+      "customer destination";
 
     await tx.shipment.update({
       where: { id: shipment.id },
@@ -1210,15 +1251,38 @@ export async function confirmOutboundDelivery(
       data: { status: "COMPLETED" },
     });
 
+    await tx.assetMovement.create({
+      data: {
+        assetId: asset.id,
+        actorUserId: actor.user.id,
+        fromEndpointId: asset.currentEndpointId,
+        fromStoragePositionId: asset.currentStoragePositionId,
+        toEndpointId: shipment.destinationEndpointId,
+        toStoragePositionId: null,
+        fromCustodyType: asset.currentCustodyType,
+        toCustodyType: "CUSTOMER",
+        fromCustodianLabel: asset.currentCustodianLabel,
+        toCustodianLabel: destinationLabel,
+        reason: [
+          `Carrier delivery confirmed at ${destinationLabel}.`,
+          notes || null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+        occurredAt: now,
+      },
+    });
+
     await tx.asset.update({
       where: { id: asset.id },
       data: {
         status: "DELIVERED",
         currentCustodyType: "CUSTOMER",
-        currentCustodianLabel:
-          asset.ownerOrganization?.name ?? "Customer",
-        siteId: shipment.destinationSiteId,
+        currentCustodianLabel: destinationLabel,
+        currentEndpointId: shipment.destinationEndpointId,
+        currentStoragePositionId: null,
         currentStorageLocationId: null,
+        siteId: shipment.destinationSiteId,
       },
     });
 
@@ -1231,7 +1295,7 @@ export async function confirmOutboundDelivery(
         actorUserId: actor.user.id,
         actorLabel,
         notes: [
-          `Delivered to ${shipment.destinationSite.name}.`,
+          `Delivered to ${destinationLabel}.`,
           notes || null,
         ]
           .filter(Boolean)
@@ -1247,7 +1311,7 @@ export async function confirmOutboundDelivery(
         toStatus: "DELIVERED",
         actor: actorLabel,
         notes: [
-          `Customer custody resumed at ${shipment.destinationSite.name}.`,
+          `Customer custody resumed at ${destinationLabel}.`,
           notes || null,
         ]
           .filter(Boolean)
@@ -1269,12 +1333,14 @@ export async function confirmOutboundDelivery(
   revalidatePath(`/assets/${result.assetId}`);
 }
 
-
 export async function acknowledgeCustomerReceipt(
   shipmentId: string,
   formData: FormData
 ) {
-  const actor = await actorForShipment(shipmentId, "shipment.acknowledge_receipt");
+  const actor = await actorForShipment(
+    shipmentId,
+    "shipment.acknowledge_receipt"
+  );
   const recipientLabel = String(
     formData.get("recipientLabel") ?? ""
   ).trim();
@@ -1283,7 +1349,6 @@ export async function acknowledgeCustomerReceipt(
   if (!recipientLabel) {
     throw new Error("Customer recipient name or label is required.");
   }
-
 
   const result = await prisma.$transaction(async (tx) => {
     const shipment = await tx.shipment.findUnique({
@@ -1295,6 +1360,7 @@ export async function acknowledgeCustomerReceipt(
             workOrders: true,
           },
         },
+        destinationEndpoint: true,
         destinationSite: true,
       },
     });
@@ -1332,6 +1398,10 @@ export async function acknowledgeCustomerReceipt(
     }
 
     const acknowledgedAt = new Date();
+    const destinationLabel =
+      shipment.destinationEndpoint?.name ??
+      shipment.destinationSite?.name ??
+      "customer destination";
 
     await tx.shipment.update({
       where: { id: shipment.id },
@@ -1351,7 +1421,7 @@ export async function acknowledgeCustomerReceipt(
         actorUserId: actor.user.id,
         actorLabel: actor.label,
         notes: [
-          `Customer receipt acknowledged by ${recipientLabel} at ${shipment.destinationSite.name}.`,
+          `Customer receipt acknowledged by ${recipientLabel} at ${destinationLabel}.`,
           notes || null,
         ]
           .filter(Boolean)
@@ -1367,7 +1437,7 @@ export async function acknowledgeCustomerReceipt(
         toStatus: asset.status,
         actor: actor.label,
         notes: [
-          `Receipt acknowledged at ${shipment.destinationSite.name}.`,
+          `Receipt acknowledged at ${destinationLabel}.`,
           notes || null,
         ]
           .filter(Boolean)
@@ -1392,3 +1462,4 @@ export async function acknowledgeCustomerReceipt(
     revalidatePath(`/assets/${result.assetId}`);
   }
 }
+
