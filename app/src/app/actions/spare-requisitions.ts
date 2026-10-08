@@ -37,11 +37,12 @@ export async function createSpareRequisition(
   const priority = String(
     formData.get("priority") ?? ""
   ).trim();
-  const returnExpected =
-    formData.get("returnExpected") === "on";
   const returnAssetId = String(
     formData.get("returnAssetId") ?? ""
   ).trim();
+  const returnExpected =
+    formData.get("returnExpected") === "on" ||
+    Boolean(returnAssetId);
   const returnInstructions = String(
     formData.get("returnInstructions") ?? ""
   ).trim();
@@ -192,6 +193,26 @@ export async function reserveSpareForRequisition(
     ) {
       throw new Error(
         "Candidate must be a ready or stocked asset belonging to this organization and stored at a managed position."
+      );
+    }
+
+    if (
+      requisition.manufacturer &&
+      asset.manufacturer?.trim().toLowerCase() !==
+        requisition.manufacturer.trim().toLowerCase()
+    ) {
+      throw new Error(
+        "Candidate spare does not match the requested manufacturer."
+      );
+    }
+
+    if (
+      requisition.model &&
+      asset.model?.trim().toLowerCase() !==
+        requisition.model.trim().toLowerCase()
+    ) {
+      throw new Error(
+        "Candidate spare does not match the requested model."
       );
     }
 
