@@ -199,13 +199,13 @@ export async function createInboundShipment(
   const trackingNumber = String(
     formData.get("trackingNumber") ?? ""
   ).trim();
-  const destinationSiteId = String(
-    formData.get("destinationSiteId") ?? ""
+  const destinationServiceLocationId = String(
+    formData.get("destinationServiceLocationId") ?? ""
   ).trim();
 
-  if (!carrier || !trackingNumber || !destinationSiteId) {
+  if (!carrier || !trackingNumber || !destinationServiceLocationId) {
     throw new Error(
-      "Carrier, tracking number, and destination are required."
+      "Carrier, tracking number, and service destination are required."
     );
   }
 
@@ -213,6 +213,7 @@ export async function createInboundShipment(
     const request = await tx.serviceRequest.findUnique({
       where: { id: serviceRequestId },
       include: {
+        asset: true,
         authorizations: {
           where: { status: "APPROVED" },
         },
@@ -229,18 +230,40 @@ export async function createInboundShipment(
       );
     }
 
-    const destination = await tx.site.findUnique({
-      where: { id: destinationSiteId },
+    const destination = await tx.serviceLocation.findUnique({
+      where: { id: destinationServiceLocationId },
+      include: {
+        clientAccess: {
+          where: { organizationId: request.organizationId },
+          select: { organizationId: true },
+        },
+      },
     });
 
-    if (!destination) {
-      throw new Error("Destination site not found.");
+    if (
+      !destination ||
+      !destination.isActive ||
+      destination.clientAccess.length === 0
+    ) {
+      throw new Error(
+        "Selected service location is not available to this organization."
+      );
     }
 
     await tx.shipment.create({
       data: {
         serviceRequestId,
-        destinationSiteId,
+        direction: "INBOUND",
+        originEndpointId: request.asset?.currentEndpointId ?? null,
+        originServiceLocationId: request.asset?.currentStoragePositionId
+          ? (
+              await tx.storagePosition.findUnique({
+                where: { id: request.asset.currentStoragePositionId },
+                select: { serviceLocationId: true },
+              })
+            )?.serviceLocationId ?? null
+          : null,
+        destinationServiceLocationId,
         carrier,
         trackingNumber,
         status: "TRACKING_ENTERED",
@@ -297,6 +320,8 @@ export async function markShipmentAccepted(shipmentId: string) {
     const shipment = await tx.shipment.findUnique({
       where: { id: shipmentId },
       include: {
+        destinationServiceLocation: true,
+        destinationSite: true,
         serviceRequest: {
           include: {
             asset: true,
@@ -340,6 +365,7 @@ export async function markShipmentAccepted(shipmentId: string) {
     }
 
     const now = new Date();
+    const carrierLabel = shipment.carrier ?? "Inbound carrier";
 
     await tx.shipment.update({
       where: { id: shipment.id },
@@ -360,13 +386,35 @@ export async function markShipmentAccepted(shipmentId: string) {
       data: { status: "IN_TRANSIT" },
     });
 
+    await tx.assetMovement.create({
+      data: {
+        assetId: asset.id,
+        actorUserId: user.id,
+        fromEndpointId: asset.currentEndpointId,
+        fromStoragePositionId: asset.currentStoragePositionId,
+        toEndpointId: null,
+        toStoragePositionId: null,
+        fromCustodyType: asset.currentCustodyType,
+        toCustodyType: "CARRIER",
+        fromCustodianLabel: asset.currentCustodianLabel,
+        toCustodianLabel: carrierLabel,
+        reason: shipment.trackingNumber
+          ? `Inbound carrier acceptance; tracking ${shipment.trackingNumber}.`
+          : "Inbound carrier acceptance.",
+        occurredAt: now,
+      },
+    });
+
     await tx.asset.update({
       where: { id: asset.id },
       data: {
         status: "IN_TRANSIT_TO_DEPOT",
+        currentEndpointId: null,
+        currentStoragePositionId: null,
+        currentStorageLocationId: null,
+        siteId: null,
         currentCustodyType: "CARRIER",
-        currentCustodianLabel:
-          shipment.carrier ?? "Inbound carrier",
+        currentCustodianLabel: carrierLabel,
       },
     });
 
@@ -398,6 +446,11 @@ export async function markShipmentAccepted(shipmentId: string) {
       },
     });
 
+    const destinationLabel =
+      shipment.destinationServiceLocation?.name ??
+      shipment.destinationSite?.name ??
+      "service destination";
+
     await tx.workOrderEvent.create({
       data: {
         workOrderId: workOrder.id,
@@ -408,8 +461,8 @@ export async function markShipmentAccepted(shipmentId: string) {
         actorLabel: userLabel,
         systemGenerated: false,
         notes: shipment.trackingNumber
-          ? `Work order opened when carrier acceptance was confirmed for tracking ${shipment.trackingNumber}.`
-          : "Work order opened when carrier acceptance was confirmed.",
+          ? `Work order opened when carrier acceptance was confirmed for tracking ${shipment.trackingNumber}; destination ${destinationLabel}.`
+          : `Work order opened when carrier acceptance was confirmed; destination ${destinationLabel}.`,
       },
     });
 
@@ -427,7 +480,6 @@ export async function markShipmentAccepted(shipmentId: string) {
     revalidatePath(`/assets/${result.assetId}`);
   }
 }
-
 
 export async function receiveInboundPackage(
   packageId: string,
@@ -455,8 +507,8 @@ export async function receiveInboundPackage(
     packageForAccess.shipment.serviceRequest.organizationId
   );
   const userLabel = currentUserLabel(user);
-  const storageLocationId = String(
-    formData.get("storageLocationId") ?? ""
+  const storagePositionId = String(
+    formData.get("storagePositionId") ?? ""
   ).trim();
 
   const condition = String(
@@ -469,8 +521,8 @@ export async function receiveInboundPackage(
 
   const notes = String(formData.get("notes") ?? "").trim();
 
-  if (!storageLocationId) {
-    throw new Error("A receiving storage location is required.");
+  if (!storagePositionId) {
+    throw new Error("A receiving storage position is required.");
   }
 
   const result = await prisma.$transaction(async (tx) => {
@@ -481,6 +533,7 @@ export async function receiveInboundPackage(
         contents: true,
         shipment: {
           include: {
+            destinationServiceLocation: true,
             destinationSite: true,
             serviceRequest: {
               include: {
@@ -512,16 +565,55 @@ export async function receiveInboundPackage(
       );
     }
 
-    const storageLocation = await tx.storageLocation.findUnique({
-      where: { id: storageLocationId },
+    if (!pkg.shipment.destinationServiceLocationId) {
+      throw new Error(
+        "This shipment uses the legacy site-routing model and cannot be received through the new service-location workflow."
+      );
+    }
+
+    const storagePosition = await tx.storagePosition.findUnique({
+      where: { id: storagePositionId },
+      include: {
+        serviceLocation: {
+          include: {
+            clientAccess: {
+              where: {
+                organizationId: pkg.shipment.serviceRequest.organizationId,
+              },
+              select: { organizationId: true },
+            },
+          },
+        },
+      },
     });
 
     if (
-      !storageLocation ||
-      storageLocation.siteId !== pkg.shipment.destinationSiteId
+      !storagePosition ||
+      !storagePosition.isActive ||
+      storagePosition.serviceLocationId !==
+        pkg.shipment.destinationServiceLocationId
     ) {
       throw new Error(
-        "Receiving location must belong to the shipment destination site."
+        "Receiving position must belong to the shipment destination service location."
+      );
+    }
+
+    if (
+      storagePosition.dedicatedOrganizationId &&
+      storagePosition.dedicatedOrganizationId !==
+        pkg.shipment.serviceRequest.organizationId
+    ) {
+      throw new Error(
+        "Receiving position is dedicated to another client organization."
+      );
+    }
+
+    if (
+      !storagePosition.dedicatedOrganizationId &&
+      storagePosition.serviceLocation.clientAccess.length === 0
+    ) {
+      throw new Error(
+        "Shipment organization is not authorized to use this shared service location."
       );
     }
 
@@ -546,12 +638,17 @@ export async function receiveInboundPackage(
     }
 
     const now = new Date();
+    const serviceLocation = storagePosition.serviceLocation;
+    const custodianLabel =
+      serviceLocation.custodianLabel ??
+      serviceLocation.operatorLabel ??
+      serviceLocation.name;
 
     await tx.receipt.create({
       data: {
         packageId: pkg.id,
         receivedByUserId: user.id,
-        storageLocationId,
+        storagePositionId,
         receivedAt: now,
         condition,
         sealIntact:
@@ -614,23 +711,42 @@ export async function receiveInboundPackage(
             actorLabel: userLabel,
             systemGenerated: false,
             notes: [
-              `Package received at ${pkg.shipment.destinationSite.name}.`,
+              `Package received at ${serviceLocation.name}.`,
               `Condition: ${condition}.`,
-              `Location: ${storageLocation.name}.`,
+              `Position: ${storagePosition.name}.`,
             ].join(" "),
           },
         });
       }
     }
 
+    await tx.assetMovement.create({
+      data: {
+        assetId: asset.id,
+        actorUserId: user.id,
+        fromEndpointId: asset.currentEndpointId,
+        fromStoragePositionId: asset.currentStoragePositionId,
+        toEndpointId: null,
+        toStoragePositionId: storagePosition.id,
+        fromCustodyType: asset.currentCustodyType,
+        toCustodyType: serviceLocation.custodyType,
+        fromCustodianLabel: asset.currentCustodianLabel,
+        toCustodianLabel: custodianLabel,
+        reason: `Package received at ${serviceLocation.name}; position ${storagePosition.name}.`,
+        occurredAt: now,
+      },
+    });
+
     await tx.asset.update({
       where: { id: asset.id },
       data: {
         status: "RECEIVED",
-        siteId: pkg.shipment.destinationSiteId,
-        currentStorageLocationId: storageLocationId,
-        currentCustodyType: "CESCO",
-        currentCustodianLabel: "CESCo",
+        currentEndpointId: null,
+        currentStoragePositionId: storagePosition.id,
+        currentStorageLocationId: null,
+        siteId: null,
+        currentCustodyType: serviceLocation.custodyType,
+        currentCustodianLabel: custodianLabel,
       },
     });
 
@@ -642,9 +758,9 @@ export async function receiveInboundPackage(
         toStatus: "RECEIVED",
         actor: userLabel,
         notes: [
-          `Package received at ${pkg.shipment.destinationSite.name}.`,
+          `Package received at ${serviceLocation.name}.`,
           `Condition: ${condition}.`,
-          `Location: ${storageLocation.name}.`,
+          `Position: ${storagePosition.name}.`,
           notes ? `Receiving note: ${notes}` : null,
         ]
           .filter(Boolean)
@@ -666,3 +782,4 @@ export async function receiveInboundPackage(
     revalidatePath(`/assets/${result.assetId}`);
   }
 }
+
