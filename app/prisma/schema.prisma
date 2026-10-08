@@ -426,12 +426,15 @@ model Endpoint {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id])
-  currentAssets Asset[]      @relation("AssetCurrentEndpoint")
-  movementsFrom      AssetMovement[] @relation("AssetMovementFromEndpoint")
-  movementsTo        AssetMovement[] @relation("AssetMovementToEndpoint")
-  originShipments    Shipment[]      @relation("ShipmentOriginEndpoint")
-  destinationShipments Shipment[]    @relation("ShipmentDestinationEndpoint")
+  organization          Organization         @relation(fields: [organizationId], references: [id])
+  currentAssets         Asset[]              @relation("AssetCurrentEndpoint")
+  movementsFrom         AssetMovement[]      @relation("AssetMovementFromEndpoint")
+  movementsTo           AssetMovement[]      @relation("AssetMovementToEndpoint")
+  originShipments       Shipment[]           @relation("ShipmentOriginEndpoint")
+  destinationShipments  Shipment[]           @relation("ShipmentDestinationEndpoint")
+  spareRequisitions     SpareRequisition[]
+  dispatchOrigins       DispatchAssignment[] @relation("DispatchOriginEndpoint")
+  dispatchDestinations  DispatchAssignment[] @relation("DispatchDestinationEndpoint")
 
   @@unique([organizationId, externalCode])
   @@index([organizationId])
