@@ -52,6 +52,12 @@ export default async function AssetPage({ params }: PageProps) {
       ownerOrganization: true,
       site: true,
       currentStorageLocation: true,
+      currentEndpoint: true,
+      currentStoragePosition: {
+        include: {
+          serviceLocation: true,
+        },
+      },
       events: {
         orderBy: { createdAt: "desc" },
       },
@@ -167,9 +173,12 @@ export default async function AssetPage({ params }: PageProps) {
             <div>
               <dt className="opacity-60">Current location</dt>
               <dd>
-                {asset.currentStorageLocation?.name ??
-                  asset.site?.name ??
-                  "Not yet recorded"}
+                {asset.currentStoragePosition
+                  ? `${asset.currentStoragePosition.serviceLocation.name} / ${asset.currentStoragePosition.name}`
+                  : asset.currentEndpoint?.name ??
+                    asset.currentStorageLocation?.name ??
+                    asset.site?.name ??
+                    "Not yet recorded"}
               </dd>
             </div>
 
