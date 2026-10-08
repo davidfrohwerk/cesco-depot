@@ -8,6 +8,7 @@ import {
   completeDispatch,
   createReverseDispatch,
 } from "@/app/actions/dispatch-assignments";
+import { updateAssetReadiness } from "@/app/actions/asset-readiness";
 import {
   requireOrganizationPagePermission,
   userHasOrganizationPermission,
@@ -124,6 +125,11 @@ export default async function AssetPage({ params }: PageProps) {
     notFound();
   }
 
+  const canManageAsset = userHasOrganizationPermission(
+    currentUser,
+    "asset.manage",
+    asset.organizationId
+  );
   const canMoveAsset = userHasOrganizationPermission(
     currentUser,
     "asset.move",
@@ -278,6 +284,34 @@ export default async function AssetPage({ params }: PageProps) {
             </div>
 
             <div>
+              <dt className="opacity-60">Asset class</dt>
+              <dd>{asset.assetClass ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="opacity-60">Compatibility class</dt>
+              <dd>{asset.compatibilityClass ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="opacity-60">Configuration</dt>
+              <dd>{asset.configurationVersion ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="opacity-60">Last readiness verification</dt>
+              <dd>
+                {asset.lastReadinessVerifiedAt
+                  ? asset.lastReadinessVerifiedAt.toLocaleString()
+                  : "Not verified"}
+              </dd>
+            </div>
+            <div>
+              <dt className="opacity-60">Next readiness due</dt>
+              <dd>
+                {asset.nextReadinessDueAt
+                  ? asset.nextReadinessDueAt.toLocaleString()
+                  : "Not scheduled"}
+              </dd>
+            </div>
+            <div>
               <dt className="opacity-60">Description</dt>
               <dd>{asset.description ?? "—"}</dd>
             </div>
@@ -303,6 +337,67 @@ export default async function AssetPage({ params }: PageProps) {
           </dl>
         </div>
       </section>
+
+      {canManageAsset && (
+        <section className="mt-10 rounded border p-5">
+          <h2 className="text-xl font-semibold">
+            Strategic spare readiness
+          </h2>
+          <p className="mt-2 text-sm opacity-70">
+            Record the compatibility, approved configuration, and verification
+            dates CESCo uses when selecting a known-good spare.
+          </p>
+          <form
+            action={updateAssetReadiness.bind(null, asset.id)}
+            className="mt-5 grid gap-3 md:grid-cols-2"
+          >
+            <input
+              name="assetClass"
+              defaultValue={asset.assetClass ?? ""}
+              placeholder="Asset class"
+              className="rounded border px-3 py-2"
+            />
+            <input
+              name="compatibilityClass"
+              defaultValue={asset.compatibilityClass ?? ""}
+              placeholder="Compatibility class"
+              className="rounded border px-3 py-2"
+            />
+            <input
+              name="configurationVersion"
+              defaultValue={asset.configurationVersion ?? ""}
+              placeholder="Configuration / image version"
+              className="rounded border px-3 py-2"
+            />
+            <input
+              name="lastReadinessVerifiedAt"
+              type="datetime-local"
+              className="rounded border px-3 py-2"
+            />
+            <input
+              name="nextReadinessDueAt"
+              type="datetime-local"
+              className="rounded border px-3 py-2"
+            />
+            <label className="flex items-center gap-2 text-sm">
+              <input name="markReady" type="checkbox" />
+              Mark asset READY after this verification
+            </label>
+            <textarea
+              name="readinessNotes"
+              defaultValue={asset.readinessNotes ?? ""}
+              placeholder="Test results, approved image, accessories, preparation notes..."
+              className="rounded border px-3 py-2 md:col-span-2"
+            />
+            <button
+              type="submit"
+              className="rounded border px-4 py-2 font-medium md:col-span-2"
+            >
+              Update readiness record
+            </button>
+          </form>
+        </section>
+      )}
 
       {canMoveAsset && endpoints.length > 0 && (
         <section className="mt-10 rounded border p-5">
