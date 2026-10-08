@@ -1170,3 +1170,99 @@ Examples:
 Client administrators manage routine assignment of client roles. CESCo defines the permission vocabulary and prevents assignment of internal/system privileges.
 
 This model preserves the original product promise while allowing CESCo Depot to operate as a distributed control layer over client-owned assets, third-party storage, field technicians, carriers, repair partners, and downstream customer locations.
+
+
+---
+
+# 21. Bidirectional orchestration and reverse logistics
+
+CESCo Depot is the operational coordination layer between client organizations, downstream endpoints, service locations, storage positions, carriers, field technicians, repair resources, and disposition partners.
+
+The same routing model must work in either direction.
+
+Forward example:
+
+ACME Store 123
+-> carrier
+-> CESCo/partner service location
+-> receiving position
+-> Unit 214 / Rack A / Shelf 3
+-> dispatch
+-> carrier or field technician
+-> ACME Store 124
+
+Reverse example:
+
+ACME Store 124
+-> field technician or carrier
+-> CESCo/partner service location
+-> receiving position
+-> inspection / repair / restock / disposition
+-> storage position
+-> later redeployment
+-> ACME Store 123 or another endpoint
+
+The important invariant is that the system does not encode "inbound" and "outbound" as ownership changes. They are routing directions relative to an operational step. Ownership remains independent.
+
+## Middleware responsibility
+
+CESCo Depot should answer:
+
+- what event triggered the movement
+- which asset should move
+- where it is now
+- where it should go
+- who currently has custody
+- who is authorized to request the move
+- whether separate financial approval is required
+- which carrier, courier, or field technician will execute the move
+- what proof is required at pickup, placement, installation, removal, and return
+- what condition the asset was in before and after each handoff
+- whether a replacement/failed asset is expected in reverse
+- what the next lifecycle state should be
+
+## Hands / boots on the ground
+
+Physical execution may be performed by:
+
+- CESCo personnel
+- a client field technician
+- a WorkMarket or similar national field-service technician
+- a courier
+- a storage operator
+- a repair partner
+- another specifically authorized third party
+
+The system should not assume that the user recording or authorizing the work is the person physically performing it.
+
+Future FieldTask / DispatchAssignment records should therefore support:
+
+- organization
+- related trouble ticket / requisition / service request
+- assigned provider or technician
+- origin and destination
+- package and asset identifiers
+- detailed work instructions
+- appointment / SLA window
+- required evidence checklist
+- custody expectations
+- completion status
+- exception/escalation status
+- actual timestamps
+
+## Strategic spare requisition
+
+The first implementation of strategic spare requisition should deliberately separate operational authority from financial authority.
+
+CLIENT_HELPDESK and CLIENT_DISPATCHER may request a spare when allowed by organization policy without implicitly gaining billing authorization.
+
+CESCo operations may reserve a known-good or stocked asset for the requisition after confirming:
+
+- account ownership
+- compatible manufacturer/model or approved compatibility
+- readiness state
+- current storage placement
+- service-location availability to that client
+- absence of another active reservation
+
+The next implementation slice should turn a RESERVED spare into an executable dispatch route and record the reverse path for the failed/removed asset when one is expected.
