@@ -27,7 +27,10 @@ export default async function LoginPage({
 
   return (
     <main className="mx-auto max-w-md p-8">
-      <p className="text-sm opacity-60">CESCo Depot</p>
+      <Link href="/" className="text-sm underline">
+        ← CESCo Depot
+      </Link>
+      <p className="mt-8 text-sm opacity-60">Customer and operations access</p>
       <h1 className="mt-2 text-3xl font-bold">Sign in</h1>
 
       {error === "credentials" && (
@@ -60,6 +63,14 @@ export default async function LoginPage({
           Sign in
         </button>
       </form>
+
+      <p className="mt-6 text-sm opacity-70">
+        New customer?{" "}
+        <Link href="/register" className="underline">
+          Create a free account
+        </Link>
+        .
+      </p>
 
       {activeUsers === 0 && (
         <p className="mt-6 text-sm opacity-70">
