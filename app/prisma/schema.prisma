@@ -223,6 +223,14 @@ enum SpareRequisitionStatus {
   CANCELLED
 }
 
+enum DispatchAssignmentStatus {
+  ASSIGNED
+  IN_TRANSIT
+  COMPLETED
+  EXCEPTION
+  CANCELLED
+}
+
 enum WorkOrderPartStatus {
   REQUIRED
   ORDERED
@@ -275,6 +283,7 @@ model User {
   assetMovements       AssetMovement[]    @relation("AssetMovementActor")
   spareRequisitions     SpareRequisition[] @relation("SpareRequisitionRequester")
   spareAssignments      SpareRequisition[] @relation("SpareRequisitionAssigner")
+  dispatchAssignments   DispatchAssignment[] @relation("DispatchAssignmentAssigner")
   uploadedEvidence     Evidence[]         @relation("EvidenceUploader")
   evidenceAccessEvents EvidenceAccessEvent[] @relation("EvidenceAccessActor")
 }
@@ -331,6 +340,7 @@ model Organization {
   serviceRequests    ServiceRequest[]
   workOrders         WorkOrder[]
   spareRequisitions  SpareRequisition[]
+  dispatchAssignments DispatchAssignment[]
   evidence           Evidence[]
 }
 
@@ -503,6 +513,8 @@ model StoragePosition {
   movementsTo           AssetMovement[]  @relation("AssetMovementToStoragePosition")
   receipts               Receipt[]
   spareSources           SpareRequisition[]
+  dispatchOrigins         DispatchAssignment[] @relation("DispatchOriginStoragePosition")
+  dispatchDestinations    DispatchAssignment[] @relation("DispatchDestinationStoragePosition")
 
   @@unique([serviceLocationId, code])
   @@index([serviceLocationId])
@@ -593,6 +605,7 @@ model Asset {
   evidence               Evidence[]
   movements              AssetMovement[]
   spareAssignments       SpareRequisition[] @relation("SpareRequisitionAssignedAsset")
+  dispatchAssignments    DispatchAssignment[]
 
   @@index([serialNumber])
   @@index([organizationId])
@@ -678,12 +691,53 @@ model SpareRequisition {
   assignedBy            User?           @relation("SpareRequisitionAssigner", fields: [assignedByUserId], references: [id])
   assignedAsset         Asset?          @relation("SpareRequisitionAssignedAsset", fields: [assignedAssetId], references: [id])
   sourceStoragePosition StoragePosition? @relation(fields: [sourceStoragePositionId], references: [id])
+  dispatchAssignments    DispatchAssignment[]
 
   @@index([organizationId, status])
   @@index([destinationEndpointId])
   @@index([assignedAssetId])
   @@index([sourceStoragePositionId])
   @@index([requestedAt])
+}
+
+model DispatchAssignment {
+  id                           String                   @id @default(cuid())
+  organizationId               String
+  spareRequisitionId           String?
+  assetId                      String
+  assignedByUserId             String
+  originEndpointId             String?
+  originStoragePositionId      String?
+  destinationEndpointId        String?
+  destinationStoragePositionId String?
+  providerCustodyType          CustodyType
+  providerLabel                String
+  externalReference            String?
+  instructions                 String?
+  status                       DispatchAssignmentStatus @default(ASSIGNED)
+  assignedAt                   DateTime                 @default(now())
+  acceptedAt                   DateTime?
+  completedAt                  DateTime?
+  exceptionNotes               String?
+  createdAt                    DateTime                 @default(now())
+  updatedAt                    DateTime                 @updatedAt
+
+  organization               Organization      @relation(fields: [organizationId], references: [id])
+  spareRequisition           SpareRequisition? @relation(fields: [spareRequisitionId], references: [id])
+  asset                      Asset             @relation(fields: [assetId], references: [id])
+  assignedBy                 User              @relation("DispatchAssignmentAssigner", fields: [assignedByUserId], references: [id])
+  originEndpoint             Endpoint?         @relation("DispatchOriginEndpoint", fields: [originEndpointId], references: [id])
+  originStoragePosition      StoragePosition?  @relation("DispatchOriginStoragePosition", fields: [originStoragePositionId], references: [id])
+  destinationEndpoint        Endpoint?         @relation("DispatchDestinationEndpoint", fields: [destinationEndpointId], references: [id])
+  destinationStoragePosition StoragePosition?  @relation("DispatchDestinationStoragePosition", fields: [destinationStoragePositionId], references: [id])
+
+  @@index([organizationId, status])
+  @@index([spareRequisitionId])
+  @@index([assetId])
+  @@index([originEndpointId])
+  @@index([originStoragePositionId])
+  @@index([destinationEndpointId])
+  @@index([destinationStoragePositionId])
 }
 
 model ServiceRequest {
