@@ -589,6 +589,12 @@ model Asset {
   manufacturer             String?
   model                    String?
   serialNumber             String?
+  assetClass               String?
+  compatibilityClass       String?
+  configurationVersion     String?
+  lastReadinessVerifiedAt  DateTime?
+  nextReadinessDueAt       DateTime?
+  readinessNotes           String?
   status                   AssetStatus  @default(REGISTERED)
   description              String?
   createdAt                DateTime     @default(now())
@@ -608,6 +614,7 @@ model Asset {
   evidence               Evidence[]
   movements              AssetMovement[]
   spareAssignments       SpareRequisition[] @relation("SpareRequisitionAssignedAsset")
+  returnForRequisitions   SpareRequisition[] @relation("SpareRequisitionReturnAsset")
   dispatchAssignments    DispatchAssignment[]
 
   @@index([serialNumber])
@@ -677,8 +684,13 @@ model SpareRequisition {
   manufacturer            String?
   model                   String?
   compatibilityNotes      String?
+  compatibilityClass      String?
+  configurationVersion    String?
   troubleTicketReference  String?
   priority                String?
+  returnExpected          Boolean                @default(false)
+  returnAssetId           String?
+  returnInstructions      String?
   notes                   String?
   requestedAt             DateTime               @default(now())
   reservedAt              DateTime?
@@ -693,12 +705,14 @@ model SpareRequisition {
   destinationEndpoint   Endpoint        @relation(fields: [destinationEndpointId], references: [id])
   assignedBy            User?           @relation("SpareRequisitionAssigner", fields: [assignedByUserId], references: [id])
   assignedAsset         Asset?          @relation("SpareRequisitionAssignedAsset", fields: [assignedAssetId], references: [id])
+  returnAsset           Asset?          @relation("SpareRequisitionReturnAsset", fields: [returnAssetId], references: [id])
   sourceStoragePosition StoragePosition? @relation(fields: [sourceStoragePositionId], references: [id])
-  dispatchAssignments    DispatchAssignment[]
+  dispatchAssignments   DispatchAssignment[]
 
   @@index([organizationId, status])
   @@index([destinationEndpointId])
   @@index([assignedAssetId])
+  @@index([returnAssetId])
   @@index([sourceStoragePositionId])
   @@index([requestedAt])
 }
