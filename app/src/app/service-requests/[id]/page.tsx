@@ -224,6 +224,19 @@ export default async function ServiceRequestPage({
         })
       : [];
 
+  const legacyStorageLocations =
+    canReceiveInventory &&
+    inboundShipment?.destinationSiteId &&
+    !inboundShipment.destinationServiceLocationId
+      ? await prisma.storageLocation.findMany({
+          where: {
+            siteId: inboundShipment.destinationSiteId,
+            isActive: true,
+          },
+          orderBy: { name: "asc" },
+        })
+      : [];
+
   return (
     <main className="mx-auto max-w-5xl p-8">
       <Link
@@ -625,6 +638,17 @@ export default async function ServiceRequestPage({
               </div>
             )}
           </div>
+        ) : canPrepareShipment && serviceLocations.length === 0 ? (
+          <div className="mt-4 text-sm">
+            <p className="font-medium">
+              No CESCo service location is currently assigned to this account.
+            </p>
+            <p className="mt-2 opacity-70">
+              CESCo operations must make an appropriate depot, stocking,
+              storage, or partner location available before inbound shipment
+              preparation can continue.
+            </p>
+          </div>
         ) : canPrepareShipment ? (
           <form
             action={createInboundShipment.bind(null, request.id)}
@@ -730,7 +754,8 @@ export default async function ServiceRequestPage({
           <p className="mt-4 text-sm opacity-70">
             Your role can view receipt status but cannot receive inventory.
           </p>
-        ) : storagePositions.length === 0 ? (
+        ) : inboundShipment.destinationServiceLocationId &&
+          storagePositions.length === 0 ? (
           <div className="mt-4 text-sm">
             <p className="font-medium">
               The destination service location has no eligible storage positions yet.
@@ -739,12 +764,25 @@ export default async function ServiceRequestPage({
               Define a receiving, cage, rack, shelf, bin, or other position
               before accepting custody.
             </p>
-            {inboundShipment.destinationServiceLocationId && (
+            <Link
+              href={`/service-locations/${inboundShipment.destinationServiceLocationId}`}
+              className="mt-4 inline-block underline"
+            >
+              Manage service-location storage positions
+            </Link>
+          </div>
+        ) : !inboundShipment.destinationServiceLocationId &&
+          legacyStorageLocations.length === 0 ? (
+          <div className="mt-4 text-sm">
+            <p className="font-medium">
+              This legacy shipment destination has no receiving location.
+            </p>
+            {inboundShipment.destinationSiteId && (
               <Link
-                href={`/service-locations/${inboundShipment.destinationServiceLocationId}`}
+                href={`/sites/${inboundShipment.destinationSiteId}`}
                 className="mt-4 inline-block underline"
               >
-                Manage service-location storage positions
+                Manage legacy storage locations
               </Link>
             )}
           </div>
@@ -765,22 +803,41 @@ export default async function ServiceRequestPage({
               ))}
             </select>
 
-            <select
-              name="storagePositionId"
-              required
-              defaultValue=""
-              className="rounded border px-3 py-2"
-            >
-              <option value="" disabled>
-                Select receiving/storage position
-              </option>
-              {storagePositions.map((position) => (
-                <option key={position.id} value={position.id}>
-                  {position.name} —{" "}
-                  {position.type.replaceAll("_", " ")}
+            {inboundShipment.destinationServiceLocationId ? (
+              <select
+                name="storagePositionId"
+                required
+                defaultValue=""
+                className="rounded border px-3 py-2"
+              >
+                <option value="" disabled>
+                  Select receiving/storage position
                 </option>
-              ))}
-            </select>
+                {storagePositions.map((position) => (
+                  <option key={position.id} value={position.id}>
+                    {position.name} —{" "}
+                    {position.type.replaceAll("_", " ")}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <select
+                name="storageLocationId"
+                required
+                defaultValue=""
+                className="rounded border px-3 py-2"
+              >
+                <option value="" disabled>
+                  Select legacy receiving location
+                </option>
+                {legacyStorageLocations.map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name} —{" "}
+                    {location.type.replaceAll("_", " ")}
+                  </option>
+                ))}
+              </select>
+            )}
 
             <select
               name="sealIntact"
