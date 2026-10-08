@@ -5,6 +5,10 @@ export const permissionDefinitions = [
   ["organization.view", "View organization records"],
   ["organization.manage", "Manage organization records"],
   ["organization.manage_users", "Manage organization users and roles"],
+  ["endpoint.view", "View client and downstream service endpoints"],
+  ["endpoint.manage", "Manage client and downstream service endpoints"],
+  ["service_location.view", "View CESCo-managed and partner service locations"],
+  ["service_location.manage", "Manage CESCo-managed and partner service locations"],
   ["service_request.create", "Create service requests"],
   ["service_request.authorize", "Authorize service requests"],
   ["asset.view", "View assets"],
@@ -34,6 +38,10 @@ export const roleDefinitions = [
     name: "CESCo Operations Administrator",
     description: "Manages CESCo operational records, users, and workflows.",
     permissions: [
+      "service_location.manage",
+      "service_location.view",
+      "endpoint.manage",
+      "endpoint.view",
       "organization.view",
       "organization.manage",
       "organization.manage_users",
@@ -58,6 +66,9 @@ export const roleDefinitions = [
     name: "Depot Manager",
     description: "Manages depot execution, inventory, and shipments.",
     permissions: [
+      "service_location.manage",
+      "service_location.view",
+      "endpoint.view",
       "organization.view",
       "service_request.create",
       "service_request.authorize",
@@ -79,6 +90,8 @@ export const roleDefinitions = [
     name: "Depot Technician",
     description: "Performs and records technical work on assigned assets.",
     permissions: [
+      "service_location.view",
+      "endpoint.view",
       "organization.view",
       "asset.view",
       "asset.manage",
@@ -94,6 +107,9 @@ export const roleDefinitions = [
     name: "Receiving / Logistics",
     description: "Receives packages, manages storage, and records shipments.",
     permissions: [
+      "service_location.manage",
+      "service_location.view",
+      "endpoint.view",
       "organization.view",
       "asset.view",
       "asset.manage",
@@ -112,6 +128,8 @@ export const roleDefinitions = [
     name: "Client Administrator",
     description: "Manages client organization users and operational visibility.",
     permissions: [
+      "endpoint.manage",
+      "endpoint.view",
       "organization.view",
       "organization.manage",
       "organization.manage_users",
@@ -133,6 +151,7 @@ export const roleDefinitions = [
     name: "Client Dispatcher",
     description: "Creates and follows operational service activity.",
     permissions: [
+      "endpoint.view",
       "organization.view",
       "service_request.create",
       "asset.view",
@@ -148,6 +167,7 @@ export const roleDefinitions = [
     name: "Client Billing",
     description: "Views billing and related service records.",
     permissions: [
+      "endpoint.view",
       "organization.view",
       "asset.view",
       "work_order.view",
@@ -160,6 +180,7 @@ export const roleDefinitions = [
     name: "Client Auditor",
     description: "Read-only access to lifecycle and provenance records.",
     permissions: [
+      "endpoint.view",
       "organization.view",
       "asset.view",
       "work_order.view",
