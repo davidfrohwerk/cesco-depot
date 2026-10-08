@@ -15,6 +15,7 @@ import {
   userHasOrganizationPermission,
 } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
+import { scoreSpareCandidate } from "@/lib/spare-matching";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -59,7 +60,7 @@ export default async function SpareRequisitionsPage({
     organizationId
   );
 
-  const [endpoints, requisitions] = await Promise.all([
+  const [endpoints, requisitions, returnableAssets] = await Promise.all([
     prisma.endpoint.findMany({
       where: {
         organizationId,
@@ -73,6 +74,7 @@ export default async function SpareRequisitionsPage({
         requestedBy: true,
         assignedBy: true,
         destinationEndpoint: true,
+        returnAsset: true,
         assignedAsset: {
           include: {
             currentStoragePosition: {
@@ -102,6 +104,16 @@ export default async function SpareRequisitionsPage({
         },
       },
       orderBy: { requestedAt: "desc" },
+    }),
+    prisma.asset.findMany({
+      where: {
+        organizationId,
+        currentEndpointId: { not: null },
+      },
+      include: {
+        currentEndpoint: true,
+      },
+      orderBy: { assetTag: "asc" },
     }),
   ]);
 
@@ -151,6 +163,24 @@ export default async function SpareRequisitionsPage({
         ],
       })
     : [];
+
+  const rankedCandidatesFor = (
+    requisition: (typeof requisitions)[number]
+  ) =>
+    candidateAssets
+      .map((asset) => ({
+        asset,
+        match: scoreSpareCandidate(asset, {
+          manufacturer: requisition.manufacturer,
+          model: requisition.model,
+          compatibilityClass: requisition.compatibilityClass,
+          configurationVersion: requisition.configurationVersion,
+          destinationRegion: requisition.destinationEndpoint.region,
+        }),
+      }))
+      .filter(({ match }) => match.eligible)
+      .sort((a, b) => b.match.score - a.match.score);
+
 
   return (
     <main className="mx-auto max-w-6xl p-8">
@@ -222,6 +252,16 @@ export default async function SpareRequisitionsPage({
               className="rounded border px-3 py-2"
             />
             <input
+              name="compatibilityClass"
+              placeholder="Compatibility class (optional)"
+              className="rounded border px-3 py-2"
+            />
+            <input
+              name="configurationVersion"
+              placeholder="Required configuration version"
+              className="rounded border px-3 py-2"
+            />
+            <input
               name="priority"
               placeholder="Priority / SLA context"
               className="rounded border px-3 py-2"
@@ -230,6 +270,30 @@ export default async function SpareRequisitionsPage({
               name="compatibilityNotes"
               placeholder="Compatibility / configuration requirement"
               className="rounded border px-3 py-2"
+            />
+            <label className="flex items-center gap-2 text-sm">
+              <input name="returnExpected" type="checkbox" />
+              Failed / removed asset is expected back through reverse logistics
+            </label>
+            <select
+              name="returnAssetId"
+              defaultValue=""
+              className="rounded border px-3 py-2"
+            >
+              <option value="">
+                Return asset not yet identified
+              </option>
+              {returnableAssets.map((asset) => (
+                <option key={asset.id} value={asset.id}>
+                  {asset.currentEndpoint?.name ?? "Endpoint"} — {asset.assetTag}
+                  {asset.model ? ` · ${asset.model}` : ""}
+                </option>
+              ))}
+            </select>
+            <input
+              name="returnInstructions"
+              placeholder="Return destination / handling expectation"
+              className="rounded border px-3 py-2 md:col-span-2"
             />
             <textarea
               name="notes"
@@ -307,6 +371,22 @@ export default async function SpareRequisitionsPage({
                     Compatibility:{" "}
                     {requisition.compatibilityNotes ??
                       "No additional notes"}
+                  </div>
+                  <div>
+                    Compatibility class:{" "}
+                    {requisition.compatibilityClass ?? "Not specified"}
+                  </div>
+                  <div>
+                    Configuration:{" "}
+                    {requisition.configurationVersion ?? "Not specified"}
+                  </div>
+                  <div>
+                    Reverse return:{" "}
+                    {requisition.returnExpected
+                      ? requisition.returnAsset
+                        ? `Expected — ${requisition.returnAsset.assetTag}`
+                        : "Expected — asset not yet identified"
+                      : "Not expected"}
                   </div>
                 </div>
 
@@ -484,25 +564,8 @@ export default async function SpareRequisitionsPage({
                       <option value="" disabled>
                         Select available known-good / stocked asset
                       </option>
-                      {candidateAssets
-                        .filter((asset) => {
-                          const manufacturerMatches =
-                            !requisition.manufacturer ||
-                            asset.manufacturer
-                              ?.toLowerCase()
-                              .includes(
-                                requisition.manufacturer.toLowerCase()
-                              );
-                          const modelMatches =
-                            !requisition.model ||
-                            asset.model
-                              ?.toLowerCase()
-                              .includes(
-                                requisition.model.toLowerCase()
-                              );
-                          return manufacturerMatches && modelMatches;
-                        })
-                        .map((asset) => (
+                      {rankedCandidatesFor(requisition).map(
+                        ({ asset, match }) => (
                           <option key={asset.id} value={asset.id}>
                             {asset.assetTag} —{" "}
                             {[asset.manufacturer, asset.model]
@@ -513,8 +576,13 @@ export default async function SpareRequisitionsPage({
                             {asset.currentStoragePosition
                               ? `${asset.currentStoragePosition.serviceLocation.name} / ${asset.currentStoragePosition.name}`
                               : "No managed position"}
+                            {" · "}score {match.score}
+                            {match.reasons.length
+                              ? ` · ${match.reasons.join(", ")}`
+                              : ""}
                           </option>
-                        ))}
+                        )
+                      )}
                     </select>
 
                     <button
