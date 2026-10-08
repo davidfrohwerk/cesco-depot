@@ -127,6 +127,27 @@ enum PackageStatus {
   EXCEPTION
 }
 
+enum EndpointType {
+  STORE
+  CLINIC
+  BRANCH
+  RESTAURANT
+  WAREHOUSE
+  OFFICE
+  DATA_CENTER
+  OTHER
+}
+
+enum ServiceLocationType {
+  DEPOT
+  STORAGE_UNIT
+  WAREHOUSE
+  PARTNER_FACILITY
+  CROSS_DOCK
+  TECHNICIAN_STAGING
+  OTHER
+}
+
 enum StorageLocationType {
   RECEIVING
   CAGE
@@ -289,6 +310,10 @@ model Organization {
   updatedAt DateTime @updatedAt
 
   sites           Site[]
+  endpoints       Endpoint[]
+  managedServiceLocations ServiceLocation[] @relation("ServiceLocationManager")
+  serviceLocationAccess ServiceLocationClient[]
+  dedicatedStoragePositions StoragePosition[] @relation("StoragePositionDedicatedOrganization")
   assets          Asset[]          @relation("AssetAccountOrganization")
   ownedAssets     Asset[]          @relation("AssetOwnerOrganization")
   memberships     Membership[]
@@ -358,6 +383,109 @@ model RolePermission {
   @@id([roleId, permissionId])
 }
 
+model Endpoint {
+  id             String       @id @default(cuid())
+  organizationId String
+  externalCode   String?
+  name           String
+  type           EndpointType @default(OTHER)
+  addressLine1   String?
+  addressLine2   String?
+  city           String?
+  state          String?
+  postalCode     String?
+  country        String       @default("US")
+  region         String?
+  contactName    String?
+  contactEmail   String?
+  contactPhone   String?
+  isActive       Boolean      @default(true)
+  serviceNotes   String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  currentAssets Asset[]      @relation("AssetCurrentEndpoint")
+
+  @@unique([organizationId, externalCode])
+  @@index([organizationId])
+  @@index([isActive])
+}
+
+model ServiceLocation {
+  id                      String              @id @default(cuid())
+  managedByOrganizationId String?
+  code                    String?             @unique
+  name                    String
+  type                    ServiceLocationType
+  operatorLabel           String?
+  addressLine1            String?
+  addressLine2            String?
+  city                    String?
+  state                   String?
+  postalCode              String?
+  country                 String              @default("US")
+  region                  String?
+  climateControlled       Boolean             @default(false)
+  secureStorage           Boolean             @default(false)
+  accessInstructions      String?
+  capabilities            String?
+  notes                   String?
+  isActive                Boolean             @default(true)
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  managedByOrganization Organization?          @relation("ServiceLocationManager", fields: [managedByOrganizationId], references: [id])
+  positions             StoragePosition[]
+  clientAccess          ServiceLocationClient[]
+
+  @@index([managedByOrganizationId])
+  @@index([type])
+  @@index([isActive])
+}
+
+model ServiceLocationClient {
+  serviceLocationId String
+  organizationId    String
+  notes             String?
+  createdAt         DateTime @default(now())
+
+  serviceLocation ServiceLocation @relation(fields: [serviceLocationId], references: [id], onDelete: Cascade)
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([serviceLocationId, organizationId])
+  @@index([organizationId])
+}
+
+model StoragePosition {
+  id                      String              @id @default(cuid())
+  serviceLocationId       String
+  parentId                String?
+  dedicatedOrganizationId String?
+  name                    String
+  code                    String?
+  type                    StorageLocationType
+  isActive                Boolean             @default(true)
+  capacity                Int?
+  capacityUnit            String?
+  secureStorage           Boolean             @default(false)
+  environmentalNotes      String?
+  notes                   String?
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
+
+  serviceLocation       ServiceLocation  @relation(fields: [serviceLocationId], references: [id], onDelete: Cascade)
+  parent                StoragePosition? @relation("StoragePositionTree", fields: [parentId], references: [id])
+  children              StoragePosition[] @relation("StoragePositionTree")
+  dedicatedOrganization Organization?    @relation("StoragePositionDedicatedOrganization", fields: [dedicatedOrganizationId], references: [id])
+  currentAssets         Asset[]          @relation("AssetCurrentStoragePosition")
+
+  @@unique([serviceLocationId, code])
+  @@index([serviceLocationId])
+  @@index([parentId])
+  @@index([dedicatedOrganizationId])
+}
+
 model Site {
   id             String   @id @default(cuid())
   organizationId String
@@ -415,6 +543,8 @@ model Asset {
   ownerOrganizationId      String?
   siteId                   String?
   currentStorageLocationId String?
+  currentEndpointId        String?
+  currentStoragePositionId String?
   currentCustodyType       CustodyType?
   currentCustodianLabel    String?
   manufacturer             String?
@@ -429,6 +559,8 @@ model Asset {
   ownerOrganization      Organization?    @relation("AssetOwnerOrganization", fields: [ownerOrganizationId], references: [id])
   site                   Site?            @relation(fields: [siteId], references: [id])
   currentStorageLocation StorageLocation? @relation("AssetCurrentStorageLocation", fields: [currentStorageLocationId], references: [id])
+  currentEndpoint        Endpoint?        @relation("AssetCurrentEndpoint", fields: [currentEndpointId], references: [id])
+  currentStoragePosition StoragePosition? @relation("AssetCurrentStoragePosition", fields: [currentStoragePositionId], references: [id])
   events                 AssetEvent[]
   workOrders             WorkOrder[]
   serviceRequests        ServiceRequest[]
@@ -440,6 +572,8 @@ model Asset {
   @@index([organizationId])
   @@index([ownerOrganizationId])
   @@index([currentStorageLocationId])
+  @@index([currentEndpointId])
+  @@index([currentStoragePositionId])
   @@index([status])
 }
 
