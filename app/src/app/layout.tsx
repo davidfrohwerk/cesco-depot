@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import { logout } from "@/app/actions/auth";
 import { getCurrentUser } from "@/lib/auth";
+import { userHasInternalPermission } from "@/lib/access-scope";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -25,6 +26,9 @@ export default async function RootLayout({
   children,
 }: LayoutProps<"/">) {
   const user = await getCurrentUser();
+  const canViewServiceLocations =
+    user &&
+    userHasInternalPermission(user, "service_location.view");
 
   return (
     <html
@@ -39,6 +43,11 @@ export default async function RootLayout({
                 CESCo Depot
               </Link>
               <div className="flex items-center gap-4">
+                {canViewServiceLocations && (
+                  <Link href="/service-locations" className="underline">
+                    Service locations
+                  </Link>
+                )}
                 <span className="opacity-70">
                   {user.displayName ?? user.email}
                 </span>
