@@ -994,3 +994,179 @@ The customer dashboard can then answer:
 
 If the system can answer those correctly, the new domain foundation is working.
 
+
+
+---
+
+# 20. Distributed client network and service-location model
+
+The location model must support a many-to-many operational network rather than assuming one organization's assets only move among that organization's own sites.
+
+## Account organization
+
+The Account Organization is the CESCo customer relationship boundary. It governs:
+
+- membership and client-side roles
+- authorization authority
+- billing relationship
+- ownership/control of registered assets
+- service policy
+- contract/SLA context
+- visibility of that client's inventory and lifecycle records
+
+## Endpoint
+
+An Endpoint represents a real-world destination or origin relevant to the client.
+
+Examples:
+
+- Store 123
+- Store 124
+- Clinic 41
+- Branch Office 8
+- Restaurant 207
+- Client warehouse
+- technician staging point
+
+An endpoint may belong to the client directly or to one of the client's downstream customers. It does not need to be a CESCo customer organization.
+
+Suggested Endpoint fields:
+
+- account organization
+- external/customer location identifier
+- name
+- address
+- region/market
+- contact metadata
+- active/inactive
+- service notes
+- optional SLA/service profile
+
+## Service location
+
+A ServiceLocation is a physical location through which CESCo coordinates custody, storage, repair, readiness, or logistics.
+
+Examples:
+
+- CESCo repair depot
+- climate-controlled self-storage facility
+- partner warehouse
+- third-party repair location
+- cross-dock
+- technician-controlled staging location
+
+A ServiceLocation may support more than one client organization.
+
+Suggested ServiceLocation fields:
+
+- name/code
+- location type
+- provider/landlord/operator
+- address
+- active/inactive
+- climate-controlled flag
+- secure-storage flag
+- access instructions
+- service capabilities
+- region
+- notes
+
+## Storage position
+
+StoragePosition replaces the assumption that storage hierarchy belongs exclusively to one client-owned Site.
+
+A service location may contain nested positions:
+
+Storage facility
+-> Unit 214
+-> Rack A
+-> Shelf 3
+-> Bin 2
+
+Each position may be shared or dedicated.
+
+Suggested fields:
+
+- service location
+- parent position
+- name/code
+- type
+- active/inactive
+- capacity
+- secure flag
+- environmental constraints
+- dedicated organization when applicable
+
+## Asset placement
+
+An asset's current physical placement should reference either:
+
+- an Endpoint when deployed at a client/downstream site, or
+- a StoragePosition when staged or stocked at a service location,
+- or a transit/custody state when moving between locations.
+
+Ownership, account scope, custody, and physical placement remain independent.
+
+## Distributed work execution
+
+A field technician, courier, or partner may perform a service action without being a CESCo employee.
+
+The platform should support assignments such as:
+
+- pick up package from storage-office counter
+- place package in Unit 214 / Rack A / Shelf 3
+- photograph identifying labels and placement
+- retrieve cold spare
+- deliver/install spare at Store 123
+- remove failed asset
+- route failed asset to repair or storage
+- confirm restock and readiness
+
+The resulting record should capture:
+
+- assigned actor/provider
+- work instructions
+- asset/package identifiers
+- origin and destination
+- timestamps
+- custody transitions
+- condition observations
+- required evidence
+- final placement
+- exceptions
+
+The platform therefore manages the state transition and proof of execution even when CESCo never physically touches the asset.
+
+## Strategic spare requisition
+
+A client user with appropriate operational permission may request a spare for a downstream endpoint.
+
+The system should be able to answer:
+
+- which compatible spare is available
+- which service location holds it
+- whether it is known-good and ready
+- which endpoint needs it
+- who is authorized to dispatch it
+- how it will move
+- whether a return/failed asset is expected
+- where the removed asset should go next
+
+Financial authority must be evaluated separately from operational requisition authority.
+
+## Role scope
+
+Client-side roles should be organization-scoped and may later gain optional endpoint/region scope.
+
+Examples:
+
+- CLIENT_ADMIN
+- CLIENT_HELPDESK
+- CLIENT_DISPATCHER
+- CLIENT_FIELD_TECHNICIAN
+- CLIENT_BILLING
+- CLIENT_AUDITOR
+
+Client administrators manage routine assignment of client roles. CESCo defines the permission vocabulary and prevents assignment of internal/system privileges.
+
+This model preserves the original product promise while allowing CESCo Depot to operate as a distributed control layer over client-owned assets, third-party storage, field technicians, carriers, repair partners, and downstream customer locations.
