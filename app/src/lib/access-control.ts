@@ -118,6 +118,7 @@ export const roleDefinitions = [
       "service_request.create",
       "service_request.authorize",
       "asset.view",
+      "asset.manage",
       "work_order.view",
       "shipment.prepare",
       "shipment.acknowledge_receipt",
