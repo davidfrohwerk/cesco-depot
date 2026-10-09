@@ -14,12 +14,20 @@ type PageProps = {
   params: Promise<{
     id: string;
   }>;
+  searchParams: Promise<{
+    assetError?: string;
+    assetTag?: string;
+  }>;
 };
 
-export default async function OrganizationPage({ params }: PageProps) {
+export default async function OrganizationPage({
+  params,
+  searchParams,
+}: PageProps) {
   const currentUser = await requireCurrentUser();
 
   const { id } = await params;
+  const { assetError, assetTag } = await searchParams;
   await requireOrganizationPagePermission("organization.view", id);
 
   const organization = await prisma.organization.findUnique({
@@ -267,6 +275,14 @@ export default async function OrganizationPage({ params }: PageProps) {
 
       <section className="mt-14">
         <h2 className="text-2xl font-semibold">Assets</h2>
+
+        {assetError === "duplicate" && (
+          <div className="mt-4 rounded border p-4 text-sm">
+            Asset tag <strong>{assetTag ?? "that value"}</strong> is already
+            registered. Open the existing asset below or use a different
+            unique asset tag.
+          </div>
+        )}
 
         {canManageAssets && (
         <form
