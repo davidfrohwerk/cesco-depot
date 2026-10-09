@@ -313,8 +313,8 @@ export default async function OrganizationPage({
         {assetError === "duplicate" && (
           <div className="mt-4 rounded border p-4 text-sm">
             Asset tag <strong>{assetTag ?? "that value"}</strong> is already
-            registered. Open the existing asset below or use a different
-            unique asset tag.
+            registered in this organization. Open the existing asset below
+            or use a different tag for this client.
           </div>
         )}
 
