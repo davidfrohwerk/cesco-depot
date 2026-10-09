@@ -118,11 +118,14 @@ export async function placeAssetInStoragePosition(
 ) {
   const user = await requireInternalPermission("service_location.manage");
 
+  const organizationId = String(
+    formData.get("organizationId") ?? ""
+  ).trim();
   const assetTag = String(formData.get("assetTag") ?? "").trim();
   const reason = String(formData.get("reason") ?? "").trim();
 
-  if (!assetTag) {
-    throw new Error("Asset tag is required.");
+  if (!organizationId || !assetTag) {
+    throw new Error("Client organization and asset tag are required.");
   }
 
   const [position, asset] = await Promise.all([
@@ -138,7 +141,12 @@ export async function placeAssetInStoragePosition(
       },
     }),
     prisma.asset.findUnique({
-      where: { assetTag },
+      where: {
+        organizationId_assetTag: {
+          organizationId,
+          assetTag,
+        },
+      },
     }),
   ]);
 
