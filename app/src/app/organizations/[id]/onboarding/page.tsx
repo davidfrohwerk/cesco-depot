@@ -99,6 +99,11 @@ export default async function OrganizationOnboardingPage({
     "spare_requisition.view",
     organizationId
   );
+  const canRequestService = userHasOrganizationPermission(
+    user,
+    "service_request.create",
+    organizationId
+  );
 
   const locationsComplete = organization._count.endpoints > 0;
   const assetsComplete = organization._count.assets > 0;
@@ -216,6 +221,23 @@ export default async function OrganizationOnboardingPage({
             {completedImports === 1 ? "" : "s"} recorded for this organization.
           </p>
         )}
+
+        {coreComplete && (
+          <div className="mt-5 rounded border p-4">
+            <div className="font-medium">Core onboarding complete</div>
+            <p className="mt-1 text-sm opacity-70">
+              Locations and assets are in place. The customer home now becomes
+              the normal starting point for service, shipments, readiness, and
+              items needing attention.
+            </p>
+            <Link
+              href={`/organizations/${organizationId}/dashboard`}
+              className="mt-3 inline-block text-sm underline"
+            >
+              Open customer home
+            </Link>
+          </div>
+        )}
       </section>
 
       <section className="mt-10">
@@ -287,14 +309,24 @@ export default async function OrganizationOnboardingPage({
               Spare requests:{" "}
               <strong>{organization._count.spareRequisitions}</strong>
             </div>
-            {canViewSpares && (
-              <Link
-                href={`/organizations/${organizationId}/spares`}
-                className="mt-4 inline-block text-sm underline"
-              >
-                Request a replacement
-              </Link>
-            )}
+            <div className="mt-4 flex flex-wrap gap-3 text-sm">
+              {canRequestService && (
+                <Link
+                  href={`/organizations/${organizationId}/service`}
+                  className="underline"
+                >
+                  Request depot service
+                </Link>
+              )}
+              {canViewSpares && (
+                <Link
+                  href={`/organizations/${organizationId}/spares`}
+                  className="underline"
+                >
+                  Request a replacement
+                </Link>
+              )}
+            </div>
           </article>
         </div>
       </section>
