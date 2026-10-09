@@ -86,6 +86,7 @@ enum ServiceType {
   SHIP_ELSEWHERE
   DECOMMISSION
   DATA_DESTRUCTION
+  OEM_WARRANTY_COORDINATION
   DONATE
   RECYCLE
   OTHER
@@ -628,6 +629,10 @@ model Asset {
   lastReadinessVerifiedAt  DateTime?
   nextReadinessDueAt       DateTime?
   readinessNotes           String?
+  warrantyProvider          String?
+  warrantyExpiresAt         DateTime?
+  warrantyReference         String?
+  warrantyNotes             String?
   status                   AssetStatus  @default(REGISTERED)
   description              String?
   createdAt                DateTime     @default(now())
@@ -659,6 +664,7 @@ model Asset {
   @@index([currentEndpointId])
   @@index([currentStoragePositionId])
   @@index([status])
+  @@index([warrantyExpiresAt])
 }
 
 model AssetMovement {
@@ -870,6 +876,8 @@ model ServiceRequest {
   priority          String?
   customerNotes     String?
   requestedOutcome  String?
+  externalServiceProvider String?
+  externalRmaReference    String?
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
 
