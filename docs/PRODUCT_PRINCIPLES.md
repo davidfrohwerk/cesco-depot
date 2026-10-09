@@ -534,3 +534,112 @@ Endpoint B
 No direction should be treated as exceptional. The same primitives - ownership, custody, placement, condition, evidence, authorization, and movement - should describe both forward deployment and reverse logistics.
 
 The customer value is not merely shipping or storage. It is the ability to ask the system what needs to happen next, who can do it, which asset is appropriate, where that asset is, what condition it is in, what evidence proves each handoff, and whether the action is operationally or financially authorized.
+
+
+## Bulk data entry is a core onboarding requirement
+
+Manual asset-by-asset entry is useful for exceptions and small accounts, but it is not a viable primary onboarding path for organizations managing tens, hundreds, thousands, or more distributed assets, parts, locations, and configuration attributes.
+
+CESCo Depot should therefore treat bulk import and export as core product capability rather than a later convenience.
+
+The import architecture should support:
+
+- CSV/XLSX upload for common onboarding and update workflows
+- downloadable templates
+- column mapping from customer vocabulary to CESCo Depot fields
+- dry-run validation before records are written
+- row-level validation errors that can be corrected and retried
+- duplicate detection and explicit merge/update behavior
+- stable external identifiers supplied by the client
+- bulk creation/update of endpoints, assets, parts, compatibility classes, and related metadata
+- organization-scoped permissions for import/export
+- immutable import job history showing who imported what and when
+- export of the client's own operational data in standard formats
+
+For larger customers, API-based synchronization should use the same validation and domain rules as file import rather than creating a separate data model.
+
+The product should allow a customer to begin with the data they already have instead of forcing them to reconstruct their inventory manually inside CESCo Depot.
+
+## Integration abstraction principle
+
+Carrier, payment, storage-access, field-service, accounting, and other external providers should be integrated through replaceable adapters rather than embedded directly into core domain logic.
+
+The CESCo-owned record remains authoritative for:
+
+- organizations
+- endpoints
+- assets
+- parts
+- custody
+- placement
+- service requests
+- work
+- evidence
+- dispatch
+- billing
+- audit history
+
+External providers may supply labels, tracking events, payments, access events, or execution capacity, but changing providers must not require redesigning the core platform.
+
+## Carrier and logistics aggregation
+
+Customers should not need to visit multiple carrier portals simply to create labels or determine shipment status.
+
+CESCo Depot should present one shipment workflow while carrier adapters handle provider-specific APIs/webhooks.
+
+A carrier integration should eventually support, where the provider offers it:
+
+- address validation
+- rate/service selection
+- label creation
+- tracking identifiers
+- tracking webhooks/event ingestion
+- delivery confirmation
+- exception/delay events
+- proof-of-delivery metadata
+- label void/refund where applicable
+
+Carrier credentials and contractual rate accounts may belong to CESCo, the customer, or another authorized party; the system should record whose account is being used without exposing secrets to ordinary users.
+
+## Payment processing and accounting boundary
+
+CESCo Depot should own the billing domain while delegating regulated payment handling to an external payment processor.
+
+Core CESCo records should include:
+
+- estimate
+- authorization
+- charge
+- credit
+- invoice
+- payment status
+- refund status
+- account terms
+- purchase-order/reference information
+
+Payment processors should tokenize/store payment credentials so CESCo Depot does not need to retain raw card or bank-account details.
+
+Accounting-system integration should be separate from payment processing. CESCo Depot may later synchronize invoices, payments, credits, taxes, and customer/account references with bookkeeping/accounting software while preserving the operational source records in CESCo Depot.
+
+## Partner storage qualification and access control
+
+A third-party storage location used for strategic stocking should satisfy a defined qualification profile rather than being treated as interchangeable real estate.
+
+Baseline requirements should include, subject to contract and risk review:
+
+- climate-controlled space suitable for the stored equipment
+- practical 24/7 or SLA-compatible access
+- controlled facility access
+- individually secured unit/room/cage
+- ability to use auditable PIN/code/keyless access where practical
+- package-receipt capability or a documented alternate receiving procedure
+- willingness to hold inbound packages securely until authorized placement
+- documented process for placing received packages into the correct unit/position when facility staff performs that task
+- reliable contact/escalation path
+- sufficient insurance/risk allocation for the service arrangement
+
+Physical-access credentials are sensitive operational secrets. The platform should minimize who can see them, reveal them only when needed for an authorized dispatch, log disclosure/use where possible, support rotation/revocation, and prefer temporary or one-time credentials over long-lived shared codes.
+
+Remote lock/unlock capability may be supported when a storage or lock provider exposes an appropriate API, but it must remain optional. CESCo Depot must continue to work at locations with no Wi-Fi, unreliable cellular service, or conventional offline PIN/combination locks.
+
+Remote access control should be treated as an integration layered onto the service-location model, not as a requirement for strategic stocking.
