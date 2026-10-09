@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createImportJob } from "@/app/actions/imports";
+import { ImportMappingFields } from "./import-mapping-fields";
 import {
   requireOrganizationPagePermission,
   userHasOrganizationPermission,
@@ -57,8 +58,9 @@ export default async function ImportsPage({ params }: PageProps) {
       </h1>
       <p className="mt-3 max-w-3xl text-sm leading-6 opacity-70">
         Bring existing endpoint and asset data into CESCo Depot without
-        entering records one at a time. This first slice accepts CSV and
-        validates every row before operational records are written.
+        entering records one at a time. Upload the customer's existing CSV,
+        map its column names to CESCo Depot fields, then validate every row
+        before operational records are written.
       </p>
 
       {canCreate && (
@@ -71,40 +73,7 @@ export default async function ImportsPage({ params }: PageProps) {
             action={createImportJob.bind(null, organizationId)}
             className="mt-5 grid gap-3 md:grid-cols-2"
           >
-            <select
-              name="entityType"
-              required
-              defaultValue="ENDPOINT"
-              className="rounded border px-3 py-2"
-            >
-              <option value="ENDPOINT">Endpoints</option>
-              <option value="ASSET">Assets</option>
-            </select>
-
-            <select
-              name="duplicatePolicy"
-              required
-              defaultValue="CREATE_ONLY"
-              className="rounded border px-3 py-2"
-            >
-              <option value="CREATE_ONLY">
-                Create only — existing matches are errors
-              </option>
-              <option value="UPDATE_MATCHED">
-                Update matched records
-              </option>
-              <option value="SKIP_EXISTING">
-                Skip existing records
-              </option>
-            </select>
-
-            <input
-              name="file"
-              type="file"
-              accept=".csv,text/csv"
-              required
-              className="rounded border px-3 py-2 md:col-span-2"
-            />
+            <ImportMappingFields />
 
             <button
               type="submit"
