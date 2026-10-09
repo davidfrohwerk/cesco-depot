@@ -206,6 +206,7 @@ export async function acceptExternalServiceShipment(
       externalServiceCase: {
         include: {
           serviceRequest: true,
+          workOrder: true,
           asset: true,
         },
       },
