@@ -4,6 +4,14 @@ import { useMemo, useState } from "react";
 
 type EntityType = "ENDPOINT" | "ASSET";
 
+type ImportProfile = {
+  id: string;
+  name: string;
+  entityType: EntityType;
+  duplicatePolicy: "CREATE_ONLY" | "UPDATE_MATCHED" | "SKIP_EXISTING";
+  mapping: Record<string, string>;
+};
+
 type TargetField = {
   key: string;
   label: string;
@@ -90,11 +98,19 @@ function guessMapping(headers: string[], field: TargetField) {
   );
 }
 
-export function ImportMappingFields() {
+export function ImportMappingFields({
+  profiles,
+}: {
+  profiles: ImportProfile[];
+}) {
   const [entityType, setEntityType] = useState<EntityType>("ENDPOINT");
   const [headers, setHeaders] = useState<string[]>([]);
   const [filename, setFilename] = useState("");
   const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [duplicatePolicy, setDuplicatePolicy] = useState<
+    "CREATE_ONLY" | "UPDATE_MATCHED" | "SKIP_EXISTING"
+  >("CREATE_ONLY");
+  const [selectedProfileId, setSelectedProfileId] = useState("");
 
   const fields = entityType === "ENDPOINT" ? endpointFields : assetFields;
 
@@ -125,6 +141,7 @@ export function ImportMappingFields() {
 
   function changeEntity(next: EntityType) {
     setEntityType(next);
+    setSelectedProfileId("");
     const nextFields = next === "ENDPOINT" ? endpointFields : assetFields;
     const nextMapping: Record<string, string> = {};
     for (const field of nextFields) {
@@ -149,7 +166,15 @@ export function ImportMappingFields() {
       <select
         name="duplicatePolicy"
         required
-        defaultValue="CREATE_ONLY"
+        value={duplicatePolicy}
+        onChange={(event) =>
+          setDuplicatePolicy(
+            event.target.value as
+              | "CREATE_ONLY"
+              | "UPDATE_MATCHED"
+              | "SKIP_EXISTING"
+          )
+        }
         className="rounded border px-3 py-2"
       >
         <option value="CREATE_ONLY">Create only — existing matches are errors</option>
@@ -165,6 +190,37 @@ export function ImportMappingFields() {
         onChange={(event) => inspectFile(event.target.files?.[0])}
         className="rounded border px-3 py-2 md:col-span-2"
       />
+
+      <select
+        value={selectedProfileId}
+        onChange={(event) => {
+          const id = event.target.value;
+          setSelectedProfileId(id);
+          const profile = profiles.find((item) => item.id === id);
+          if (!profile) return;
+          setEntityType(profile.entityType);
+          setDuplicatePolicy(profile.duplicatePolicy);
+          setMapping(profile.mapping);
+        }}
+        className="rounded border px-3 py-2 md:col-span-2"
+      >
+        <option value="">No saved mapping profile</option>
+        {profiles
+          .filter((profile) => profile.entityType === entityType)
+          .map((profile) => (
+            <option key={profile.id} value={profile.id}>
+              {profile.name}
+            </option>
+          ))}
+      </select>
+
+      <input
+        name="profileName"
+        placeholder="Optional: save this mapping as a reusable profile"
+        className="rounded border px-3 py-2 md:col-span-2"
+      />
+
+
 
       {headers.length > 0 && (
         <div className="rounded border p-4 md:col-span-2">
