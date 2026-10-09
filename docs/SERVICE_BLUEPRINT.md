@@ -1601,3 +1601,79 @@ This is commercially aligned with the platform because CESCo may already have:
 Authorized status could reduce unnecessary handoffs and convert warranty repair into an additional service channel.
 
 CESCo Depot should model provider authorization as a capability of a service location / service network, not hard-code assumptions about any specific OEM.
+
+
+---
+
+# 28. External-service case and tracked coordination loop
+
+OEM warranty and other authorized third-party service should be represented as an explicit external-service case rather than forcing the provider into the Endpoint or ServiceLocation model.
+
+## ExternalServiceCase
+
+The first implementation slice records:
+
+- service request
+- work order
+- asset
+- provider name
+- provider case / RMA reference
+- external service destination name and postal address
+- expected return date
+- lifecycle status
+- notes
+- provider receipt / return timestamps
+- associated shipment legs
+
+Statuses:
+
+- PLANNED
+- TO_PROVIDER_IN_TRANSIT
+- AT_PROVIDER
+- RETURN_IN_TRANSIT
+- RETURNED
+- EXCEPTION
+- CANCELLED
+
+## Shipment legs
+
+Each external-service case may carry two normal Shipment records:
+
+1. TO_PROVIDER
+2. FROM_PROVIDER
+
+The outbound provider leg records the asset leaving its CESCo/partner/client placement, entering carrier custody, and being received by the OEM or authorized provider.
+
+The return leg records the asset leaving the provider, entering carrier custody, and returning either to:
+
+- a client/downstream Endpoint, or
+- an authorized CESCo/partner ServiceLocation for receiving and verification.
+
+This preserves the standard carrier/tracking/evidence model while keeping the provider outside the client endpoint and CESCo service-location taxonomies.
+
+## Custody and asset state
+
+Provider-bound carrier acceptance:
+- custody -> CARRIER
+- asset -> IN_TRANSIT_EXTERNAL_SERVICE
+
+Provider delivery:
+- custody -> PARTNER / external provider
+- asset -> IN_EXTERNAL_SERVICE
+
+Return carrier acceptance:
+- custody -> CARRIER
+- asset -> IN_TRANSIT_EXTERNAL_SERVICE
+
+Return to CESCo/partner service location:
+- normal receiving flow records package receipt, condition, storage position, and service-location custody
+- external-service case -> RETURNED
+- work order may then move to TESTING for CESCo verification
+
+Return directly to client endpoint:
+- custody -> CUSTOMER
+- placement -> selected Endpoint
+- external-service case -> RETURNED
+- work order/service request may complete because no CESCo verification handoff remains
+
+The full coordination loop therefore remains auditable even when CESCo does not perform the warranty repair itself.
