@@ -128,6 +128,40 @@ export default async function OrganizationPage({
               Strategic spares
             </Link>
           )}
+        {organization.kind === "CLIENT" &&
+          userHasOrganizationPermission(
+            currentUser,
+            "import.view",
+            organization.id
+          ) && (
+            <Link
+              href={`/organizations/${organization.id}/imports`}
+              className="underline"
+            >
+              Import data
+            </Link>
+          )}
+        {organization.kind === "CLIENT" &&
+          userHasOrganizationPermission(
+            currentUser,
+            "export.create",
+            organization.id
+          ) && (
+            <>
+              <Link
+                href={`/organizations/${organization.id}/exports/endpoints`}
+                className="underline"
+              >
+                Export endpoints
+              </Link>
+              <Link
+                href={`/organizations/${organization.id}/exports/assets`}
+                className="underline"
+              >
+                Export assets
+              </Link>
+            </>
+          )}
       </div>
 
       <section className="mt-10">
