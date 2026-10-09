@@ -741,6 +741,19 @@ export async function receiveInboundPackage(
     });
 
     if (shipmentComplete) {
+      if (
+        pkg.shipment.externalServiceCaseId &&
+        pkg.shipment.externalServiceLeg === "FROM_PROVIDER"
+      ) {
+        await tx.externalServiceCase.update({
+          where: { id: pkg.shipment.externalServiceCaseId },
+          data: {
+            status: "RETURNED",
+            returnedAt: now,
+          },
+        });
+      }
+
       await tx.serviceRequest.update({
         where: { id: pkg.shipment.serviceRequestId },
         data: { status: "RECEIVED" },
