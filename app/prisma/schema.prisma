@@ -607,7 +607,7 @@ model StorageLocation {
 
 model Asset {
   id                       String       @id @default(cuid())
-  assetTag                 String       @unique
+  assetTag                 String
   organizationId           String
   ownerOrganizationId      String?
   siteId                   String?
@@ -649,6 +649,7 @@ model Asset {
   dispatchAssignments    DispatchAssignment[]
 
   @@index([serialNumber])
+  @@unique([organizationId, assetTag])
   @@unique([organizationId, externalId])
   @@index([organizationId])
   @@index([ownerOrganizationId])
