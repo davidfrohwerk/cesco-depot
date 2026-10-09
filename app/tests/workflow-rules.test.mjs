@@ -10,6 +10,8 @@ import {
   assertCanPack,
   assertCanRecordQa,
   assertCanResumeRepair,
+  assertCanResumeFromExternalService,
+  assertCanWaitForExternalService,
   assertCanWaitForParts,
   qaTransition,
 } from "../src/lib/workflow-rules.js";
@@ -194,4 +196,22 @@ test("waiting-parts branch has controlled entry and exit", () => {
   assert.doesNotThrow(() => assertCanWaitForParts("IN_PROGRESS"));
   assert.doesNotThrow(() => assertCanResumeRepair("WAITING_PARTS"));
   assert.throws(() => assertCanResumeRepair("READY"), /waiting for parts/);
+});
+
+
+test("external-service branch has controlled entry and exit", () => {
+  assert.doesNotThrow(() => assertCanWaitForExternalService("INTAKE"));
+  assert.doesNotThrow(() => assertCanWaitForExternalService("IN_PROGRESS"));
+  assert.throws(
+    () => assertCanWaitForExternalService("READY"),
+    /external service provider/
+  );
+
+  assert.doesNotThrow(() =>
+    assertCanResumeFromExternalService("WAITING_EXTERNAL_SERVICE")
+  );
+  assert.throws(
+    () => assertCanResumeFromExternalService("IN_PROGRESS"),
+    /waiting for external service/
+  );
 });
