@@ -1529,3 +1529,75 @@ Mitigations should include:
 - alerts for overdue dispatch completion or unexpected access where integrations permit
 
 CESCo Depot's role is to make every authorized handoff observable and attributable even when execution occurs through third parties.
+
+
+---
+
+# 27. Warranty-aware service routing
+
+An asset may be under OEM warranty while still remaining fully visible inside CESCo Depot.
+
+## Asset warranty metadata
+
+Recommended fields:
+
+- warranty provider / OEM
+- expiration date
+- entitlement / contract / warranty reference
+- warranty notes / exclusions / handling instructions
+
+Warranty metadata is advisory operational context. It does not itself prove legal coverage; CESCo should rely on the applicable OEM entitlement system, contract, or customer documentation when making a warranty routing decision.
+
+## OEM warranty coordination service
+
+A client may request OEM warranty coordination as a lifecycle service.
+
+Expected flow:
+
+Client asset failure
+-> service request
+-> warranty context checked
+-> authorization boundary established
+-> evidence / serial captured
+-> OEM or authorized service-provider RMA initiated
+-> carrier / courier routing coordinated
+-> external service tracked
+-> repaired or replacement asset returned
+-> asset routed to designated endpoint or strategic stocking position
+-> lifecycle and custody history preserved
+
+The work order may enter WAITING_EXTERNAL_SERVICE while the OEM or authorized provider has the unit.
+
+CESCo must not perform repair actions outside the authorized scope when doing so could affect OEM warranty coverage.
+
+## External-service record
+
+Service requests and work orders should be able to carry:
+
+- external service provider
+- RMA / case / entitlement reference
+- outbound shipment
+- return shipment
+- external-service status
+- expected return destination
+- evidence
+- exception notes
+
+The current ServiceRequest external provider and RMA fields are the first implementation slice; richer external-service event modeling can follow.
+
+## Authorized OEM service-provider strategy
+
+Where economically and operationally sensible, CESCo may seek OEM-authorized service-provider status.
+
+This is commercially aligned with the platform because CESCo may already have:
+
+- custody of the failed asset
+- intake evidence
+- serial / warranty metadata
+- depot labor capability
+- parts and test workflow
+- return logistics responsibility
+
+Authorized status could reduce unnecessary handoffs and convert warranty repair into an additional service channel.
+
+CESCo Depot should model provider authorization as a capability of a service location / service network, not hard-code assumptions about any specific OEM.
