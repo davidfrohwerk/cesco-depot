@@ -7,6 +7,28 @@ import {
 } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
 
+function displayEntries(
+  value: unknown
+) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+
+  return Object.entries(value as Record<string, unknown>).filter(
+    ([, item]) => item !== null && item !== ""
+  );
+}
+
+function formatImportValue(value: unknown) {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+  return String(value);
+}
+
 type PageProps = {
   params: Promise<{
     id: string;
@@ -161,7 +183,8 @@ export default async function ImportJobPage({
           Validation preview
         </h2>
         <p className="mt-2 text-sm opacity-70">
-          Showing up to the first 250 rows for this development slice.
+          Review the normalized values CESCo Depot will use. The original
+          uploaded row remains available for audit and troubleshooting.
         </p>
 
         <div className="mt-5 overflow-x-auto">
@@ -184,14 +207,44 @@ export default async function ImportJobPage({
                     {row.action}
                   </td>
                   <td className="border p-2 align-top">
-                    <pre className="max-w-3xl whitespace-pre-wrap text-xs">
-                      {JSON.stringify(row.normalizedData, null, 2)}
-                    </pre>
+                    <dl className="grid gap-1">
+                      {displayEntries(row.normalizedData).map(
+                        ([key, value]) => (
+                          <div
+                            key={key}
+                            className="grid gap-1 sm:grid-cols-[12rem_1fr]"
+                          >
+                            <dt className="font-medium">
+                              {key
+                                .replaceAll("_", " ")
+                                .replace(/([a-z])([A-Z])/g, "$1 $2")}
+                            </dt>
+                            <dd>{formatImportValue(value)}</dd>
+                          </div>
+                        )
+                      )}
+                    </dl>
+                    <details className="mt-3 text-xs opacity-70">
+                      <summary className="cursor-pointer">
+                        Show original uploaded row
+                      </summary>
+                      <pre className="mt-2 max-w-3xl whitespace-pre-wrap">
+                        {JSON.stringify(row.rawData, null, 2)}
+                      </pre>
+                    </details>
                   </td>
                   <td className="border p-2 align-top">
-                    {row.validationErrors
-                      ? JSON.stringify(row.validationErrors)
-                      : "—"}
+                    {Array.isArray(row.validationErrors) ? (
+                      <ul className="space-y-1">
+                        {row.validationErrors.map((error, index) => (
+                          <li key={index}>{String(error)}</li>
+                        ))}
+                      </ul>
+                    ) : row.validationErrors ? (
+                      String(row.validationErrors)
+                    ) : (
+                      "—"
+                    )}
                   </td>
                 </tr>
               ))}
