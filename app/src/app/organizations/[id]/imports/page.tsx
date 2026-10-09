@@ -35,14 +35,20 @@ export default async function ImportsPage({ params }: PageProps) {
     organizationId
   );
 
-  const jobs = await prisma.importJob.findMany({
+  const [jobs, profiles] = await Promise.all([
+    prisma.importJob.findMany({
     where: { organizationId },
     include: {
       submittedBy: true,
     },
     orderBy: { submittedAt: "desc" },
-    take: 50,
-  });
+      take: 50,
+    }),
+    prisma.importProfile.findMany({
+      where: { organizationId },
+      orderBy: [{ entityType: "asc" }, { name: "asc" }],
+    }),
+  ]);
 
   return (
     <main className="mx-auto max-w-6xl p-8">
@@ -73,7 +79,15 @@ export default async function ImportsPage({ params }: PageProps) {
             action={createImportJob.bind(null, organizationId)}
             className="mt-5 grid gap-3 md:grid-cols-2"
           >
-            <ImportMappingFields />
+            <ImportMappingFields
+              profiles={profiles.map((profile) => ({
+                id: profile.id,
+                name: profile.name,
+                entityType: profile.entityType,
+                duplicatePolicy: profile.duplicatePolicy,
+                mapping: profile.mapping as Record<string, string>,
+              }))}
+            />
 
             <button
               type="submit"
