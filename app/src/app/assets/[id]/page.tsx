@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createServiceRequest } from "@/app/actions/service-requests";
+import { updateAssetWarranty } from "@/app/actions/assets";
 import { uploadAssetEvidence } from "@/app/actions/evidence";
 import { moveAssetToEndpoint } from "@/app/actions/asset-movements";
 import {
@@ -31,6 +32,7 @@ const serviceOptions = [
   ["SHIP_ELSEWHERE", "Ship elsewhere"],
   ["DECOMMISSION", "Decommission"],
   ["DATA_DESTRUCTION", "Data destruction"],
+  ["OEM_WARRANTY_COORDINATION", "OEM warranty coordination"],
   ["DONATE", "Donate to CESCo"],
   ["RECYCLE", "Recycle / disposition"],
 ] as const;
@@ -315,6 +317,22 @@ export default async function AssetPage({ params }: PageProps) {
               <dt className="opacity-60">Description</dt>
               <dd>{asset.description ?? "—"}</dd>
             </div>
+            <div>
+              <dt className="opacity-60">Warranty provider</dt>
+              <dd>{asset.warrantyProvider ?? "Not recorded"}</dd>
+            </div>
+            <div>
+              <dt className="opacity-60">Warranty reference</dt>
+              <dd>{asset.warrantyReference ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="opacity-60">Warranty expiration</dt>
+              <dd>
+                {asset.warrantyExpiresAt
+                  ? asset.warrantyExpiresAt.toLocaleDateString()
+                  : "Not recorded"}
+              </dd>
+            </div>
           </dl>
         </div>
 
@@ -337,6 +355,56 @@ export default async function AssetPage({ params }: PageProps) {
           </dl>
         </div>
       </section>
+
+      {canManageAsset && (
+        <section className="mt-10 rounded border p-5">
+          <h2 className="text-xl font-semibold">OEM warranty record</h2>
+          <p className="mt-2 text-sm opacity-70">
+            Record warranty context so CESCo can route eligible failures through
+            the OEM process without accidentally authorizing work that could
+            affect coverage.
+          </p>
+          <form
+            action={updateAssetWarranty.bind(null, asset.id)}
+            className="mt-5 grid gap-3 md:grid-cols-2"
+          >
+            <input
+              name="warrantyProvider"
+              defaultValue={asset.warrantyProvider ?? ""}
+              placeholder="OEM / warranty provider"
+              className="rounded border px-3 py-2"
+            />
+            <input
+              name="warrantyReference"
+              defaultValue={asset.warrantyReference ?? ""}
+              placeholder="Warranty / entitlement / contract reference"
+              className="rounded border px-3 py-2"
+            />
+            <input
+              name="warrantyExpiresAt"
+              type="date"
+              defaultValue={
+                asset.warrantyExpiresAt
+                  ? asset.warrantyExpiresAt.toISOString().slice(0, 10)
+                  : ""
+              }
+              className="rounded border px-3 py-2"
+            />
+            <textarea
+              name="warrantyNotes"
+              defaultValue={asset.warrantyNotes ?? ""}
+              placeholder="Coverage notes, OEM portal/account context, exclusions, service instructions..."
+              className="rounded border px-3 py-2 md:col-span-2"
+            />
+            <button
+              type="submit"
+              className="rounded border px-4 py-2 font-medium md:col-span-2"
+            >
+              Update warranty record
+            </button>
+          </form>
+        </section>
+      )}
 
       {canManageAsset && (
         <section className="mt-10 rounded border p-5">
