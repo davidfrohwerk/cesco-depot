@@ -66,7 +66,9 @@ export default async function OrganizationServicePage({
 
       <div className="mt-6">
         <p className="text-sm opacity-60">Service operations</p>
-        <h1 className="text-3xl font-bold">Request depot or lifecycle service</h1>
+        <h1 className="text-3xl font-bold">
+          Request depot or lifecycle service
+        </h1>
         <p className="mt-3 max-w-4xl leading-7 opacity-70">
           Select an asset, describe what is happening, and tell CESCo what
           outcome you need. Depot repair, diagnostics, configuration,
@@ -100,7 +102,68 @@ export default async function OrganizationServicePage({
                 <option value="" disabled>
                   Select asset
                 </option>
-                <button
+                {organization.assets.map((asset) => (
+                  <option key={asset.id} value={asset.id}>
+                    {asset.assetTag}
+                    {asset.manufacturer || asset.model
+                      ? ` · ${[asset.manufacturer, asset.model]
+                          .filter(Boolean)
+                          .join(" ")}`
+                      : ""}
+                    {asset.currentEndpoint
+                      ? ` — ${asset.currentEndpoint.name}`
+                      : asset.currentStoragePosition
+                        ? ` — ${asset.currentStoragePosition.serviceLocation.name} / ${asset.currentStoragePosition.name}`
+                        : ""}
+                    {asset.warrantyProvider
+                      ? ` · Warranty: ${asset.warrantyProvider}`
+                      : ""}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                name="serviceType"
+                required
+                defaultValue="DIAGNOSE"
+                className="rounded border px-3 py-2"
+              >
+                <option value="DIAGNOSE">Depot diagnostics</option>
+                <option value="REPAIR">Depot repair</option>
+                <option value="TEST">Test / verify</option>
+                <option value="RECONFIGURE">Reconfigure / reimage</option>
+                <option value="OEM_WARRANTY_COORDINATION">
+                  OEM warranty coordination
+                </option>
+                <option value="SHIP_ELSEWHERE">Ship elsewhere</option>
+                <option value="DECOMMISSION">Decommission</option>
+                <option value="DATA_DESTRUCTION">Data destruction</option>
+                <option value="DONATE">Donation processing</option>
+                <option value="RECYCLE">Recycle</option>
+                <option value="OTHER">Other lifecycle service</option>
+              </select>
+
+              <input
+                name="requestedOutcome"
+                placeholder="Requested outcome"
+                className="rounded border px-3 py-2"
+              />
+
+              <textarea
+                name="customerNotes"
+                placeholder="Problem description, symptoms, warranty context, ticket number, handling constraints, or other notes"
+                className="rounded border px-3 py-2 md:col-span-2"
+              />
+
+              <div className="rounded border p-4 text-sm md:col-span-2">
+                If the asset may still be under OEM warranty, choose{" "}
+                <strong>OEM warranty coordination</strong>. CESCo can preserve
+                evidence, coordinate the OEM/RMA path, and avoid treating
+                ordinary depot repair as authorized until warranty coverage and
+                service scope are clear.
+              </div>
+
+              <button
                 type="submit"
                 className="rounded border px-4 py-2 font-medium md:col-span-2"
               >
@@ -138,6 +201,11 @@ export default async function OrganizationServicePage({
                   <div className="rounded border px-3 py-1 text-sm">
                     {request.status.replaceAll("_", " ")}
                   </div>
+                </div>
+
+                <div className="mt-3 text-xs opacity-60">
+                  Shipments: {request.shipments.length} · Work orders:{" "}
+                  {request.workOrders.length}
                 </div>
               </Link>
             ))
