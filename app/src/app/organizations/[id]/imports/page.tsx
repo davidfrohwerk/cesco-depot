@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createImportJob } from "@/app/actions/imports";
+import {
+  createImportJob,
+  deleteImportProfile,
+} from "@/app/actions/imports";
 import { ImportMappingFields } from "./import-mapping-fields";
 import {
   requireOrganizationPagePermission,
@@ -116,6 +119,50 @@ export default async function ImportsPage({ params }: PageProps) {
             Current development limits: CSV only, 5 MB maximum, 5,000 data
             rows per import.
           </p>
+        </section>
+      )}
+
+      {profiles.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-2xl font-semibold">
+            Saved import profiles
+          </h2>
+          <p className="mt-2 text-sm opacity-70">
+            Reuse a customer's known column layout and duplicate policy on
+            future imports.
+          </p>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            {profiles.map((profile) => (
+              <article key={profile.id} className="rounded border p-4">
+                <div className="font-semibold">{profile.name}</div>
+                <div className="mt-1 text-sm opacity-70">
+                  {profile.entityType} ·{" "}
+                  {profile.duplicatePolicy.replaceAll("_", " ")}
+                </div>
+                <div className="mt-2 text-xs opacity-50">
+                  {Object.keys(
+                    profile.mapping as Record<string, string>
+                  ).length}{" "}
+                  mapped fields
+                </div>
+
+                {canCreate && (
+                  <form
+                    action={deleteImportProfile.bind(null, profile.id)}
+                    className="mt-4"
+                  >
+                    <button
+                      type="submit"
+                      className="rounded border px-3 py-1 text-sm"
+                    >
+                      Delete profile
+                    </button>
+                  </form>
+                )}
+              </article>
+            ))}
+          </div>
         </section>
       )}
 
