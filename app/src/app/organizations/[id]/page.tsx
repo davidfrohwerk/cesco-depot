@@ -99,6 +99,22 @@ export default async function OrganizationPage({
         {organization.name}
       </h1>
 
+      {organization.kind === "CLIENT" && (
+        <div className="mt-4 rounded border p-4">
+          <div className="font-medium">New here?</div>
+          <p className="mt-1 text-sm opacity-70">
+            Use guided setup to import locations and assets, invite your team,
+            and see what to do next.
+          </p>
+          <Link
+            href={`/organizations/${organization.id}/onboarding`}
+            className="mt-3 inline-block text-sm underline"
+          >
+            Open guided setup
+          </Link>
+        </div>
+      )}
+
       <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
         <span className="opacity-60">
           Organization ID: {organization.id}
@@ -164,7 +180,7 @@ export default async function OrganizationPage({
           )}
       </div>
 
-      <section className="mt-10">
+      <section id="customer-endpoints" className="mt-10">
         <h2 className="text-2xl font-semibold">Customer endpoints</h2>
         <p className="mt-2 text-sm opacity-70">
           Stores, clinics, branches, warehouses, offices, and other locations
@@ -307,7 +323,7 @@ export default async function OrganizationPage({
         </section>
       )}
 
-      <section className="mt-14">
+      <section id="assets" className="mt-14">
         <h2 className="text-2xl font-semibold">Assets</h2>
 
         {assetError === "duplicate" && (
