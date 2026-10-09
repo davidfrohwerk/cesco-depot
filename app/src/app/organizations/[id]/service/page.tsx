@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createServiceRequest } from "@/app/actions/service-requests";
+import { createOrganizationServiceRequest } from "@/app/actions/service-requests";
 import {
   requireOrganizationPagePermission,
   userHasOrganizationPermission,
@@ -84,93 +84,24 @@ export default async function OrganizationServicePage({
               Add or import at least one asset before requesting asset service.
             </p>
           ) : (
-            <form className="mt-5 grid gap-3 md:grid-cols-2">
+            <form
+              action={createOrganizationServiceRequest.bind(
+                null,
+                organizationId
+              )}
+              className="mt-5 grid gap-3 md:grid-cols-2"
+            >
               <select
                 name="assetId"
                 required
                 defaultValue=""
-                formAction={undefined}
                 className="rounded border px-3 py-2 md:col-span-2"
               >
                 <option value="" disabled>
                   Select asset
                 </option>
-                {organization.assets.map((asset) => (
-                  <option key={asset.id} value={asset.id}>
-                    {asset.assetTag}
-                    {asset.manufacturer || asset.model
-                      ? ` · ${[asset.manufacturer, asset.model]
-                          .filter(Boolean)
-                          .join(" ")}`
-                      : ""}
-                    {asset.currentEndpoint
-                      ? ` — ${asset.currentEndpoint.name}`
-                      : ""}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                name="serviceType"
-                required
-                defaultValue="DIAGNOSE"
-                className="rounded border px-3 py-2"
-              >
-                <option value="DIAGNOSE">Depot diagnostics</option>
-                <option value="REPAIR">Depot repair</option>
-                <option value="TEST">Test / verify</option>
-                <option value="RECONFIGURE">Reconfigure / reimage</option>
-                <option value="OEM_WARRANTY_COORDINATION">
-                  OEM warranty coordination
-                </option>
-                <option value="SHIP_ELSEWHERE">Ship elsewhere</option>
-                <option value="DECOMMISSION">Decommission</option>
-                <option value="DATA_DESTRUCTION">Data destruction</option>
-                <option value="DONATE">Donation processing</option>
-                <option value="RECYCLE">Recycle</option>
-                <option value="OTHER">Other lifecycle service</option>
-              </select>
-
-              <input
-                name="requestedOutcome"
-                placeholder="Requested outcome"
-                className="rounded border px-3 py-2"
-              />
-
-              <textarea
-                name="customerNotes"
-                placeholder="Problem description, symptoms, warranty context, ticket number, handling constraints, or other notes"
-                className="rounded border px-3 py-2 md:col-span-2"
-              />
-
-              <div className="md:col-span-2 rounded border p-4 text-sm">
-                Choose an asset, then use the button below. If the unit may
-                still be under OEM warranty, select OEM warranty coordination
-                so CESCo can route the asset through the warranty process
-                without treating ordinary depot repair as authorized.
-              </div>
-
-              {organization.assets.map((asset) => (
                 <button
-                  key={asset.id}
-                  type="submit"
-                  name="selectedAssetSubmit"
-                  value={asset.id}
-                  formAction={createServiceRequest.bind(null, asset.id)}
-                  className="hidden"
-                >
-                  Submit for {asset.assetTag}
-                </button>
-              ))}
-
-              <button
                 type="submit"
-                formAction={async (formData: FormData) => {
-                  "use server";
-                  const assetId = String(formData.get("assetId") ?? "").trim();
-                  if (!assetId) throw new Error("Asset is required.");
-                  await createServiceRequest(assetId, formData);
-                }}
                 className="rounded border px-4 py-2 font-medium md:col-span-2"
               >
                 Create service request
