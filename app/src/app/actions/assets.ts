@@ -35,10 +35,14 @@ export async function createAsset(
   }
 
   const existingAsset = await prisma.asset.findUnique({
-    where: { assetTag },
+    where: {
+      organizationId_assetTag: {
+        organizationId,
+        assetTag,
+      },
+    },
     select: {
       id: true,
-      organizationId: true,
     },
   });
 
