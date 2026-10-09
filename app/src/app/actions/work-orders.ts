@@ -1479,6 +1479,36 @@ export async function setWorkOrderWaitingExternalService(
     formData.get("externalRmaReference") ?? ""
   ).trim();
   const notes = String(formData.get("notes") ?? "").trim();
+  const destinationName = String(
+    formData.get("destinationName") ?? ""
+  ).trim();
+  const addressLine1 = String(
+    formData.get("addressLine1") ?? ""
+  ).trim();
+  const addressLine2 = String(
+    formData.get("addressLine2") ?? ""
+  ).trim();
+  const city = String(formData.get("city") ?? "").trim();
+  const state = String(formData.get("state") ?? "").trim();
+  const postalCode = String(
+    formData.get("postalCode") ?? ""
+  ).trim();
+  const country = String(
+    formData.get("country") ?? "US"
+  ).trim() || "US";
+  const expectedReturnAtRaw = String(
+    formData.get("expectedReturnAt") ?? ""
+  ).trim();
+  const expectedReturnAt = expectedReturnAtRaw
+    ? new Date(expectedReturnAtRaw)
+    : null;
+
+  if (
+    expectedReturnAt &&
+    Number.isNaN(expectedReturnAt.getTime())
+  ) {
+    throw new Error("Expected return date is invalid.");
+  }
 
   if (!provider) {
     throw new Error("External service provider is required.");
@@ -1515,6 +1545,40 @@ export async function setWorkOrderWaitingExternalService(
       data: {
         externalServiceProvider: provider,
         externalRmaReference: rmaReference || null,
+      },
+    });
+
+    const existingCase = await tx.externalServiceCase.findFirst({
+      where: {
+        workOrderId: workOrder.id,
+        status: {
+          notIn: ["RETURNED", "CANCELLED"],
+        },
+      },
+    });
+
+    if (existingCase) {
+      throw new Error(
+        "This work order already has an active external service case."
+      );
+    }
+
+    await tx.externalServiceCase.create({
+      data: {
+        serviceRequestId: workOrder.serviceRequest.id,
+        workOrderId: workOrder.id,
+        assetId: workOrder.assetId,
+        providerName: provider,
+        providerCaseReference: rmaReference || null,
+        destinationName: destinationName || provider,
+        addressLine1: addressLine1 || null,
+        addressLine2: addressLine2 || null,
+        city: city || null,
+        state: state || null,
+        postalCode: postalCode || null,
+        country,
+        expectedReturnAt,
+        notes: notes || null,
       },
     });
 
