@@ -643,3 +643,23 @@ Physical-access credentials are sensitive operational secrets. The platform shou
 Remote lock/unlock capability may be supported when a storage or lock provider exposes an appropriate API, but it must remain optional. CESCo Depot must continue to work at locations with no Wi-Fi, unreliable cellular service, or conventional offline PIN/combination locks.
 
 Remote access control should be treated as an integration layered onto the service-location model, not as a requirement for strategic stocking.
+
+
+## Warranty-aware lifecycle service
+
+OEM warranty coverage should be treated as a routing and authorization constraint, not as a reason for CESCo Depot to lose visibility of the asset lifecycle.
+
+If an asset may still be under OEM warranty, CESCo can provide value by coordinating the process:
+
+- verify and record warranty context supplied by the client
+- preserve evidence and serial/asset identity
+- avoid unauthorized repair activity that could affect coverage
+- prepare or coordinate shipment to the OEM or authorized service provider
+- track RMA / external service references
+- monitor custody and shipment state while the asset is outside the CESCo depot network
+- receive the repaired/replacement unit back into a customer-designated stocking location, service location, or endpoint
+- preserve the full lifecycle record across the external warranty handoff
+
+Warranty coordination does not replace CESCo depot diagnostics, repair, testing, reconfiguration, decommissioning, data destruction, donation, recycling, or other lifecycle services. It determines the appropriate path when OEM coverage is applicable.
+
+CESCo should pursue authorized OEM service-provider relationships where strategically useful. Authorization/certification may allow CESCo to perform covered repair work directly, reduce handoffs, and create an additional revenue stream while maintaining OEM requirements. Provider-specific certification requirements must remain outside the core product model and be represented as service-network capabilities rather than assumptions.
