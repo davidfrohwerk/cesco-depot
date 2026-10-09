@@ -34,6 +34,22 @@ export async function createAsset(
     throw new Error("Asset tag is required.");
   }
 
+  const existingAsset = await prisma.asset.findUnique({
+    where: { assetTag },
+    select: {
+      id: true,
+      organizationId: true,
+    },
+  });
+
+  if (existingAsset) {
+    redirect(
+      `/organizations/${organizationId}?assetError=duplicate&assetTag=${encodeURIComponent(
+        assetTag
+      )}`
+    );
+  }
+
   if (endpointId) {
     const endpoint = await prisma.endpoint.findUnique({
       where: { id: endpointId },
