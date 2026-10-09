@@ -663,3 +663,14 @@ If an asset may still be under OEM warranty, CESCo can provide value by coordina
 Warranty coordination does not replace CESCo depot diagnostics, repair, testing, reconfiguration, decommissioning, data destruction, donation, recycling, or other lifecycle services. It determines the appropriate path when OEM coverage is applicable.
 
 CESCo should pursue authorized OEM service-provider relationships where strategically useful. Authorization/certification may allow CESCo to perform covered repair work directly, reduce handoffs, and create an additional revenue stream while maintaining OEM requirements. Provider-specific certification requirements must remain outside the core product model and be represented as service-network capabilities rather than assumptions.
+
+
+## External-service tracking invariant
+
+When CESCo coordinates an OEM or third-party service event, the platform should preserve continuous operational truth across both shipment legs:
+
+CESCo/client custody -> carrier -> external provider -> carrier -> designated return location.
+
+The external provider is not automatically a client endpoint, CESCo service location, or owner. It is an external-service participant linked through an explicit case and shipment relationship.
+
+Tracking numbers, custody changes, provider receipt, return shipment, return destination, and final receipt should remain visible to the client in the same service record.
