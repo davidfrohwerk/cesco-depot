@@ -313,6 +313,7 @@ model User {
   spareAssignments      SpareRequisition[] @relation("SpareRequisitionAssigner")
   dispatchAssignments   DispatchAssignment[] @relation("DispatchAssignmentAssigner")
   importJobs            ImportJob[]          @relation("ImportJobSubmitter")
+  importProfiles         ImportProfile[]      @relation("ImportProfileCreator")
   uploadedEvidence     Evidence[]         @relation("EvidenceUploader")
   evidenceAccessEvents EvidenceAccessEvent[] @relation("EvidenceAccessActor")
 }
@@ -371,6 +372,7 @@ model Organization {
   spareRequisitions  SpareRequisition[]
   dispatchAssignments DispatchAssignment[]
   importJobs          ImportJob[]
+  importProfiles      ImportProfile[]
   evidence           Evidence[]
 }
 
@@ -788,6 +790,24 @@ model DispatchAssignment {
   @@index([originStoragePositionId])
   @@index([destinationEndpointId])
   @@index([destinationStoragePositionId])
+}
+
+model ImportProfile {
+  id              String          @id @default(cuid())
+  organizationId  String
+  createdByUserId String
+  name            String
+  entityType      ImportEntityType
+  duplicatePolicy ImportDuplicatePolicy @default(CREATE_ONLY)
+  mapping         Json
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("ImportProfileCreator", fields: [createdByUserId], references: [id])
+
+  @@unique([organizationId, entityType, name])
+  @@index([organizationId, entityType])
 }
 
 model ImportJob {
