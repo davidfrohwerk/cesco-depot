@@ -393,31 +393,12 @@ export default async function ServiceRequestPage({
               OEM / external service coordination
             </h2>
             <p className="mt-2 text-sm opacity-70">
-              Preserve the warranty case, provider, and RMA context while the
-              unit is handled outside the CESCo service network. This does not
-              authorize CESCo to perform repair work outside the approved scope.
+              Track the warranty case and both custody/shipping legs without
+              treating the OEM as a customer endpoint or CESCo service location.
             </p>
 
-            <div className="mt-4 grid gap-2 text-sm md:grid-cols-2">
-              <div>
-                <span className="opacity-60">Provider:</span>{" "}
-                {request.externalServiceProvider ?? "Not recorded"}
-              </div>
-              <div>
-                <span className="opacity-60">RMA / case:</span>{" "}
-                {request.externalRmaReference ?? "Not recorded"}
-              </div>
-              <div>
-                <span className="opacity-60">Work-order status:</span>{" "}
-                {workOrder.status.replaceAll("_", " ")}
-              </div>
-              <div>
-                <span className="opacity-60">Asset warranty:</span>{" "}
-                {request.asset?.warrantyProvider ?? "Not recorded"}
-              </div>
-            </div>
-
-            {canManageWorkOrder &&
+            {!externalServiceCase &&
+              canManageWorkOrder &&
               ["INTAKE", "OPEN", "IN_PROGRESS"].includes(
                 workOrder.status
               ) && (
@@ -447,6 +428,47 @@ export default async function ServiceRequestPage({
                     placeholder="RMA / case / entitlement reference"
                     className="rounded border px-3 py-2"
                   />
+                  <input
+                    name="destinationName"
+                    placeholder="OEM repair center / destination name"
+                    className="rounded border px-3 py-2 md:col-span-2"
+                  />
+                  <input
+                    name="addressLine1"
+                    placeholder="Destination street address"
+                    className="rounded border px-3 py-2"
+                  />
+                  <input
+                    name="addressLine2"
+                    placeholder="Suite / department / dock"
+                    className="rounded border px-3 py-2"
+                  />
+                  <input
+                    name="city"
+                    placeholder="City"
+                    className="rounded border px-3 py-2"
+                  />
+                  <input
+                    name="state"
+                    placeholder="State / province"
+                    className="rounded border px-3 py-2"
+                  />
+                  <input
+                    name="postalCode"
+                    placeholder="Postal code"
+                    className="rounded border px-3 py-2"
+                  />
+                  <input
+                    name="country"
+                    defaultValue="US"
+                    placeholder="Country"
+                    className="rounded border px-3 py-2"
+                  />
+                  <input
+                    name="expectedReturnAt"
+                    type="date"
+                    className="rounded border px-3 py-2"
+                  />
                   <textarea
                     name="notes"
                     placeholder="Coverage decision, provider instructions, shipping prerequisites, or other external-service notes"
@@ -456,33 +478,383 @@ export default async function ServiceRequestPage({
                     type="submit"
                     className="rounded border px-4 py-2 font-medium md:col-span-2"
                   >
-                    Route work order to external service
+                    Open external service case
                   </button>
                 </form>
               )}
 
-            {canManageWorkOrder &&
-              workOrder.status === "WAITING_EXTERNAL_SERVICE" && (
-                <form
-                  action={resumeAfterExternalService.bind(
-                    null,
-                    workOrder.id
+            {externalServiceCase && (
+              <>
+                <div className="mt-5 grid gap-3 text-sm md:grid-cols-2">
+                  <div>
+                    <span className="opacity-60">Provider:</span>{" "}
+                    {externalServiceCase.providerName}
+                  </div>
+                  <div>
+                    <span className="opacity-60">Case / RMA:</span>{" "}
+                    {externalServiceCase.providerCaseReference ??
+                      "Not recorded"}
+                  </div>
+                  <div>
+                    <span className="opacity-60">Case status:</span>{" "}
+                    {externalServiceCase.status.replaceAll("_", " ")}
+                  </div>
+                  <div>
+                    <span className="opacity-60">Expected return:</span>{" "}
+                    {externalServiceCase.expectedReturnAt
+                      ? externalServiceCase.expectedReturnAt.toLocaleDateString()
+                      : "Not recorded"}
+                  </div>
+                  <div className="md:col-span-2">
+                    <span className="opacity-60">Provider destination:</span>{" "}
+                    {[
+                      externalServiceCase.destinationName,
+                      externalServiceCase.addressLine1,
+                      externalServiceCase.addressLine2,
+                      externalServiceCase.city,
+                      externalServiceCase.state,
+                      externalServiceCase.postalCode,
+                      externalServiceCase.country,
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || "Not recorded"}
+                  </div>
+                </div>
+
+                <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                  <article className="rounded border p-4">
+                    <h3 className="font-semibold">
+                      1. Asset to provider
+                    </h3>
+
+                    {!externalOutboundShipment &&
+                      canPrepareShipment &&
+                      externalServiceCase.status === "PLANNED" && (
+                        <form
+                          action={createExternalServiceShipment.bind(
+                            null,
+                            externalServiceCase.id,
+                            "TO_PROVIDER"
+                          )}
+                          className="mt-4 grid gap-3"
+                        >
+                          <input
+                            name="carrier"
+                            required
+                            placeholder="Carrier"
+                            className="rounded border px-3 py-2"
+                          />
+                          <input
+                            name="trackingNumber"
+                            required
+                            placeholder="Tracking number"
+                            className="rounded border px-3 py-2"
+                          />
+                          <button
+                            type="submit"
+                            className="rounded border px-3 py-2 font-medium"
+                          >
+                            Create provider shipment
+                          </button>
+                        </form>
+                      )}
+
+                    {externalOutboundShipment && (
+                      <div className="mt-4 text-sm">
+                        <div>
+                          {externalOutboundShipment.carrier ?? "Carrier"} ·{" "}
+                          {externalOutboundShipment.trackingNumber ??
+                            "No tracking"}
+                        </div>
+                        <div className="mt-1 opacity-70">
+                          {externalOutboundShipment.status.replaceAll(
+                            "_",
+                            " "
+                          )}
+                        </div>
+
+                        {canManageShipment &&
+                          externalOutboundShipment.status ===
+                            "TRACKING_ENTERED" && (
+                            <form
+                              action={acceptExternalServiceShipment.bind(
+                                null,
+                                externalOutboundShipment.id
+                              )}
+                              className="mt-3"
+                            >
+                              <button
+                                type="submit"
+                                className="rounded border px-3 py-2 font-medium"
+                              >
+                                Record carrier acceptance
+                              </button>
+                            </form>
+                          )}
+
+                        {canManageShipment &&
+                          externalOutboundShipment.status ===
+                            "IN_TRANSIT" && (
+                            <form
+                              action={confirmExternalServiceShipmentDelivery.bind(
+                                null,
+                                externalOutboundShipment.id
+                              )}
+                              className="mt-3"
+                            >
+                              <button
+                                type="submit"
+                                className="rounded border px-3 py-2 font-medium"
+                              >
+                                Record provider delivery
+                              </button>
+                            </form>
+                          )}
+                      </div>
+                    )}
+                  </article>
+
+                  <article className="rounded border p-4">
+                    <h3 className="font-semibold">
+                      2. Asset return from provider
+                    </h3>
+
+                    {!externalReturnShipment &&
+                      canPrepareShipment &&
+                      externalServiceCase.status === "AT_PROVIDER" && (
+                        <form
+                          action={createExternalServiceShipment.bind(
+                            null,
+                            externalServiceCase.id,
+                            "FROM_PROVIDER"
+                          )}
+                          className="mt-4 grid gap-3"
+                        >
+                          <input
+                            name="carrier"
+                            required
+                            placeholder="Return carrier"
+                            className="rounded border px-3 py-2"
+                          />
+                          <input
+                            name="trackingNumber"
+                            required
+                            placeholder="Return tracking number"
+                            className="rounded border px-3 py-2"
+                          />
+                          <select
+                            name="returnDestination"
+                            required
+                            defaultValue=""
+                            className="rounded border px-3 py-2"
+                          >
+                            <option value="" disabled>
+                              Return destination
+                            </option>
+                            <optgroup label="Client / downstream endpoints">
+                              {returnEndpoints.map((endpoint) => (
+                                <option
+                                  key={endpoint.id}
+                                  value={`ENDPOINT:${endpoint.id}`}
+                                >
+                                  {endpoint.name}
+                                  {endpoint.externalCode
+                                    ? ` · ${endpoint.externalCode}`
+                                    : ""}
+                                </option>
+                              ))}
+                            </optgroup>
+                            <optgroup label="CESCo / partner service locations">
+                              {serviceLocations.map((location) => (
+                                <option
+                                  key={location.id}
+                                  value={`SERVICE_LOCATION:${location.id}`}
+                                >
+                                  {location.name}
+                                  {location.city || location.state
+                                    ? ` — ${[
+                                        location.city,
+                                        location.state,
+                                      ]
+                                        .filter(Boolean)
+                                        .join(", ")}`
+                                    : ""}
+                                </option>
+                              ))}
+                            </optgroup>
+                          </select>
+                          <button
+                            type="submit"
+                            className="rounded border px-3 py-2 font-medium"
+                          >
+                            Create return shipment
+                          </button>
+                        </form>
+                      )}
+
+                    {externalReturnShipment && (
+                      <div className="mt-4 text-sm">
+                        <div>
+                          {externalReturnShipment.carrier ?? "Carrier"} ·{" "}
+                          {externalReturnShipment.trackingNumber ??
+                            "No tracking"}
+                        </div>
+                        <div className="mt-1 opacity-70">
+                          {externalReturnShipment.status.replaceAll(
+                            "_",
+                            " "
+                          )}
+                        </div>
+                        <div className="mt-1 opacity-70">
+                          Destination:{" "}
+                          {externalReturnShipment.destinationEndpoint?.name ??
+                            externalReturnShipment
+                              .destinationServiceLocation?.name ??
+                            "Not recorded"}
+                        </div>
+
+                        {canManageShipment &&
+                          externalReturnShipment.status ===
+                            "TRACKING_ENTERED" && (
+                            <form
+                              action={acceptExternalServiceShipment.bind(
+                                null,
+                                externalReturnShipment.id
+                              )}
+                              className="mt-3"
+                            >
+                              <button
+                                type="submit"
+                                className="rounded border px-3 py-2 font-medium"
+                              >
+                                Record return carrier acceptance
+                              </button>
+                            </form>
+                          )}
+
+                        {canManageShipment &&
+                          externalReturnShipment.status === "IN_TRANSIT" &&
+                          externalReturnShipment.destinationEndpointId && (
+                            <form
+                              action={confirmExternalServiceShipmentDelivery.bind(
+                                null,
+                                externalReturnShipment.id
+                              )}
+                              className="mt-3"
+                            >
+                              <button
+                                type="submit"
+                                className="rounded border px-3 py-2 font-medium"
+                              >
+                                Record return delivery to endpoint
+                              </button>
+                            </form>
+                          )}
+
+                        {canReceiveInventory &&
+                          externalReturnShipment.status === "IN_TRANSIT" &&
+                          externalReturnShipment
+                            .destinationServiceLocationId &&
+                          externalReturnShipment.packages[0] && (
+                            <form
+                              action={receiveInboundPackage.bind(
+                                null,
+                                externalReturnShipment.packages[0].id
+                              )}
+                              className="mt-4 grid gap-3"
+                            >
+                              <select
+                                name="storagePositionId"
+                                required
+                                defaultValue=""
+                                className="rounded border px-3 py-2"
+                              >
+                                <option value="" disabled>
+                                  Receiving / storage position
+                                </option>
+                                {externalReturnStoragePositions.map(
+                                  (position) => (
+                                    <option
+                                      key={position.id}
+                                      value={position.id}
+                                    >
+                                      {position.name} ·{" "}
+                                      {position.type.replaceAll("_", " ")}
+                                    </option>
+                                  )
+                                )}
+                              </select>
+                              <select
+                                name="condition"
+                                defaultValue="UNKNOWN"
+                                className="rounded border px-3 py-2"
+                              >
+                                {receiptConditions.map((condition) => (
+                                  <option
+                                    key={condition}
+                                    value={condition}
+                                  >
+                                    {condition.replaceAll("_", " ")}
+                                  </option>
+                                ))}
+                              </select>
+                              <select
+                                name="sealIntact"
+                                defaultValue=""
+                                className="rounded border px-3 py-2"
+                              >
+                                <option value="">
+                                  Seal condition not recorded
+                                </option>
+                                <option value="true">Seal intact</option>
+                                <option value="false">
+                                  Seal broken / not intact
+                                </option>
+                              </select>
+                              <textarea
+                                name="notes"
+                                placeholder="OEM return condition, replacement/repair details, packaging, or receiving notes"
+                                className="rounded border px-3 py-2"
+                              />
+                              <button
+                                type="submit"
+                                className="rounded border px-3 py-2 font-medium"
+                              >
+                                Receive return into service location
+                              </button>
+                            </form>
+                          )}
+                      </div>
+                    )}
+                  </article>
+                </div>
+
+                {canManageWorkOrder &&
+                  externalServiceCase.status === "RETURNED" &&
+                  workOrder.status === "WAITING_EXTERNAL_SERVICE" &&
+                  !externalReturnShipment?.destinationEndpointId && (
+                    <form
+                      action={resumeAfterExternalService.bind(
+                        null,
+                        workOrder.id
+                      )}
+                      className="mt-5 grid gap-3 md:grid-cols-2"
+                    >
+                      <textarea
+                        name="notes"
+                        placeholder="What returned from the OEM/provider, repair/replacement details, or verification notes"
+                        className="rounded border px-3 py-2 md:col-span-2"
+                      />
+                      <button
+                        type="submit"
+                        className="rounded border px-4 py-2 font-medium md:col-span-2"
+                      >
+                        Begin CESCo verification
+                      </button>
+                    </form>
                   )}
-                  className="mt-5 grid gap-3 md:grid-cols-2"
-                >
-                  <textarea
-                    name="notes"
-                    placeholder="What returned from the OEM/provider, repair/replacement details, or verification notes"
-                    className="rounded border px-3 py-2 md:col-span-2"
-                  />
-                  <button
-                    type="submit"
-                    className="rounded border px-4 py-2 font-medium md:col-span-2"
-                  >
-                    Record return and begin verification
-                  </button>
-                </form>
-              )}
+              </>
+            )}
           </section>
         )}
 
