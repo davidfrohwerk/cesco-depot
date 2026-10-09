@@ -231,6 +231,34 @@ enum DispatchAssignmentStatus {
   CANCELLED
 }
 
+enum ImportEntityType {
+  ENDPOINT
+  ASSET
+}
+
+enum ImportJobStatus {
+  VALIDATING
+  READY
+  VALIDATION_FAILED
+  COMMITTING
+  COMPLETED
+  COMMIT_FAILED
+  CANCELLED
+}
+
+enum ImportDuplicatePolicy {
+  CREATE_ONLY
+  UPDATE_MATCHED
+  SKIP_EXISTING
+}
+
+enum ImportRowAction {
+  CREATE
+  UPDATE
+  SKIP
+  ERROR
+}
+
 enum WorkOrderPartStatus {
   REQUIRED
   ORDERED
@@ -284,6 +312,7 @@ model User {
   spareRequisitions     SpareRequisition[] @relation("SpareRequisitionRequester")
   spareAssignments      SpareRequisition[] @relation("SpareRequisitionAssigner")
   dispatchAssignments   DispatchAssignment[] @relation("DispatchAssignmentAssigner")
+  importJobs            ImportJob[]          @relation("ImportJobSubmitter")
   uploadedEvidence     Evidence[]         @relation("EvidenceUploader")
   evidenceAccessEvents EvidenceAccessEvent[] @relation("EvidenceAccessActor")
 }
@@ -341,6 +370,7 @@ model Organization {
   workOrders         WorkOrder[]
   spareRequisitions  SpareRequisition[]
   dispatchAssignments DispatchAssignment[]
+  importJobs          ImportJob[]
   evidence           Evidence[]
 }
 
@@ -589,6 +619,7 @@ model Asset {
   manufacturer             String?
   model                    String?
   serialNumber             String?
+  externalId               String?
   assetClass               String?
   compatibilityClass       String?
   configurationVersion     String?
@@ -618,6 +649,7 @@ model Asset {
   dispatchAssignments    DispatchAssignment[]
 
   @@index([serialNumber])
+  @@unique([organizationId, externalId])
   @@index([organizationId])
   @@index([ownerOrganizationId])
   @@index([currentStorageLocationId])
@@ -755,6 +787,56 @@ model DispatchAssignment {
   @@index([originStoragePositionId])
   @@index([destinationEndpointId])
   @@index([destinationStoragePositionId])
+}
+
+model ImportJob {
+  id              String                @id @default(cuid())
+  organizationId  String
+  submittedByUserId String
+  entityType      ImportEntityType
+  sourceFormat    String                @default("CSV")
+  originalFilename String
+  sourceSha256    String
+  status          ImportJobStatus       @default(VALIDATING)
+  duplicatePolicy ImportDuplicatePolicy
+  totalRows       Int                   @default(0)
+  validRows       Int                   @default(0)
+  invalidRows     Int                   @default(0)
+  createCount     Int                   @default(0)
+  updateCount     Int                   @default(0)
+  skipCount       Int                   @default(0)
+  errorCount      Int                   @default(0)
+  submittedAt     DateTime              @default(now())
+  validatedAt     DateTime?
+  confirmedAt     DateTime?
+  committedAt     DateTime?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  submittedBy  User         @relation("ImportJobSubmitter", fields: [submittedByUserId], references: [id])
+  rows         ImportRow[]
+
+  @@index([organizationId, submittedAt])
+  @@index([status])
+}
+
+model ImportRow {
+  id              String          @id @default(cuid())
+  importJobId     String
+  rowNumber       Int
+  rawData         Json
+  normalizedData  Json
+  action          ImportRowAction
+  matchedRecordId String?
+  validationErrors Json?
+  warnings        Json?
+  createdAt       DateTime        @default(now())
+
+  importJob ImportJob @relation(fields: [importJobId], references: [id], onDelete: Cascade)
+
+  @@unique([importJobId, rowNumber])
+  @@index([importJobId, action])
 }
 
 model ServiceRequest {
