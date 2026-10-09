@@ -16,6 +16,7 @@ import {
   parseOptionalImportDate,
 } from "@/lib/import-definitions";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "../../../generated/prisma/client";
 
 const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 const MAX_IMPORT_ROWS = 5000;
@@ -25,6 +26,10 @@ type DuplicatePolicy =
   | "CREATE_ONLY"
   | "UPDATE_MATCHED"
   | "SKIP_EXISTING";
+
+function toInputJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
 
 function requireKnownHeaders(
   record: Record<string, string>,
@@ -576,13 +581,17 @@ export async function createImportJob(
       rows: {
         create: rowResults.map((row) => ({
           rowNumber: row.rowNumber,
-          rawData: row.rawData,
-          normalizedData: row.normalizedData,
+          rawData: toInputJson(row.rawData),
+          normalizedData: toInputJson(row.normalizedData),
           action: row.action,
           matchedRecordId: row.matchedRecordId,
           validationErrors:
-            row.validationErrors ?? undefined,
-          warnings: row.warnings ?? undefined,
+            row.validationErrors
+              ? toInputJson(row.validationErrors)
+              : undefined,
+          warnings: row.warnings
+            ? toInputJson(row.warnings)
+            : undefined,
         })),
       },
     },
