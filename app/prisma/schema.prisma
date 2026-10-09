@@ -671,6 +671,7 @@ model Asset {
   spareAssignments       SpareRequisition[] @relation("SpareRequisitionAssignedAsset")
   returnForRequisitions   SpareRequisition[] @relation("SpareRequisitionReturnAsset")
   dispatchAssignments    DispatchAssignment[]
+  externalServiceCases   ExternalServiceCase[]
 
   @@index([serialNumber])
   @@unique([organizationId, assetTag])
