@@ -907,3 +907,33 @@ export async function commitImportJob(
     `/organizations/${job.organizationId}/imports/${job.id}`
   );
 }
+
+
+export async function deleteImportProfile(
+  profileId: string
+) {
+  const profile = await prisma.importProfile.findUnique({
+    where: { id: profileId },
+    select: {
+      id: true,
+      organizationId: true,
+    },
+  });
+
+  if (!profile) {
+    throw new Error("Import profile not found.");
+  }
+
+  await requireOrganizationPermission(
+    "import.create",
+    profile.organizationId
+  );
+
+  await prisma.importProfile.delete({
+    where: { id: profile.id },
+  });
+
+  revalidatePath(
+    `/organizations/${profile.organizationId}/imports`
+  );
+}
