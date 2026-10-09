@@ -11,6 +11,11 @@ import {
   setWorkOrderWaitingExternalService,
 } from "@/app/actions/work-orders";
 import {
+  acceptExternalServiceShipment,
+  confirmExternalServiceShipmentDelivery,
+  createExternalServiceShipment,
+} from "@/app/actions/external-service";
+import {
   uploadAuthorizationEvidence,
   uploadPackageEvidence,
   uploadShipmentEvidence,
@@ -131,6 +136,9 @@ export default async function ServiceRequestPage({
       workOrders: {
         orderBy: { openedAt: "desc" },
       },
+      externalServiceCases: {
+        orderBy: { createdAt: "desc" },
+      },
     },
   });
 
@@ -174,7 +182,8 @@ export default async function ServiceRequestPage({
     request.organizationId
   );
 
-  const serviceLocations = await prisma.serviceLocation.findMany({
+  const [serviceLocations, returnEndpoints] = await Promise.all([
+    prisma.serviceLocation.findMany({
     where: {
       isActive: true,
       clientAccess: {
@@ -194,7 +203,22 @@ export default async function ServiceRequestPage({
       climateControlled: true,
       secureStorage: true,
     },
-  });
+    }),
+    prisma.endpoint.findMany({
+      where: {
+        organizationId: request.organizationId,
+        isActive: true,
+      },
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        externalCode: true,
+        city: true,
+        state: true,
+      },
+    }),
+  ]);
 
   const approvedAuthorization = request.authorizations.find(
     (authorization) => authorization.status === "APPROVED"
@@ -202,13 +226,36 @@ export default async function ServiceRequestPage({
 
   const inboundShipment =
     request.shipments.find(
-      (candidate) => candidate.direction === "INBOUND"
+      (candidate) =>
+        candidate.direction === "INBOUND" &&
+        !candidate.externalServiceCaseId
     ) ?? null;
 
   const outboundShipment =
     request.shipments.find(
-      (candidate) => candidate.direction === "OUTBOUND"
+      (candidate) =>
+        candidate.direction === "OUTBOUND" &&
+        !candidate.externalServiceCaseId
     ) ?? null;
+
+  const externalServiceCase =
+    request.externalServiceCases[0] ?? null;
+  const externalOutboundShipment = externalServiceCase
+    ? request.shipments.find(
+        (candidate) =>
+          candidate.externalServiceCaseId ===
+            externalServiceCase.id &&
+          candidate.externalServiceLeg === "TO_PROVIDER"
+      ) ?? null
+    : null;
+  const externalReturnShipment = externalServiceCase
+    ? request.shipments.find(
+        (candidate) =>
+          candidate.externalServiceCaseId ===
+            externalServiceCase.id &&
+          candidate.externalServiceLeg === "FROM_PROVIDER"
+      ) ?? null
+    : null;
 
   const workOrder = request.workOrders[0] ?? null;
   const pkg = inboundShipment?.packages[0] ?? null;
@@ -220,6 +267,26 @@ export default async function ServiceRequestPage({
           where: {
             serviceLocationId:
               inboundShipment.destinationServiceLocationId,
+            isActive: true,
+            OR: [
+              { dedicatedOrganizationId: null },
+              {
+                dedicatedOrganizationId:
+                  request.organizationId,
+              },
+            ],
+          },
+          orderBy: [{ type: "asc" }, { name: "asc" }],
+        })
+      : [];
+
+  const externalReturnStoragePositions =
+    canReceiveInventory &&
+    externalReturnShipment?.destinationServiceLocationId
+      ? await prisma.storagePosition.findMany({
+          where: {
+            serviceLocationId:
+              externalReturnShipment.destinationServiceLocationId,
             isActive: true,
             OR: [
               { dedicatedOrganizationId: null },
