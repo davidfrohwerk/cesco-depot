@@ -1266,3 +1266,266 @@ CESCo operations may reserve a known-good or stocked asset for the requisition a
 - absence of another active reservation
 
 The next implementation slice should turn a RESERVED spare into an executable dispatch route and record the reverse path for the failed/removed asset when one is expected.
+
+
+---
+
+# 22. Bulk onboarding, import, and export
+
+Bulk data movement is a first-class customer workflow.
+
+## Import job
+
+Suggested ImportJob fields:
+
+- organization
+- submitted by user
+- source format
+- entity type
+- original filename
+- submitted timestamp
+- validation status
+- commit status
+- total rows
+- valid rows
+- invalid rows
+- created count
+- updated count
+- skipped count
+- error report reference
+
+## Initial supported entities
+
+Recommended first import order:
+
+1. Endpoints
+2. Assets
+3. Asset readiness / compatibility metadata
+4. Parts / stocked components
+5. Optional user invitations / role assignments after stricter review
+
+The importer should support customer-provided stable external IDs so later imports can update known records without relying on display names.
+
+## Required workflow
+
+Upload file
+-> detect columns
+-> map columns
+-> validate all rows
+-> show preview and errors
+-> customer confirms
+-> commit valid transaction/batches
+-> generate import summary
+-> retain import audit record
+
+Import should not silently discard invalid rows or silently overwrite ambiguous matches.
+
+## Export
+
+Authorized users should be able to export organization-scoped data, including assets, endpoints, placement, readiness, and lifecycle status, in standard formats.
+
+Export is important both for customer trust and for reducing lock-in.
+
+---
+
+# 23. Carrier integration layer
+
+CESCo Depot should expose a carrier-neutral shipment workflow.
+
+## Carrier adapter
+
+Each carrier adapter may implement:
+
+- validateAddress
+- quoteRates
+- createLabel
+- voidLabel
+- getTracking
+- normalizeWebhookEvent
+- obtainProofOfDelivery
+
+The core Shipment model should consume normalized events rather than carrier-specific event names.
+
+## Normalized tracking events
+
+Examples:
+
+- LABEL_CREATED
+- CARRIER_ACCEPTED
+- IN_TRANSIT
+- DELAYED
+- DELIVERY_ATTEMPTED
+- OUT_FOR_DELIVERY
+- DELIVERED
+- EXCEPTION
+- RETURN_TO_SENDER
+
+The raw carrier payload may be retained for audit/debugging while normalized state drives CESCo workflow.
+
+## Account ownership
+
+A shipment may use:
+
+- CESCo carrier account
+- client carrier account
+- prepaid/third-party label
+- manual/external shipment
+
+The portal should show one workflow regardless of which commercial arrangement is used.
+
+---
+
+# 24. Financial and payment architecture
+
+CESCo Depot owns operational billing state but should not become a raw payment-card vault.
+
+## Financial domain
+
+The application should model:
+
+- customer account terms
+- estimate
+- authorization
+- charge
+- credit
+- invoice
+- payment
+- refund
+- recurring service agreement
+- purchase-order/customer reference
+
+## Payment processor adapter
+
+Payment-provider integration should support:
+
+- customer/payment-method token reference
+- hosted or embedded secure payment collection
+- authorization/capture where needed
+- ACH where supported
+- payment webhooks
+- refunds
+- failure/retry status
+
+Sensitive card/bank credentials remain with the processor.
+
+## Accounting integration
+
+Accounting synchronization is a separate adapter concern.
+
+Potential synchronized objects:
+
+- customer/account
+- invoice
+- payment
+- credit memo
+- tax
+- GL/accounting references
+
+Operational events remain CESCo Depot records even when financial summaries are synchronized elsewhere.
+
+---
+
+# 25. Partner storage qualification and secure access
+
+A ServiceLocation may have a qualification record describing whether it is acceptable for strategic stocking.
+
+Suggested fields/checks:
+
+- climate controlled
+- twenty-four-hour access or documented SLA access hours
+- controlled gate/building access
+- individually secured unit/cage/room
+- access method type
+- package receipt supported
+- after-hours package procedure
+- staff placement service supported
+- receiving contact/escalation
+- insurance/risk documentation
+- last qualification review
+- qualification status
+- notes/exceptions
+
+## Package receipt patterns
+
+### Facility holds package
+
+Carrier
+-> storage office/front desk
+-> package held securely
+-> CESCo dispatches technician/courier
+-> technician verifies package
+-> technician places package in assigned position
+-> evidence captured
+-> unit secured
+
+### Facility staff places package
+
+Carrier
+-> facility staff
+-> staff verifies package identifier
+-> staff receives CESCo placement instruction
+-> staff places package into assigned unit/position
+-> staff captures required evidence or CESCo performs later verification
+-> unit secured
+
+Both patterns must result in the same normalized custody, placement, and evidence records.
+
+## Access credentials
+
+Access credentials may include:
+
+- gate PIN
+- unit PIN
+- combination
+- temporary smart-lock code
+- mobile credential/token
+- physical key reference
+
+Credentials must not be stored as ordinary descriptive fields on a ServiceLocation.
+
+They should eventually use a dedicated encrypted/secrets subsystem with:
+
+- role-limited access
+- dispatch-specific disclosure
+- access log
+- expiration
+- rotation/revocation
+- optional one-time credential support
+
+A work order/dispatch should reference the access instruction/secret it is authorized to use rather than copying permanent secrets into broadly visible notes.
+
+## Remote lock integrations
+
+If a lock/storage provider offers remote control, CESCo Depot may expose actions such as:
+
+- issue temporary code
+- unlock for authorized dispatch
+- revoke code
+- read access-log event
+
+The integration must fail safely and have an offline/manual fallback. Remote lock control is an optional capability; the inventory and dispatch model must not depend on connectivity at the storage site.
+
+---
+
+# 26. Loss prevention and custody controls
+
+Distributed storage introduces theft, misplacement, and unauthorized-access risk.
+
+Mitigations should include:
+
+- least-privilege disclosure of facility/unit credentials
+- time-limited or one-time codes where available
+- access-event logging
+- mandatory pickup/drop-off evidence
+- serial/asset-tag verification
+- before/after photos of placement
+- tamper/seal observations where relevant
+- explicit custody acceptance
+- mismatch/exception workflow
+- periodic inventory reconciliation
+- readiness audits
+- provider/facility qualification
+- contractual responsibility and insurance review
+- alerts for overdue dispatch completion or unexpected access where integrations permit
+
+CESCo Depot's role is to make every authorized handoff observable and attributable even when execution occurs through third parties.
