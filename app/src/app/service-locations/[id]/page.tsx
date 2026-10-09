@@ -210,10 +210,28 @@ export default async function ServiceLocationPage({ params }: PageProps) {
                     action={placeAssetInStoragePosition.bind(null, position.id)}
                     className="mt-4 grid gap-2 md:grid-cols-2"
                   >
+                    <select
+                      name="organizationId"
+                      required
+                      defaultValue=""
+                      className="rounded border px-3 py-2"
+                    >
+                      <option value="" disabled>
+                        Select client organization
+                      </option>
+                      {location.clientAccess.map((access) => (
+                        <option
+                          key={access.organizationId}
+                          value={access.organizationId}
+                        >
+                          {access.organization.name}
+                        </option>
+                      ))}
+                    </select>
                     <input
                       name="assetTag"
                       required
-                      placeholder="Asset tag to place here"
+                      placeholder="Asset tag"
                       className="rounded border px-3 py-2"
                     />
                     <input
