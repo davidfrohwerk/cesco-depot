@@ -10,6 +10,8 @@ datasource db {
 enum AssetStatus {
   REGISTERED
   IN_TRANSIT_TO_DEPOT
+  IN_TRANSIT_EXTERNAL_SERVICE
+  IN_EXTERNAL_SERVICE
   RECEIVED
   INSPECTION
   REPAIR
@@ -230,6 +232,21 @@ enum DispatchAssignmentStatus {
   COMPLETED
   EXCEPTION
   CANCELLED
+}
+
+enum ExternalServiceCaseStatus {
+  PLANNED
+  TO_PROVIDER_IN_TRANSIT
+  AT_PROVIDER
+  RETURN_IN_TRANSIT
+  RETURNED
+  EXCEPTION
+  CANCELLED
+}
+
+enum ExternalServiceShipmentLeg {
+  TO_PROVIDER
+  FROM_PROVIDER
 }
 
 enum ImportEntityType {
@@ -887,6 +904,7 @@ model ServiceRequest {
   authorizations  Authorization[]
   shipments       Shipment[]
   workOrders      WorkOrder[]
+  externalServiceCases ExternalServiceCase[]
 
   @@index([organizationId])
   @@index([assetId])
@@ -926,6 +944,8 @@ model Shipment {
   destinationEndpointId        String?
   originServiceLocationId      String?
   destinationServiceLocationId String?
+  externalServiceCaseId         String?
+  externalServiceLeg            ExternalServiceShipmentLeg?
   carrier                      String?
   trackingNumber    String?
   status            ShipmentStatus    @default(PREPARING)
@@ -947,6 +967,7 @@ model Shipment {
   destinationEndpoint        Endpoint?        @relation("ShipmentDestinationEndpoint", fields: [destinationEndpointId], references: [id])
   originServiceLocation      ServiceLocation? @relation("ShipmentOriginServiceLocation", fields: [originServiceLocationId], references: [id])
   destinationServiceLocation ServiceLocation? @relation("ShipmentDestinationServiceLocation", fields: [destinationServiceLocationId], references: [id])
+  externalServiceCase        ExternalServiceCase? @relation(fields: [externalServiceCaseId], references: [id])
   packages                   Package[]
   workOrders      WorkOrder[]
   evidence        Evidence[]
@@ -959,8 +980,44 @@ model Shipment {
   @@index([destinationEndpointId])
   @@index([originServiceLocationId])
   @@index([destinationServiceLocationId])
+  @@index([externalServiceCaseId, externalServiceLeg])
   @@index([trackingNumber])
   @@index([status])
+}
+
+model ExternalServiceCase {
+  id                    String                    @id @default(cuid())
+  serviceRequestId      String
+  workOrderId           String
+  assetId               String
+  providerName          String
+  providerCaseReference String?
+  destinationName       String?
+  addressLine1          String?
+  addressLine2          String?
+  city                  String?
+  state                 String?
+  postalCode            String?
+  country               String                    @default("US")
+  status                ExternalServiceCaseStatus @default(PLANNED)
+  expectedReturnAt      DateTime?
+  openedAt              DateTime                  @default(now())
+  receivedByProviderAt  DateTime?
+  returnStartedAt       DateTime?
+  returnedAt            DateTime?
+  notes                 String?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
+  serviceRequest ServiceRequest @relation(fields: [serviceRequestId], references: [id], onDelete: Cascade)
+  workOrder      WorkOrder      @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  asset          Asset          @relation(fields: [assetId], references: [id])
+  shipments      Shipment[]
+
+  @@index([serviceRequestId, status])
+  @@index([workOrderId, status])
+  @@index([assetId, status])
+  @@index([providerName])
 }
 
 model Package {
@@ -1051,6 +1108,7 @@ model WorkOrder {
   parts          WorkOrderPart[]
   observations   AssetObservation[]
   evidence       Evidence[]
+  externalServiceCases ExternalServiceCase[]
 
   @@index([assetId])
   @@index([organizationId])
