@@ -18,6 +18,8 @@ import {
   assertCanPack,
   assertCanRecordQa,
   assertCanResumeRepair,
+  assertCanResumeFromExternalService,
+  assertCanWaitForExternalService,
   assertCanWaitForParts,
   qaTransition,
 } from "@/lib/workflow-rules";
@@ -1463,3 +1465,178 @@ export async function acknowledgeCustomerReceipt(
   }
 }
 
+
+
+export async function setWorkOrderWaitingExternalService(
+  workOrderId: string,
+  formData: FormData
+) {
+  const actor = await actorForWorkOrder(workOrderId);
+  const provider = String(
+    formData.get("externalServiceProvider") ?? ""
+  ).trim();
+  const rmaReference = String(
+    formData.get("externalRmaReference") ?? ""
+  ).trim();
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  if (!provider) {
+    throw new Error("External service provider is required.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    const workOrder = await tx.workOrder.findUnique({
+      where: { id: workOrderId },
+      include: {
+        asset: true,
+        serviceRequest: true,
+        activities: {
+          where: { endedAt: null },
+        },
+      },
+    });
+
+    if (!workOrder || !workOrder.serviceRequest) {
+      throw new Error(
+        "Work order must be linked to a service request."
+      );
+    }
+
+    if (workOrder.activities.length > 0) {
+      throw new Error(
+        "Stop the active labor/activity timer before routing to external service."
+      );
+    }
+
+    assertCanWaitForExternalService(workOrder.status);
+
+    await tx.serviceRequest.update({
+      where: { id: workOrder.serviceRequest.id },
+      data: {
+        externalServiceProvider: provider,
+        externalRmaReference: rmaReference || null,
+      },
+    });
+
+    await tx.workOrder.update({
+      where: { id: workOrder.id },
+      data: { status: "WAITING_EXTERNAL_SERVICE" },
+    });
+
+    await tx.asset.update({
+      where: { id: workOrder.assetId },
+      data: { status: "REPAIR" },
+    });
+
+    await tx.workOrderEvent.create({
+      data: {
+        workOrderId: workOrder.id,
+        eventType: "EXTERNAL_SERVICE_INITIATED",
+        fromStatus: workOrder.status,
+        toStatus: "WAITING_EXTERNAL_SERVICE",
+        actorUserId: actor.user.id,
+        actorLabel: actor.label,
+        notes: [
+          `External provider: ${provider}.`,
+          rmaReference ? `RMA/case: ${rmaReference}.` : null,
+          notes || null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      },
+    });
+
+    await tx.assetEvent.create({
+      data: {
+        assetId: workOrder.assetId,
+        eventType: "EXTERNAL_SERVICE_INITIATED",
+        fromStatus: workOrder.asset.status,
+        toStatus: "REPAIR",
+        actor: actor.label,
+        notes: [
+          `External provider: ${provider}.`,
+          rmaReference ? `RMA/case: ${rmaReference}.` : null,
+          notes || null,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      },
+    });
+  });
+
+  await revalidateWorkOrder(workOrderId);
+}
+
+export async function resumeAfterExternalService(
+  workOrderId: string,
+  formData: FormData
+) {
+  const actor = await actorForWorkOrder(workOrderId);
+  const notes = String(formData.get("notes") ?? "").trim();
+
+  await prisma.$transaction(async (tx) => {
+    const workOrder = await tx.workOrder.findUnique({
+      where: { id: workOrderId },
+      include: { asset: true },
+    });
+
+    if (!workOrder) {
+      throw new Error("Work order not found.");
+    }
+
+    assertCanResumeFromExternalService(workOrder.status);
+
+    await tx.workOrder.update({
+      where: { id: workOrder.id },
+      data: { status: "TESTING" },
+    });
+
+    await tx.asset.update({
+      where: { id: workOrder.assetId },
+      data: { status: "TESTING" },
+    });
+
+    await tx.assetObservation.create({
+      data: {
+        assetId: workOrder.assetId,
+        workOrderId: workOrder.id,
+        observerUserId: actor.user.id,
+        observerLabel: actor.label,
+        observationType: "external service return",
+        condition: "TEST_PENDING",
+        notes:
+          notes ||
+          "Asset returned from external service and requires verification.",
+      },
+    });
+
+    await tx.workOrderEvent.create({
+      data: {
+        workOrderId: workOrder.id,
+        eventType: "EXTERNAL_SERVICE_RETURNED",
+        fromStatus: "WAITING_EXTERNAL_SERVICE",
+        toStatus: "TESTING",
+        actorUserId: actor.user.id,
+        actorLabel: actor.label,
+        notes:
+          notes ||
+          "Asset returned from external service and moved to verification.",
+      },
+    });
+
+    await tx.assetEvent.create({
+      data: {
+        assetId: workOrder.assetId,
+        eventType: "EXTERNAL_SERVICE_RETURNED",
+        fromStatus: workOrder.asset.status,
+        toStatus: "TESTING",
+        actor: actor.label,
+        notes:
+          notes ||
+          "Asset returned from external service and moved to verification.",
+      },
+    });
+  });
+
+  await revalidateWorkOrder(workOrderId);
+}
