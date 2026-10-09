@@ -78,12 +78,25 @@ export async function createExternalServiceShipment(
       );
     }
 
-    const destinationType = String(
+    const combinedDestination = String(
+      formData.get("returnDestination") ?? ""
+    ).trim();
+    const legacyDestinationType = String(
       formData.get("returnDestinationType") ?? ""
     ).trim();
-    const returnDestinationId = String(
+    const legacyDestinationId = String(
       formData.get("returnDestinationId") ?? ""
     ).trim();
+
+    const separatorIndex = combinedDestination.indexOf(":");
+    const destinationType =
+      separatorIndex > 0
+        ? combinedDestination.slice(0, separatorIndex)
+        : legacyDestinationType;
+    const returnDestinationId =
+      separatorIndex > 0
+        ? combinedDestination.slice(separatorIndex + 1)
+        : legacyDestinationId;
 
     if (!destinationType || !returnDestinationId) {
       throw new Error("A return destination is required.");
