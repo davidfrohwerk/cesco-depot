@@ -26,6 +26,22 @@ export function assertCanResumeRepair(status) {
   }
 }
 
+export function assertCanWaitForExternalService(status) {
+  if (!["INTAKE", "OPEN", "IN_PROGRESS"].includes(status)) {
+    throw new Error(
+      "Work order is not in a state that can be routed to an external service provider."
+    );
+  }
+}
+
+export function assertCanResumeFromExternalService(status) {
+  if (status !== "WAITING_EXTERNAL_SERVICE") {
+    throw new Error(
+      "Only a work order waiting for external service can resume after external service."
+    );
+  }
+}
+
 export function assertCanCompleteRepair({
   status,
   hasActiveActivity,
