@@ -7,6 +7,10 @@ import {
   receiveInboundPackage,
 } from "@/app/actions/service-requests";
 import {
+  resumeAfterExternalService,
+  setWorkOrderWaitingExternalService,
+} from "@/app/actions/work-orders";
+import {
   uploadAuthorizationEvidence,
   uploadPackageEvidence,
   uploadShipmentEvidence,
@@ -152,6 +156,11 @@ export default async function ServiceRequestPage({
   const canReceiveInventory = userHasOrganizationPermission(
     currentUser,
     "inventory.receive",
+    request.organizationId
+  );
+  const canManageWorkOrder = userHasOrganizationPermission(
+    currentUser,
+    "work_order.manage",
     request.organizationId
   );
   const canViewEvidence = userHasOrganizationPermission(
@@ -309,6 +318,106 @@ export default async function ServiceRequestPage({
           )}
         </div>
       </section>
+
+      {workOrder &&
+        request.serviceType === "OEM_WARRANTY_COORDINATION" && (
+          <section className="mt-10 rounded border p-5">
+            <h2 className="text-xl font-semibold">
+              OEM / external service coordination
+            </h2>
+            <p className="mt-2 text-sm opacity-70">
+              Preserve the warranty case, provider, and RMA context while the
+              unit is handled outside the CESCo service network. This does not
+              authorize CESCo to perform repair work outside the approved scope.
+            </p>
+
+            <div className="mt-4 grid gap-2 text-sm md:grid-cols-2">
+              <div>
+                <span className="opacity-60">Provider:</span>{" "}
+                {request.externalServiceProvider ?? "Not recorded"}
+              </div>
+              <div>
+                <span className="opacity-60">RMA / case:</span>{" "}
+                {request.externalRmaReference ?? "Not recorded"}
+              </div>
+              <div>
+                <span className="opacity-60">Work-order status:</span>{" "}
+                {workOrder.status.replaceAll("_", " ")}
+              </div>
+              <div>
+                <span className="opacity-60">Asset warranty:</span>{" "}
+                {request.asset?.warrantyProvider ?? "Not recorded"}
+              </div>
+            </div>
+
+            {canManageWorkOrder &&
+              ["INTAKE", "OPEN", "IN_PROGRESS"].includes(
+                workOrder.status
+              ) && (
+                <form
+                  action={setWorkOrderWaitingExternalService.bind(
+                    null,
+                    workOrder.id
+                  )}
+                  className="mt-5 grid gap-3 md:grid-cols-2"
+                >
+                  <input
+                    name="externalServiceProvider"
+                    required
+                    defaultValue={
+                      request.externalServiceProvider ??
+                      request.asset?.warrantyProvider ??
+                      ""
+                    }
+                    placeholder="OEM / authorized service provider"
+                    className="rounded border px-3 py-2"
+                  />
+                  <input
+                    name="externalRmaReference"
+                    defaultValue={
+                      request.externalRmaReference ?? ""
+                    }
+                    placeholder="RMA / case / entitlement reference"
+                    className="rounded border px-3 py-2"
+                  />
+                  <textarea
+                    name="notes"
+                    placeholder="Coverage decision, provider instructions, shipping prerequisites, or other external-service notes"
+                    className="rounded border px-3 py-2 md:col-span-2"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded border px-4 py-2 font-medium md:col-span-2"
+                  >
+                    Route work order to external service
+                  </button>
+                </form>
+              )}
+
+            {canManageWorkOrder &&
+              workOrder.status === "WAITING_EXTERNAL_SERVICE" && (
+                <form
+                  action={resumeAfterExternalService.bind(
+                    null,
+                    workOrder.id
+                  )}
+                  className="mt-5 grid gap-3 md:grid-cols-2"
+                >
+                  <textarea
+                    name="notes"
+                    placeholder="What returned from the OEM/provider, repair/replacement details, or verification notes"
+                    className="rounded border px-3 py-2 md:col-span-2"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded border px-4 py-2 font-medium md:col-span-2"
+                  >
+                    Record return and begin verification
+                  </button>
+                </form>
+              )}
+          </section>
+        )}
 
       <section className="mt-10 rounded border p-5">
         <h2 className="text-xl font-semibold">
