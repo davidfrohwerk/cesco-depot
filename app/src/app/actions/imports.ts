@@ -373,6 +373,7 @@ export async function createImportJob(
         assetTags.length
           ? prisma.asset.findMany({
               where: {
+                organizationId,
                 assetTag: { in: assetTags },
               },
               select: {
@@ -490,15 +491,6 @@ export async function createImportJob(
         normalized?.assetTag
           ? tagMap.get(normalized.assetTag) ?? null
           : null;
-
-      if (
-        tagRecord &&
-        tagRecord.organizationId !== organizationId
-      ) {
-        errors.push(
-          `asset_tag "${tagRecord.assetTag}" is already used by another organization in the current prototype schema`
-        );
-      }
 
       if (
         byExternal &&
