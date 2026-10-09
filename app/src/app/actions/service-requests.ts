@@ -29,6 +29,28 @@ function nextWorkOrderNumber() {
   return `WO-${year}-${suffix}`;
 }
 
+export async function createOrganizationServiceRequest(
+  organizationId: string,
+  formData: FormData
+) {
+  const assetId = String(formData.get("assetId") ?? "").trim();
+
+  if (!assetId) {
+    throw new Error("Asset is required.");
+  }
+
+  const asset = await prisma.asset.findUnique({
+    where: { id: assetId },
+    select: { organizationId: true },
+  });
+
+  if (!asset || asset.organizationId !== organizationId) {
+    throw new Error("Selected asset does not belong to this organization.");
+  }
+
+  return createServiceRequest(assetId, formData);
+}
+
 export async function createServiceRequest(
   assetId: string,
   formData: FormData
