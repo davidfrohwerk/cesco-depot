@@ -27,6 +27,20 @@ type DuplicatePolicy =
   | "UPDATE_MATCHED"
   | "SKIP_EXISTING";
 
+function buildSubmittedMapping(
+  allowed: readonly string[],
+  formData: FormData
+) {
+  const mapping: Record<string, string> = {};
+  for (const target of allowed) {
+    const source = String(
+      formData.get(`mapping_${target}`) ?? ""
+    ).trim();
+    if (source) mapping[target] = source;
+  }
+  return mapping;
+}
+
 function toInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
@@ -587,6 +601,39 @@ export async function createImportJob(
   const errorCount = rowResults.filter(
     (row) => row.action === "ERROR"
   ).length;
+
+  const profileName = String(
+    formData.get("profileName") ?? ""
+  ).trim();
+  const submittedMapping = buildSubmittedMapping(
+    allowedHeaders,
+    formData
+  );
+
+  if (profileName) {
+    await prisma.importProfile.upsert({
+      where: {
+        organizationId_entityType_name: {
+          organizationId,
+          entityType,
+          name: profileName,
+        },
+      },
+      update: {
+        mapping: toInputJson(submittedMapping),
+        duplicatePolicy,
+        createdByUserId: user.id,
+      },
+      create: {
+        organizationId,
+        createdByUserId: user.id,
+        name: profileName,
+        entityType,
+        duplicatePolicy,
+        mapping: toInputJson(submittedMapping),
+      },
+    });
+  }
 
   const job = await prisma.importJob.create({
     data: {
