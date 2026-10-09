@@ -46,11 +46,37 @@ function requireKnownHeaders(
   }
 }
 
+function applyColumnMapping(
+  record: Record<string, string>,
+  allowed: readonly string[],
+  formData: FormData
+) {
+  const mapped: Record<string, string> = {};
+
+  for (const target of allowed) {
+    const selectedSource = String(
+      formData.get(`mapping_${target}`) ?? ""
+    ).trim();
+
+    if (selectedSource) {
+      if (!(selectedSource in record)) {
+        throw new Error(
+          `Mapped source column "${selectedSource}" was not found in the CSV.`
+        );
+      }
+      mapped[target] = record[selectedSource] ?? "";
+      continue;
+    }
+
+    mapped[target] = record[target] ?? "";
+  }
+
+  return mapped;
+}
+
 function normalizeEndpoint(
   record: Record<string, string>
 ) {
-  requireKnownHeaders(record, endpointImportHeaders);
-
   return {
     externalCode:
       record.external_endpoint_id?.trim() || null,
@@ -83,8 +109,6 @@ function normalizeEndpoint(
 function normalizeAsset(
   record: Record<string, string>
 ) {
-  requireKnownHeaders(record, assetImportHeaders);
-
   const lastReadinessVerifiedAt =
     parseOptionalImportDate(
       record.last_readiness_verified_at ?? ""
@@ -192,7 +216,22 @@ export async function createImportJob(
     .update(buffer)
     .digest("hex");
   const text = buffer.toString("utf8").replace(/^\uFEFF/, "");
-  const parsed = rowsToObjects(parseCsv(text));
+  const rawParsed = rowsToObjects(parseCsv(text));
+
+  const allowedHeaders =
+    entityType === "ENDPOINT"
+      ? endpointImportHeaders
+      : assetImportHeaders;
+
+  const parsed = rawParsed.map(({ rowNumber, record }) => ({
+    rowNumber,
+    rawRecord: record,
+    record: applyColumnMapping(
+      record,
+      allowedHeaders,
+      formData
+    ),
+  }));
 
   if (parsed.length === 0) {
     throw new Error("CSV contains no data rows.");
@@ -246,7 +285,7 @@ export async function createImportJob(
 
     const seen = new Set<string>();
 
-    for (const { rowNumber, record } of parsed) {
+    for (const { rowNumber, rawRecord, record } of parsed) {
       const errors: string[] = [];
       let normalized: ReturnType<
         typeof normalizeEndpoint
@@ -321,7 +360,7 @@ export async function createImportJob(
 
       rowResults.push({
         rowNumber,
-        rawData: record,
+        rawData: rawRecord,
         normalizedData: normalized ?? {},
         action,
         matchedRecordId,
@@ -411,7 +450,7 @@ export async function createImportJob(
     const seenExternal = new Set<string>();
     const seenTags = new Set<string>();
 
-    for (const { rowNumber, record } of parsed) {
+    for (const { rowNumber, rawRecord, record } of parsed) {
       const errors: string[] = [];
       let normalized: ReturnType<
         typeof normalizeAsset
@@ -525,7 +564,7 @@ export async function createImportJob(
 
       rowResults.push({
         rowNumber,
-        rawData: record,
+        rawData: rawRecord,
         normalizedData: normalized ?? {},
         action,
         matchedRecordId,
