@@ -131,6 +131,27 @@ export default async function OrganizationPage({
             Manage users & roles
           </Link>
         )}
+        {organization.kind === "CLIENT" && (
+          <Link
+            href={`/organizations/${organization.id}/dashboard`}
+            className="underline"
+          >
+            Customer home
+          </Link>
+        )}
+        {organization.kind === "CLIENT" &&
+          userHasOrganizationPermission(
+            currentUser,
+            "service_request.create",
+            organization.id
+          ) && (
+            <Link
+              href={`/organizations/${organization.id}/service`}
+              className="underline"
+            >
+              Request depot service
+            </Link>
+          )}
         {organization.kind === "CLIENT" &&
           userHasOrganizationPermission(
             currentUser,
