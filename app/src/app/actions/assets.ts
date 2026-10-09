@@ -29,6 +29,28 @@ export async function createAsset(
     formData.get("configurationVersion") ?? ""
   ).trim();
   const description = String(formData.get("description") ?? "").trim();
+  const warrantyProvider = String(
+    formData.get("warrantyProvider") ?? ""
+  ).trim();
+  const warrantyReference = String(
+    formData.get("warrantyReference") ?? ""
+  ).trim();
+  const warrantyExpiresAtRaw = String(
+    formData.get("warrantyExpiresAt") ?? ""
+  ).trim();
+  const warrantyExpiresAt = warrantyExpiresAtRaw
+    ? new Date(warrantyExpiresAtRaw)
+    : null;
+  const warrantyNotes = String(
+    formData.get("warrantyNotes") ?? ""
+  ).trim();
+
+  if (
+    warrantyExpiresAt &&
+    Number.isNaN(warrantyExpiresAt.getTime())
+  ) {
+    throw new Error("Warranty expiration date is invalid.");
+  }
 
   if (!assetTag) {
     throw new Error("Asset tag is required.");
@@ -87,6 +109,10 @@ export async function createAsset(
         compatibilityClass: compatibilityClass || null,
         configurationVersion: configurationVersion || null,
         description: description || null,
+        warrantyProvider: warrantyProvider || null,
+        warrantyReference: warrantyReference || null,
+        warrantyExpiresAt,
+        warrantyNotes: warrantyNotes || null,
         status: "REGISTERED",
       },
     });
