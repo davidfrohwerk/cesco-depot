@@ -54,6 +54,14 @@ export function assertCanResumeRepair(
   status: WorkOrderStatusValue
 ): void;
 
+export function assertCanWaitForExternalService(
+  status: WorkOrderStatusValue
+): void;
+
+export function assertCanResumeFromExternalService(
+  status: WorkOrderStatusValue
+): void;
+
 export function assertCanCompleteRepair(args: {
   status: WorkOrderStatusValue;
   hasActiveActivity: boolean;
