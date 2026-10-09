@@ -136,3 +136,71 @@ export async function createAsset(
   revalidatePath(`/organizations/${organizationId}`);
   redirect(`/assets/${asset.id}`);
 }
+
+
+export async function updateAssetWarranty(
+  assetId: string,
+  formData: FormData
+) {
+  const asset = await prisma.asset.findUnique({
+    where: { id: assetId },
+    select: { organizationId: true },
+  });
+
+  if (!asset) {
+    throw new Error("Asset not found.");
+  }
+
+  const user = await requireOrganizationPermission(
+    "asset.manage",
+    asset.organizationId
+  );
+
+  const warrantyProvider = String(
+    formData.get("warrantyProvider") ?? ""
+  ).trim();
+  const warrantyReference = String(
+    formData.get("warrantyReference") ?? ""
+  ).trim();
+  const warrantyExpiresAtRaw = String(
+    formData.get("warrantyExpiresAt") ?? ""
+  ).trim();
+  const warrantyExpiresAt = warrantyExpiresAtRaw
+    ? new Date(warrantyExpiresAtRaw)
+    : null;
+  const warrantyNotes = String(
+    formData.get("warrantyNotes") ?? ""
+  ).trim();
+
+  if (
+    warrantyExpiresAt &&
+    Number.isNaN(warrantyExpiresAt.getTime())
+  ) {
+    throw new Error("Warranty expiration date is invalid.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.asset.update({
+      where: { id: assetId },
+      data: {
+        warrantyProvider: warrantyProvider || null,
+        warrantyReference: warrantyReference || null,
+        warrantyExpiresAt,
+        warrantyNotes: warrantyNotes || null,
+      },
+    });
+
+    await tx.assetEvent.create({
+      data: {
+        assetId,
+        eventType: "WARRANTY_RECORD_UPDATED",
+        actor: currentUserLabel(user),
+        notes: warrantyProvider
+          ? `Warranty record updated for ${warrantyProvider}.`
+          : "Warranty record updated.",
+      },
+    });
+  });
+
+  revalidatePath(`/assets/${assetId}`);
+}
