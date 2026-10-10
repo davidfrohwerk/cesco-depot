@@ -1024,6 +1024,26 @@ export default async function ServiceRequestPage({
               className="w-full rounded border px-3 py-2"
             />
 
+            <label className="flex items-start gap-3 rounded border p-4 text-sm">
+              <input
+                name="acceptedTerms"
+                type="checkbox"
+                required
+                className="mt-1"
+              />
+              <span>
+                I am authorized to approve this service for my organization and
+                authorize CESCo to perform the scope above, subject to the
+                stated spending ceiling and applicable service terms.
+              </span>
+            </label>
+
+            <p className="text-xs opacity-60">
+              CESCo Depot records the authenticated approver, approved scope,
+              spending ceiling, terms version, and timestamp as the electronic
+              authorization record.
+            </p>
+
             <button
               type="submit"
               className="rounded border px-4 py-2 font-medium"
