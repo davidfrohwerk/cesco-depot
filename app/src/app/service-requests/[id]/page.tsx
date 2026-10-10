@@ -18,6 +18,7 @@ import {
 import {
   uploadAuthorizationEvidence,
   uploadPackageEvidence,
+  uploadServiceRequestEvidence,
   uploadShipmentEvidence,
 } from "@/app/actions/evidence";
 import {
@@ -76,6 +77,15 @@ export default async function ServiceRequestPage({
     include: {
       organization: true,
       asset: true,
+      evidence: {
+        include: {
+          uploader: true,
+          _count: {
+            select: { accessEvents: true },
+          },
+        },
+        orderBy: { uploadedAt: "desc" },
+      },
       authorizations: {
         orderBy: { createdAt: "desc" },
         include: {
@@ -858,6 +868,120 @@ export default async function ServiceRequestPage({
           </section>
         )}
 
+      {canViewEvidence && (
+        <section className="mt-10 rounded border p-5">
+          <h2 className="text-xl font-semibold">
+            Request evidence and existing paper trail
+          </h2>
+          <p className="mt-2 text-sm opacity-70">
+            Attach the evidence that already exists instead of recreating the
+            troubleshooting history. Useful examples include helpdesk tickets,
+            field diagnostic notes/photos, warranty entitlement records, error
+            screenshots, serial labels, and visible damage.
+          </p>
+
+          {canUploadEvidence && (
+            <form
+              action={uploadServiceRequestEvidence.bind(
+                null,
+                request.id
+              )}
+              className="mt-5 grid gap-3 md:grid-cols-2"
+            >
+              <input
+                name="file"
+                type="file"
+                required
+                className="rounded border px-3 py-2 md:col-span-2"
+              />
+              <select
+                name="evidenceType"
+                required
+                defaultValue="FIELD_DIAGNOSTIC"
+                className="rounded border px-3 py-2"
+              >
+                <option value="FIELD_DIAGNOSTIC">
+                  Field diagnostic
+                </option>
+                <option value="TICKET_RECORD">
+                  Helpdesk / ticket record
+                </option>
+                <option value="WARRANTY_CLAIM">
+                  Warranty / entitlement evidence
+                </option>
+                <option value="DAMAGE">Damage / failure evidence</option>
+                <option value="SERIAL_ASSET_TAG">
+                  Serial / asset identity
+                </option>
+                <option value="OTHER">Other</option>
+              </select>
+              <input
+                name="capturedAt"
+                type="datetime-local"
+                className="rounded border px-3 py-2"
+              />
+              <textarea
+                name="description"
+                placeholder="Ticket number, what this proves, who observed it, or other context"
+                className="rounded border px-3 py-2 md:col-span-2"
+              />
+              <button
+                type="submit"
+                className="rounded border px-4 py-2 font-medium md:col-span-2"
+              >
+                Add request evidence
+              </button>
+            </form>
+          )}
+
+          <div className="mt-5 space-y-3">
+            {request.evidence.length === 0 ? (
+              <p className="text-sm opacity-70">
+                No request-level evidence has been attached yet.
+              </p>
+            ) : (
+              request.evidence.map((evidence) => (
+                <article
+                  key={evidence.id}
+                  className="rounded border p-4"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold">
+                        {evidence.evidenceType.replaceAll("_", " ")}
+                      </div>
+                      <div className="mt-1 text-sm opacity-70">
+                        {evidence.originalFilename ??
+                          "Unnamed evidence file"}
+                      </div>
+                    </div>
+                    <a
+                      href={`/evidence/${evidence.id}/download`}
+                      download
+                      className="text-sm underline"
+                    >
+                      Download original
+                    </a>
+                  </div>
+                  {evidence.description && (
+                    <div className="mt-3 text-sm">
+                      {evidence.description}
+                    </div>
+                  )}
+                  <div className="mt-3 text-xs opacity-60">
+                    Uploaded by{" "}
+                    {evidence.uploader?.displayName ??
+                      evidence.uploader?.email ??
+                      "Unknown user"}{" "}
+                    · {evidence.uploadedAt.toLocaleString()}
+                  </div>
+                </article>
+              ))
+            )}
+          </div>
+        </section>
+      )}
+
       <section className="mt-10 rounded border p-5">
         <h2 className="text-xl font-semibold">
           1. Customer authorization
@@ -915,7 +1039,16 @@ export default async function ServiceRequestPage({
 
         {approvedAuthorization && canViewEvidence && (
           <div className="mt-6 border-t pt-5">
-            <h3 className="font-semibold">Authorization evidence</h3>
+            <h3 className="font-semibold">
+              Supporting authorization evidence
+            </h3>
+            <p className="mt-2 text-sm opacity-70">
+              The in-portal approval above is the authorization record. A
+              separate signed document is optional when a contract, customer
+              policy, purchase order, or other business process requires one.
+              Payment authorization belongs in the billing/checkout record,
+              rather than forcing the customer to upload proof manually.
+            </p>
 
             {canUploadEvidence && (
               <form
