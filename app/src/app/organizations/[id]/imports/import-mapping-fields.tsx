@@ -100,8 +100,10 @@ function guessMapping(headers: string[], field: TargetField) {
 
 export function ImportMappingFields({
   profiles,
+  endpointCount,
 }: {
   profiles: ImportProfile[];
+  endpointCount: number;
 }) {
   const [entityType, setEntityType] = useState<EntityType>("ENDPOINT");
   const [headers, setHeaders] = useState<string[]>([]);
@@ -162,6 +164,14 @@ export function ImportMappingFields({
         <option value="ENDPOINT">Endpoints</option>
         <option value="ASSET">Assets</option>
       </select>
+
+      {entityType === "ASSET" && endpointCount === 0 && (
+        <div className="rounded border p-3 text-sm md:col-span-2">
+          <strong>No endpoints exist yet.</strong> You can validate an asset
+          file that does not reference locations, but any mapped endpoint/store
+          IDs will fail until the endpoint import is completed first.
+        </div>
+      )}
 
       <select
         name="duplicatePolicy"
