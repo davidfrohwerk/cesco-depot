@@ -300,6 +300,9 @@ enum EvidenceType {
   PACKING
   OUTBOUND_SHIPMENT
   SIGNED_AUTHORIZATION
+  FIELD_DIAGNOSTIC
+  WARRANTY_CLAIM
+  TICKET_RECORD
   TITLE_TRANSFER
   DATA_DESTRUCTION_CERTIFICATE
   OTHER
@@ -906,6 +909,7 @@ model ServiceRequest {
   shipments       Shipment[]
   workOrders      WorkOrder[]
   externalServiceCases ExternalServiceCase[]
+  evidence             Evidence[]
 
   @@index([organizationId])
   @@index([assetId])
@@ -1223,6 +1227,7 @@ model Evidence {
   packageId       String?
   receiptId       String?
   authorizationId String?
+  serviceRequestId String?
   shipmentId      String?
   uploaderUserId  String?
   evidenceType    EvidenceType
@@ -1243,6 +1248,7 @@ model Evidence {
   package       Package?       @relation(fields: [packageId], references: [id])
   receipt       Receipt?       @relation(fields: [receiptId], references: [id])
   authorization Authorization? @relation(fields: [authorizationId], references: [id])
+  serviceRequest ServiceRequest? @relation(fields: [serviceRequestId], references: [id])
   shipment      Shipment?      @relation(fields: [shipmentId], references: [id])
   uploader      User?          @relation("EvidenceUploader", fields: [uploaderUserId], references: [id])
   accessEvents  EvidenceAccessEvent[]
@@ -1254,6 +1260,7 @@ model Evidence {
   @@index([packageId])
   @@index([receiptId])
   @@index([authorizationId])
+  @@index([serviceRequestId])
   @@index([shipmentId])
   @@index([evidenceType])
 }
