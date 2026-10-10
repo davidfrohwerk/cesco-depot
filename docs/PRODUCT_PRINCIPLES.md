@@ -674,3 +674,47 @@ CESCo/client custody -> carrier -> external provider -> carrier -> designated re
 The external provider is not automatically a client endpoint, CESCo service location, or owner. It is an external-service participant linked through an explicit case and shipment relationship.
 
 Tracking numbers, custody changes, provider receipt, return shipment, return destination, and final receipt should remain visible to the client in the same service record.
+
+
+## Internal operations must be task-oriented
+
+The client portal and CESCo internal experience serve different jobs.
+
+A client should see their assets, requests, authorization, evidence, shipments, and outcomes. CESCo internal users should see the work created by those client actions as an operational queue across all client organizations.
+
+The internal experience should surface actionable states such as:
+
+- authorized requests that need CESCo routing
+- clients with no eligible service location
+- requests ready for shipment setup
+- inbound assets awaiting receipt
+- active work orders
+- work waiting on parts, customer authorization, or external service
+- OEM / external service cases
+- shipment exceptions
+- overdue readiness checks and other operational exceptions
+
+Internal users should not need to open every client organization to discover whether work is waiting.
+
+## Existing evidence should travel with the request
+
+Customers should not be forced to recreate a troubleshooting paper trail that already exists in a helpdesk, field-service, OEM, or internal ticketing system.
+
+A service request should accept supporting evidence directly, including:
+
+- helpdesk or incident records
+- field diagnostic notes and photos
+- warranty / entitlement evidence
+- error screenshots
+- serial / asset identity
+- existing customer documentation
+
+API or connector ingestion may later automate this evidence transfer from systems such as ticketing platforms.
+
+## Portal authorization before document upload
+
+Authenticated in-portal approval is the primary authorization interaction for ordinary CESCo Depot service.
+
+The authorization record should preserve the authenticated approver, approved scope, spending ceiling, terms version, explicit acceptance, and timestamp.
+
+Uploaded signed documents are optional supporting evidence when a contract, purchase order, customer policy, or other process requires them. Payment authorization and settlement should be recorded through the billing/payment integration rather than requiring customers to upload screenshots or receipts as proof.
