@@ -155,6 +155,14 @@ export async function authorizeServiceRequest(
   const spendingLimitCents = parseOptionalCents(
     formData.get("spendingLimit")
   );
+  const acceptedTerms =
+    formData.get("acceptedTerms") === "on";
+
+  if (!acceptedTerms) {
+    throw new Error(
+      "The authenticated customer must explicitly accept the authorization statement."
+    );
+  }
 
   if (!scope) {
     throw new Error("Authorization scope is required.");
