@@ -29,6 +29,9 @@ export default async function RootLayout({
   const canViewServiceLocations =
     user &&
     userHasInternalPermission(user, "service_location.view");
+  const canViewOperations =
+    user &&
+    userHasInternalPermission(user, "organization.view");
 
   return (
     <html
@@ -43,6 +46,11 @@ export default async function RootLayout({
                 CESCo Depot
               </Link>
               <div className="flex items-center gap-4">
+                {canViewOperations && (
+                  <Link href="/operations" className="underline">
+                    Operations
+                  </Link>
+                )}
                 {canViewServiceLocations && (
                   <Link href="/service-locations" className="underline">
                     Service locations
