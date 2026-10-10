@@ -124,6 +124,7 @@ export async function createStoragePosition(
   });
 
   revalidatePath(`/service-locations/${serviceLocationId}`);
+  revalidatePath("/operations");
 }
 
 export async function grantServiceLocationClientAccess(
