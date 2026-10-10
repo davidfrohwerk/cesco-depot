@@ -1677,3 +1677,45 @@ Return directly to client endpoint:
 - work order/service request may complete because no CESCo verification handoff remains
 
 The full coordination loop therefore remains auditable even when CESCo does not perform the warranty repair itself.
+
+
+---
+
+# 29. CESCo internal operations queue
+
+Client actions must create visible internal work.
+
+The CESCo operations workspace should aggregate client activity across organizations and classify it by the next operational action rather than requiring staff to navigate each tenant manually.
+
+Initial queues include:
+
+- needs CESCo routing
+- awaiting client authorization
+- ready for shipment setup
+- active work orders
+- external/OEM service cases
+- shipment exceptions
+- other active service requests
+
+An authorized request with no client-accessible service location is an explicit routing exception. Internal operations can grant the client access to an eligible CESCo/partner ServiceLocation from the operations queue, after which the normal shipment workflow can continue.
+
+# 30. Service-request evidence and electronic authorization
+
+Evidence that exists before depot intake belongs on the ServiceRequest itself.
+
+Examples:
+
+- FIELD_DIAGNOSTIC
+- TICKET_RECORD
+- WARRANTY_CLAIM
+- DAMAGE
+- SERIAL_ASSET_TAG
+- OTHER
+
+This lets a client carry forward an existing ticket, field technician diagnosis, photographs, or warranty documentation instead of rewriting the history into a free-text service form.
+
+Ordinary customer authorization should occur in the authenticated portal. The current authorization object records the user, scope, spending ceiling, terms version, and authorization timestamp. The UI requires explicit acceptance of the authorization statement.
+
+Signed-document upload remains available as supporting evidence but is not the default requirement.
+
+Future payment/checkout integration should create its own financial transaction record linked to the service request/authorization. Payment evidence should be obtained from the payment provider/API, not by asking the customer to upload screenshots.
