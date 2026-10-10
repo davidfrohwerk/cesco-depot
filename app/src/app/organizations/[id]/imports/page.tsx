@@ -38,7 +38,7 @@ export default async function ImportsPage({ params }: PageProps) {
     organizationId
   );
 
-  const [jobs, profiles] = await Promise.all([
+  const [jobs, profiles, endpointCount] = await Promise.all([
     prisma.importJob.findMany({
     where: { organizationId },
     include: {
@@ -50,6 +50,9 @@ export default async function ImportsPage({ params }: PageProps) {
     prisma.importProfile.findMany({
       where: { organizationId },
       orderBy: [{ entityType: "asc" }, { name: "asc" }],
+    }),
+    prisma.endpoint.count({
+      where: { organizationId, isActive: true },
     }),
   ]);
 
@@ -72,6 +75,12 @@ export default async function ImportsPage({ params }: PageProps) {
         before operational records are written.
       </p>
 
+      <div className="mt-4 rounded border p-4 text-sm">
+        <strong>Recommended order:</strong> import locations first, then assets.
+        Asset files that reference a store/location ID can only validate after
+        those endpoints exist in this organization.
+      </div>
+
       {canCreate && (
         <section className="mt-8 rounded border p-5">
           <h2 className="text-xl font-semibold">
@@ -83,6 +92,7 @@ export default async function ImportsPage({ params }: PageProps) {
             className="mt-5 grid gap-3 md:grid-cols-2"
           >
             <ImportMappingFields
+              endpointCount={endpointCount}
               profiles={profiles.map((profile) => ({
                 id: profile.id,
                 name: profile.name,
