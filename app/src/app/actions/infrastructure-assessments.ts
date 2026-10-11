@@ -7,6 +7,7 @@ import {
   calculateSpareScenario,
   normalizeAnnualFailureProbability,
 } from "@/lib/reliability-planning";
+import { rankReliabilityEvidenceForPopulation } from "@/lib/reliability-evidence-matching";
 
 function optionalNumber(value: FormDataEntryValue | null) {
   const text = String(value ?? "").trim();
@@ -133,7 +134,7 @@ export async function createInfrastructureAssessment(
     requestedName ||
     `${organization.name} infrastructure resilience assessment`;
 
-  await prisma.infrastructureAssessment.create({
+  const assessment = await prisma.infrastructureAssessment.create({
     data: {
       organizationId,
       createdByUserId: user.id,
@@ -153,7 +154,71 @@ export async function createInfrastructureAssessment(
         })),
       },
     },
+    include: {
+      populations: true,
+    },
   });
+
+  const availableEvidence = await prisma.reliabilityEvidence.findMany();
+
+  for (const population of assessment.populations) {
+    const ranked = rankReliabilityEvidenceForPopulation(
+      availableEvidence,
+      population
+    );
+
+    if (ranked.length === 0) continue;
+
+    const firstPlanningCandidate =
+      ranked.find((candidate) => candidate.canPlanAutomatically) ?? null;
+
+    await prisma.$transaction(
+      ranked.slice(0, 5).map((candidate) =>
+        prisma.infrastructureAssessmentEvidence.upsert({
+          where: {
+            populationId_reliabilityEvidenceId: {
+              populationId: population.id,
+              reliabilityEvidenceId: candidate.evidence.id,
+            },
+          },
+          update: {
+            selectedForPlanning:
+              firstPlanningCandidate?.evidence.id === candidate.evidence.id,
+            transformation:
+              firstPlanningCandidate?.evidence.id === candidate.evidence.id
+                ? candidate.normalized.transformation
+                : null,
+            derivedMetricValue:
+              firstPlanningCandidate?.evidence.id === candidate.evidence.id
+                ? candidate.normalized.probability
+                : null,
+            derivedMetricUnit:
+              firstPlanningCandidate?.evidence.id === candidate.evidence.id
+                ? "annual unit probability"
+                : null,
+          },
+          create: {
+            populationId: population.id,
+            reliabilityEvidenceId: candidate.evidence.id,
+            selectedForPlanning:
+              firstPlanningCandidate?.evidence.id === candidate.evidence.id,
+            transformation:
+              firstPlanningCandidate?.evidence.id === candidate.evidence.id
+                ? candidate.normalized.transformation
+                : null,
+            derivedMetricValue:
+              firstPlanningCandidate?.evidence.id === candidate.evidence.id
+                ? candidate.normalized.probability
+                : null,
+            derivedMetricUnit:
+              firstPlanningCandidate?.evidence.id === candidate.evidence.id
+                ? "annual unit probability"
+                : null,
+          },
+        })
+      )
+    );
+  }
 
   revalidatePath(`/organizations/${organizationId}/resilience`);
 }
