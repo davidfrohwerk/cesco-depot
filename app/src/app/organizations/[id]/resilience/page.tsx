@@ -398,7 +398,6 @@ export default async function ResilienceAssessmentPage({ params }: PageProps) {
                                 type="number"
                                 min="0.01"
                                 step="0.01"
-                                defaultValue="0.5"
                                 className="rounded border px-3 py-2"
                               />
                             </label>
@@ -410,7 +409,6 @@ export default async function ResilienceAssessmentPage({ params }: PageProps) {
                                 type="number"
                                 min="0.01"
                                 step="0.01"
-                                defaultValue="2"
                                 className="rounded border px-3 py-2"
                               />
                             </label>
@@ -430,18 +428,18 @@ export default async function ResilienceAssessmentPage({ params }: PageProps) {
                             </label>
 
                             <div className="md:col-span-2 text-xs leading-5 opacity-60">
-                              LOW and STRESS multipliers are planning
-                              assumptions applied to the normalized annual
-                              probability; they are not publisher-supplied
-                              values. Defaults are 0.5x and 2x and may be
-                              changed before calculation.
+                              PLANNING uses the normalized published evidence.
+                              LOW and STRESS are optional sensitivity scenarios.
+                              Enter multipliers only when the assessment has a
+                              documented reason to test them; Depot does not
+                              invent default uncertainty bands.
                             </div>
 
                             <button
                               type="submit"
                               className="rounded border px-4 py-2 font-medium md:col-span-2"
                             >
-                              Generate low / planning / stress scenarios
+                              Generate planning scenario
                             </button>
                           </form>
                         )}
