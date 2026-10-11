@@ -55,7 +55,6 @@ export default async function ResilienceAssessmentPage({ params }: PageProps) {
   );
 
   const assessments = await prisma.infrastructureAssessment.findMany({
-    prisma.infrastructureAssessment.findMany({
     where: { organizationId },
     include: {
       createdBy: {
