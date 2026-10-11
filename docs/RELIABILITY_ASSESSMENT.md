@@ -300,3 +300,31 @@ The current slice intentionally stops before automatically deriving failure prob
 4. create LOW / PLANNING / STRESS scenarios
 5. keep contingency reserve separate from independent-failure demand
 6. display the full source -> transformation -> model-input -> output chain
+
+
+## Implemented statistical engine boundary
+
+The first calculation engine now supports a deliberately narrow set of automatic transformations:
+
+- MTBF or MTTF expressed in hours -> annual unit failure probability using `1 - exp(-8760 / MTBF)`
+- published FIELD_AFR expressed as percent -> annual unit probability by dividing by 100
+- published FIELD_AFR or FAILURE_PROBABILITY already expressed as a unit probability -> used as supplied
+
+Unsupported metric/unit pairs, including unqualified generic failure rates or FIT values, are not guessed. They remain evidence until an approved transformation is implemented.
+
+For a supported annual probability `p`, population `N`, and exposure window `L` days:
+
+```
+expected annual failures = N * p
+expected demand in window = N * p * (L / 365)
+```
+
+The statistical reserve is the smallest integer `S` for which:
+
+```
+P(Poisson(expected demand) <= S) >= target service level
+```
+
+The calculated statistical reserve and an explicit contingency reserve remain separate. The initial engine records repair-pipeline reserve as zero rather than double-counting repair exposure; repair-pipeline optimization belongs in the later METRIC-type multi-echelon stage.
+
+LOW and STRESS sensitivity scenarios are optional. Depot does not impose default multipliers. If an analyst/customer supplies a multiplier, it is preserved as a planning assumption rather than represented as publisher-supplied uncertainty.
