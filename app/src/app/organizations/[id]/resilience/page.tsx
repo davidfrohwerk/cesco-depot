@@ -5,7 +5,6 @@ import {
   generateAssessmentScenarios,
   updateAssessmentPopulation,
 } from "@/app/actions/infrastructure-assessments";
-import { linkReliabilityEvidence } from "@/app/actions/reliability-evidence";
 import {
   requireOrganizationPagePermission,
   userHasOrganizationPermission,
@@ -55,7 +54,7 @@ export default async function ResilienceAssessmentPage({ params }: PageProps) {
     organizationId
   );
 
-  const [assessments, reliabilityEvidence] = await Promise.all([
+  const assessments = await prisma.infrastructureAssessment.findMany({
     prisma.infrastructureAssessment.findMany({
     where: { organizationId },
     include: {
@@ -100,16 +99,7 @@ export default async function ResilienceAssessmentPage({ params }: PageProps) {
       },
     },
     orderBy: { createdAt: "desc" },
-  }),
-    prisma.reliabilityEvidence.findMany({
-      orderBy: [
-        { manufacturer: "asc" },
-        { model: "asc" },
-        { publisher: "asc" },
-      ],
-      take: 500,
-    }),
-  ]);
+  });
 
   return (
     <main className="mx-auto max-w-7xl p-8">
@@ -303,50 +293,11 @@ export default async function ResilienceAssessmentPage({ params }: PageProps) {
                       </div>
                     )}
 
-                    {canManage && reliabilityEvidence.length > 0 && (
-                      <form
-                        action={linkReliabilityEvidence.bind(
-                          null,
-                          population.id
-                        )}
-                        className="mt-4 grid gap-3 md:grid-cols-2"
-                      >
-                        <select
-                          name="reliabilityEvidenceId"
-                          required
-                          defaultValue=""
-                          className="rounded border px-3 py-2 md:col-span-2"
-                        >
-                          <option value="" disabled>
-                            Attach published reliability evidence
-                          </option>
-                          {reliabilityEvidence.map((item) => (
-                            <option key={item.id} value={item.id}>
-                              {[item.manufacturer, item.model]
-                                .filter(Boolean)
-                                .join(" ") || item.assetClass || "General evidence"}{" "}
-                              — {item.publisher} — {item.metricType.replaceAll("_", " ")}
-                              {item.value != null ? ` ${item.value}` : ""}
-                              {item.unit ? ` ${item.unit}` : ""}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          name="transformation"
-                          placeholder="CESCo transformation / applicability note (optional)"
-                          className="rounded border px-3 py-2"
-                        />
-                        <label className="flex items-center gap-2 text-sm">
-                          <input name="selectedForPlanning" type="checkbox" />
-                          Use as current planning basis
-                        </label>
-                        <button
-                          type="submit"
-                          className="rounded border px-4 py-2 font-medium md:col-span-2"
-                        >
-                          Attach evidence
-                        </button>
-                      </form>
+                    {population._count.evidenceLinks > 0 && (
+                      <div className="mt-3 text-xs opacity-60">
+                        Reliability evidence was matched automatically from the
+                        CESCo source registry. Customer action is not required.
+                      </div>
                     )}
 
                     {population.evidenceLinks.some(
@@ -697,11 +648,12 @@ export default async function ResilienceAssessmentPage({ params }: PageProps) {
       <section className="mt-10 rounded border p-5">
         <h2 className="text-xl font-semibold">What comes next</h2>
         <p className="mt-2 max-w-4xl text-sm leading-6 opacity-70">
-          Curated published evidence can now be attached to each equipment
-          population and one source can be marked as the current planning
-          basis. The next analytical step is to derive an explicitly labeled
-          planning failure probability where appropriate, then generate low,
-          planning, and stress demand scenarios and candidate spare quantities.
+          Depot now automatically matches any already-known published
+          reliability evidence to the imported equipment population. The
+          remaining work is source discovery: when the registry does not yet
+          contain a defensible source, the enrichment engine should search
+          approved OEM, government, public-field, and licensed sources without
+          asking the customer to research or enter reliability data manually.
         </p>
       </section>
     </main>
