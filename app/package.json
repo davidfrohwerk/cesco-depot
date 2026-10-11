@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:lifecycle": "node --test tests/workflow-rules.test.mjs"
+    "test:lifecycle": "node --test tests/workflow-rules.test.mjs",
+    "test:reliability": "node --test tests/reliability-planning.test.mjs"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
