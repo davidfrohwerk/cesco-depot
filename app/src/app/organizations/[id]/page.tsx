@@ -168,6 +168,19 @@ export default async function OrganizationPage({
         {organization.kind === "CLIENT" &&
           userHasOrganizationPermission(
             currentUser,
+            "assessment.view",
+            organization.id
+          ) && (
+            <Link
+              href={`/organizations/${organization.id}/resilience`}
+              className="underline"
+            >
+              Resilience assessment
+            </Link>
+          )}
+        {organization.kind === "CLIENT" &&
+          userHasOrganizationPermission(
+            currentUser,
             "import.view",
             organization.id
           ) && (
