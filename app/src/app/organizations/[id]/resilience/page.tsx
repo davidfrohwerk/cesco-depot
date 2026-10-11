@@ -157,6 +157,17 @@ export default async function ResilienceAssessmentPage({ params }: PageProps) {
         </div>
       </section>
 
+      {!canManage && (
+        <section className="mt-8 rounded border p-5">
+          <h2 className="text-xl font-semibold">Read-only assessment access</h2>
+          <p className="mt-2 max-w-4xl text-sm leading-6 opacity-70">
+            Your current role can view resilience assessments but cannot create
+            or edit them. A client administrator or authorized CESCo operator
+            must start the assessment and enter recovery inputs.
+          </p>
+        </section>
+      )}
+
       {canManage && (
         <section className="mt-8 rounded border p-5">
           <h2 className="text-xl font-semibold">Start from current inventory</h2>
