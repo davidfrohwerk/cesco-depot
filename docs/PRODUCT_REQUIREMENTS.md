@@ -300,16 +300,17 @@ Reliability evidence is append-only for analytical purposes. New evidence may su
 
 ### Evidence-selection hierarchy
 
-When multiple sources are applicable, the inference engine should prefer evidence approximately in this order, subject to sample adequacy and environmental applicability:
+When multiple sources are applicable, the inference engine should prefer published evidence approximately in this order, subject to methodological quality and environmental applicability:
 
-1. statistically adequate client-specific field history
-2. statistically adequate CESCo-observed exact-model field history
-3. exact-model empirical public or OEM field data
-4. exact-model OEM predicted reliability
-5. model-family empirical data
-6. comparable assembly/component surrogate field data
-7. equipment-class research
-8. conservative planning assumption
+1. exact-model empirical public or OEM field data
+2. exact-model OEM predicted reliability
+3. model-family empirical data
+4. government reliability handbooks, datasets, and technical repositories
+5. comparable assembly/component surrogate field data
+6. equipment-class research
+7. documented conservative planning assumption
+
+Client and CESCo operational history may support lifecycle provenance and internal analysis, but it should not automatically become a customer-facing reliability estimate.
 
 A higher-ranked source should not automatically win if exposure is too small, conditions are materially different, or the observation period is inappropriate.
 
@@ -479,20 +480,19 @@ Every recommendation must preserve a reproducible analytical record containing a
 
 A later recommendation may change when evidence or assumptions change, but the prior recommendation and its basis must remain auditable.
 
-### Learning loop
+### Source and inference boundary
 
-External reliability evidence is the bootstrap, not the permanent authority.
+Customer-facing reliability assessments should rely on known, attributable published evidence wherever possible.
 
-The desired transition is:
+Depot must preserve the distinction between:
 
-```
-external research / OEM / licensed surrogate
--> client historical evidence
--> CESCo Depot observed lifecycle evidence
--> statistically adequate customer- or fleet-specific planning basis
-```
+- publisher-supplied facts
+- CESCo-derived conversions or normalization
+- selected planning assumptions
+- statistical model outputs
+- CESCo recommendations
 
-Depot should accumulate exposure and failure events in a form that can eventually support empirical reliability estimates while preserving tenant isolation, governance, and provenance.
+CESCo operational history remains valuable for provenance, service improvement, and possible future research, but the product should not present internally observed rates as authoritative external reliability benchmarks without a separate validated research program.
 
 ### Prospective-customer assessment experience
 
