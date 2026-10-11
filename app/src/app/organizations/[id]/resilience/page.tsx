@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   createInfrastructureAssessment,
+  generateAssessmentScenarios,
   updateAssessmentPopulation,
 } from "@/app/actions/infrastructure-assessments";
 import { linkReliabilityEvidence } from "@/app/actions/reliability-evidence";
@@ -80,6 +81,9 @@ export default async function ResilienceAssessmentPage({ params }: PageProps) {
               { selectedForPlanning: "desc" },
               { createdAt: "asc" },
             ],
+          },
+          scenarios: {
+            orderBy: { kind: "asc" },
           },
           _count: {
             select: {
@@ -332,6 +336,178 @@ export default async function ResilienceAssessmentPage({ params }: PageProps) {
                           Attach evidence
                         </button>
                       </form>
+                    )}
+
+                    {population.evidenceLinks.some(
+                      (link) => link.selectedForPlanning
+                    ) && (
+                      <section className="mt-5 rounded border p-4">
+                        <h4 className="font-semibold">Demand scenarios</h4>
+                        <p className="mt-2 text-sm leading-6 opacity-70">
+                          Depot normalizes the selected published planning basis
+                          only when its metric/unit pair has an approved
+                          transformation. The statistical reserve is calculated
+                          with a Poisson demand model. Contingency reserve stays
+                          separate because common-mode failures are not
+                          independent demand.
+                        </p>
+
+                        {canManage && (
+                          <form
+                            action={generateAssessmentScenarios.bind(
+                              null,
+                              population.id
+                            )}
+                            className="mt-4 grid gap-3 md:grid-cols-2"
+                          >
+                            <label className="grid gap-1 text-sm">
+                              <span>Exposure window (days)</span>
+                              <input
+                                name="exposureWindowDays"
+                                type="number"
+                                min="0"
+                                step="0.25"
+                                required
+                                defaultValue={
+                                  population.procurementLeadDays ??
+                                  population.repairTurnaroundDays ??
+                                  ""
+                                }
+                                className="rounded border px-3 py-2"
+                              />
+                            </label>
+
+                            <label className="grid gap-1 text-sm">
+                              <span>Target service level (%)</span>
+                              <input
+                                name="targetServiceLevelPercent"
+                                type="number"
+                                min="0.01"
+                                max="99.99"
+                                step="0.01"
+                                required
+                                defaultValue="99"
+                                className="rounded border px-3 py-2"
+                              />
+                            </label>
+
+                            <label className="grid gap-1 text-sm">
+                              <span>Low scenario multiplier</span>
+                              <input
+                                name="lowMultiplier"
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                defaultValue="0.5"
+                                className="rounded border px-3 py-2"
+                              />
+                            </label>
+
+                            <label className="grid gap-1 text-sm">
+                              <span>Stress scenario multiplier</span>
+                              <input
+                                name="stressMultiplier"
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                defaultValue="2"
+                                className="rounded border px-3 py-2"
+                              />
+                            </label>
+
+                            <label className="grid gap-1 text-sm md:col-span-2">
+                              <span>
+                                Explicit contingency reserve (whole units)
+                              </span>
+                              <input
+                                name="contingencyReserve"
+                                type="number"
+                                min="0"
+                                step="1"
+                                defaultValue="0"
+                                className="rounded border px-3 py-2"
+                              />
+                            </label>
+
+                            <div className="md:col-span-2 text-xs leading-5 opacity-60">
+                              LOW and STRESS multipliers are planning
+                              assumptions applied to the normalized annual
+                              probability; they are not publisher-supplied
+                              values. Defaults are 0.5x and 2x and may be
+                              changed before calculation.
+                            </div>
+
+                            <button
+                              type="submit"
+                              className="rounded border px-4 py-2 font-medium md:col-span-2"
+                            >
+                              Generate low / planning / stress scenarios
+                            </button>
+                          </form>
+                        )}
+
+                        {population.scenarios.length > 0 && (
+                          <div className="mt-5 grid gap-3 lg:grid-cols-3">
+                            {population.scenarios.map((scenario) => (
+                              <article
+                                key={scenario.id}
+                                className="rounded border p-4"
+                              >
+                                <div className="flex items-center justify-between gap-3">
+                                  <strong>{scenario.kind}</strong>
+                                  <span className="text-xs opacity-60">
+                                    {scenario.confidence} confidence
+                                  </span>
+                                </div>
+                                <div className="mt-3 text-2xl font-semibold">
+                                  {scenario.totalRecommendedSpareCount ?? "—"}{" "}
+                                  spare
+                                  {scenario.totalRecommendedSpareCount === 1
+                                    ? ""
+                                    : "s"}
+                                </div>
+                                <div className="mt-3 space-y-1 text-sm opacity-70">
+                                  <div>
+                                    Annual planning probability:{" "}
+                                    {scenario.annualFailureProbability == null
+                                      ? "—"
+                                      : `${(
+                                          scenario.annualFailureProbability *
+                                          100
+                                        ).toFixed(3)}%`}
+                                  </div>
+                                  <div>
+                                    Expected demand in window:{" "}
+                                    {scenario.expectedDemand == null
+                                      ? "—"
+                                      : scenario.expectedDemand.toFixed(3)}
+                                  </div>
+                                  <div>
+                                    Statistical reserve:{" "}
+                                    {scenario.recommendedSpareCount ?? "—"}
+                                  </div>
+                                  <div>
+                                    Contingency reserve:{" "}
+                                    {scenario.contingencyReserve ?? 0}
+                                  </div>
+                                  <div>
+                                    Exposure window:{" "}
+                                    {scenario.exposureWindowDays ?? "—"} days
+                                  </div>
+                                  <div>
+                                    Service level:{" "}
+                                    {scenario.targetServiceLevel == null
+                                      ? "—"
+                                      : `${(
+                                          scenario.targetServiceLevel * 100
+                                        ).toFixed(2)}%`}
+                                  </div>
+                                </div>
+                              </article>
+                            ))}
+                          </div>
+                        )}
+                      </section>
                     )}
 
                     {canManage ? (
