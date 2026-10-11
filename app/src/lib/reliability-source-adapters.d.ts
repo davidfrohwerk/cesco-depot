@@ -9,12 +9,32 @@ export type DiscoveredReliabilityEvidence = {
   model: string | null;
   modelFamily: string | null;
   assetClass: string | null;
-  metricType: string;
+  metricType:
+    | "FIELD_AFR"
+    | "FAILURE_RATE"
+    | "MTBF"
+    | "MTTF"
+    | "FAILURE_PROBABILITY"
+    | "LIFECYCLE_INTERVAL"
+    | "DUTY_CYCLE_LIMIT"
+    | "OTHER";
   value: number | null;
   unit: string | null;
-  evidenceType: string;
-  specificity: string;
-  confidence: string;
+  evidenceType:
+    | "PUBLIC_FIELD"
+    | "OEM_FIELD"
+    | "OEM_PREDICTED"
+    | "GOVERNMENT_REFERENCE"
+    | "COMMERCIAL_SURROGATE"
+    | "RESEARCH_SURROGATE"
+    | "PLANNING_ASSUMPTION";
+  specificity:
+    | "EXACT_MODEL"
+    | "MODEL_FAMILY"
+    | "ASSEMBLY_CLASS"
+    | "COMPONENT_CLASS"
+    | "EQUIPMENT_CLASS";
+  confidence: "HIGH" | "MODERATE" | "LOW" | "INSUFFICIENT";
   publisher: string;
   sourceTitle: string;
   sourceUrl: string | null;
