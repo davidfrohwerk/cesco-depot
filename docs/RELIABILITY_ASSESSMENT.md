@@ -54,16 +54,17 @@ An OEM MTBF number, an observed customer failure rate, and an equipment-class re
 
 ## Initial source hierarchy
 
-The initial research program should prioritize:
+The initial research program should prioritize published, independently sourced evidence:
 
-1. customer-provided field history
-2. CESCo-observed field history
-3. exact-model empirical public/OEM field evidence
-4. exact-model OEM predicted MTBF/MTTF
-5. model-family empirical evidence
-6. licensed electronic / nonelectronic reliability databases
-7. published equipment-class research
-8. conservative planning assumptions
+1. exact-model empirical public/OEM field evidence
+2. exact-model OEM predicted MTBF/MTTF
+3. model-family empirical evidence
+4. government reliability handbooks, datasets, and technical repositories
+5. licensed electronic / nonelectronic reliability databases
+6. published equipment-class research
+7. documented conservative planning assumptions when no stronger published source exists
+
+Customer and CESCo operational history may be retained for service provenance and internal analysis, but the customer-facing resilience assessment should not depend on unpublished CESCo-derived AFR claims. If CESCo ever develops original reliability estimates as a separate research product, that work requires its own methodology, validation, governance, and review boundary.
 
 Candidate external source families include:
 
@@ -119,19 +120,23 @@ A population may be grouped by:
 
 Depot should favor pooling when assets are operationally interchangeable and should avoid pooling superficially similar assets that cannot actually substitute for one another.
 
-## Sample adequacy
+## Published evidence adequacy
 
-Observed field rates must carry their exposure.
+When Depot uses published empirical field data, the source record should preserve enough context to judge whether the published rate is applicable.
 
-Minimum analytical fields:
+Where the source makes them available, preserve:
 
 - population size
 - accumulated device-hours, device-days, months, years, pages, cycles, or other relevant exposure
 - observed failures
-- observation start/end
-- retirement/censoring information where available
+- observation period
+- environment
+- equipment age / model scope
+- exclusions, censoring, or retirement treatment
+- confidence interval or uncertainty statement
+- source methodology
 
-Small samples should be visibly marked as insufficient or low-confidence rather than converted into definitive AFR values.
+Depot should not recompute or embellish unavailable source statistics merely to make records look complete. Missing source context is itself an applicability limitation.
 
 ## Demand scenarios
 
