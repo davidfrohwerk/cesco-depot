@@ -289,6 +289,57 @@ enum WorkOrderPartStatus {
   CANCELLED
 }
 
+
+enum ReliabilityMetricType {
+  FIELD_AFR
+  FAILURE_RATE
+  MTBF
+  MTTF
+  FAILURE_PROBABILITY
+  LIFECYCLE_INTERVAL
+  DUTY_CYCLE_LIMIT
+  OTHER
+}
+
+enum ReliabilityEvidenceType {
+  PUBLIC_FIELD
+  OEM_FIELD
+  OEM_PREDICTED
+  GOVERNMENT_REFERENCE
+  COMMERCIAL_SURROGATE
+  RESEARCH_SURROGATE
+  PLANNING_ASSUMPTION
+}
+
+enum ReliabilitySpecificity {
+  EXACT_MODEL
+  MODEL_FAMILY
+  ASSEMBLY_CLASS
+  COMPONENT_CLASS
+  EQUIPMENT_CLASS
+}
+
+enum ReliabilityConfidence {
+  HIGH
+  MODERATE
+  LOW
+  INSUFFICIENT
+}
+
+enum InfrastructureAssessmentStatus {
+  DRAFT
+  IN_REVIEW
+  COMPLETED
+  SUPERSEDED
+  CANCELLED
+}
+
+enum AssessmentScenarioKind {
+  LOW
+  PLANNING
+  STRESS
+}
+
 enum EvidenceType {
   PACKAGE_EXTERIOR
   SHIPPING_LABEL
@@ -337,6 +388,8 @@ model User {
   importProfiles         ImportProfile[]      @relation("ImportProfileCreator")
   uploadedEvidence     Evidence[]         @relation("EvidenceUploader")
   evidenceAccessEvents EvidenceAccessEvent[] @relation("EvidenceAccessActor")
+  reliabilityEvidenceCreated ReliabilityEvidence[] @relation("ReliabilityEvidenceCreator")
+  infrastructureAssessmentsCreated InfrastructureAssessment[] @relation("InfrastructureAssessmentCreator")
 }
 
 model UserInvite {
@@ -395,6 +448,7 @@ model Organization {
   importJobs          ImportJob[]
   importProfiles      ImportProfile[]
   evidence           Evidence[]
+  infrastructureAssessments InfrastructureAssessment[]
 }
 
 model Membership {
@@ -675,6 +729,7 @@ model Asset {
   returnForRequisitions   SpareRequisition[] @relation("SpareRequisitionReturnAsset")
   dispatchAssignments    DispatchAssignment[]
   externalServiceCases   ExternalServiceCase[]
+  assessmentPopulationMembers InfrastructureAssessmentPopulationAsset[]
 
   @@index([serialNumber])
   @@unique([organizationId, assetTag])
@@ -864,6 +919,8 @@ model ImportJob {
   organization Organization @relation(fields: [organizationId], references: [id])
   submittedBy  User         @relation("ImportJobSubmitter", fields: [submittedByUserId], references: [id])
   rows         ImportRow[]
+  sourceForInfrastructureAssessments InfrastructureAssessment[]
+
 
   @@index([organizationId, submittedAt])
   @@index([status])
@@ -1280,4 +1337,171 @@ model EvidenceAccessEvent {
   @@index([evidenceId, accessedAt])
   @@index([actorUserId, accessedAt])
   @@index([action])
+}
+
+
+model ReliabilityEvidence {
+  id                    String                    @id @default(cuid())
+  createdByUserId       String?
+  manufacturer          String?
+  model                 String?
+  modelFamily           String?
+  assetClass            String?
+  metricType            ReliabilityMetricType
+  value                 Float?
+  unit                  String?
+  evidenceType          ReliabilityEvidenceType
+  specificity           ReliabilitySpecificity
+  confidence            ReliabilityConfidence
+  publisher             String
+  sourceTitle           String
+  sourceUrl             String?
+  sourceIdentifier      String?
+  sourcePublishedAt     DateTime?
+  retrievedAt           DateTime                  @default(now())
+  methodology           String?
+  observed              Boolean                   @default(false)
+  populationSize        Int?
+  exposureValue         Float?
+  exposureUnit          String?
+  failureCount          Int?
+  operatingEnvironment  String?
+  temperatureC          Float?
+  dutyCycleNotes        String?
+  applicabilityNotes    String?
+  limitations           String?
+  licenseNotes          String?
+  sourceMetadata        Json?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+
+  createdBy             User?                     @relation("ReliabilityEvidenceCreator", fields: [createdByUserId], references: [id])
+  assessmentLinks       InfrastructureAssessmentEvidence[]
+
+  @@index([manufacturer, model])
+  @@index([assetClass])
+  @@index([evidenceType])
+  @@index([specificity])
+  @@index([publisher])
+}
+
+model InfrastructureAssessment {
+  id                    String                        @id @default(cuid())
+  organizationId        String
+  createdByUserId       String
+  name                  String
+  status                InfrastructureAssessmentStatus @default(DRAFT)
+  sourceImportJobId     String?
+  rulesetVersion        String                        @default("1")
+  notes                 String?
+  completedAt           DateTime?
+  createdAt             DateTime                      @default(now())
+  updatedAt             DateTime                      @updatedAt
+
+  organization          Organization                  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy             User                          @relation("InfrastructureAssessmentCreator", fields: [createdByUserId], references: [id])
+  sourceImportJob       ImportJob?                    @relation(fields: [sourceImportJobId], references: [id])
+  populations           InfrastructureAssessmentPopulation[]
+
+  @@index([organizationId])
+  @@index([createdByUserId])
+  @@index([sourceImportJobId])
+  @@index([status])
+}
+
+model InfrastructureAssessmentPopulation {
+  id                    String                  @id @default(cuid())
+  assessmentId          String
+  manufacturer          String?
+  model                 String?
+  modelFamily           String?
+  assetClass            String?
+  compatibilityClass    String?
+  populationLabel       String
+  assetCount            Int
+  missionCritical       Boolean?
+  criticalityNotes      String?
+  rtoHours              Float?
+  localRedundancy       Boolean?
+  redundancyNotes       String?
+  procurementLeadDays   Float?
+  repairTurnaroundDays  Float?
+  fieldReplacementHours Float?
+  configurationHours    Float?
+  substitutable         Boolean?
+  substituteNotes       String?
+  exposureModel         String?
+  exposureInputs        Json?
+  customerInputNotes    String?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  assessment            InfrastructureAssessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  assets                InfrastructureAssessmentPopulationAsset[]
+  evidenceLinks         InfrastructureAssessmentEvidence[]
+  scenarios             InfrastructureAssessmentScenario[]
+
+  @@index([assessmentId])
+  @@index([manufacturer, model])
+  @@index([assetClass])
+  @@index([compatibilityClass])
+}
+
+model InfrastructureAssessmentPopulationAsset {
+  populationId          String
+  assetId               String
+  includedAt            DateTime @default(now())
+
+  population            InfrastructureAssessmentPopulation @relation(fields: [populationId], references: [id], onDelete: Cascade)
+  asset                 Asset                              @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@id([populationId, assetId])
+  @@index([assetId])
+}
+
+model InfrastructureAssessmentEvidence {
+  id                    String      @id @default(cuid())
+  populationId          String
+  reliabilityEvidenceId String
+  selectedForPlanning   Boolean     @default(false)
+  applicabilityNotes    String?
+  transformation        String?
+  derivedMetricValue    Float?
+  derivedMetricUnit     String?
+  createdAt             DateTime    @default(now())
+
+  population            InfrastructureAssessmentPopulation @relation(fields: [populationId], references: [id], onDelete: Cascade)
+  reliabilityEvidence   ReliabilityEvidence                 @relation(fields: [reliabilityEvidenceId], references: [id])
+
+  @@unique([populationId, reliabilityEvidenceId])
+  @@index([populationId])
+  @@index([reliabilityEvidenceId])
+  @@index([selectedForPlanning])
+}
+
+model InfrastructureAssessmentScenario {
+  id                       String                @id @default(cuid())
+  populationId             String
+  kind                     AssessmentScenarioKind
+  annualFailureProbability Float?
+  failureRateSource         String?
+  exposureWindowDays       Float?
+  targetServiceLevel       Float?
+  expectedDemand           Float?
+  recommendedSpareCount    Int?
+  repairPipelineReserve    Int?
+  contingencyReserve       Int?
+  totalRecommendedSpareCount Int?
+  method                   String                @default("POISSON")
+  confidence               ReliabilityConfidence
+  assumptions              Json?
+  limitations              String?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+
+  population               InfrastructureAssessmentPopulation @relation(fields: [populationId], references: [id], onDelete: Cascade)
+
+  @@unique([populationId, kind])
+  @@index([populationId])
+  @@index([kind])
 }
