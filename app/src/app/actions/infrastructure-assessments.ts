@@ -287,9 +287,10 @@ export async function generateAssessmentScenarios(
     throw new Error("Exposure window is required.");
   }
 
-  const low = lowMultiplier ?? 0.5;
-  const stress = stressMultiplier ?? 2;
-  if (low <= 0 || stress <= 0) {
+  if (
+    (lowMultiplier != null && lowMultiplier <= 0) ||
+    (stressMultiplier != null && stressMultiplier <= 0)
+  ) {
     throw new Error("Scenario multipliers must be greater than zero.");
   }
 
@@ -301,20 +302,34 @@ export async function generateAssessmentScenarios(
   const targetServiceLevel = targetServiceLevelPercent / 100;
   const scenarios = [
     {
-      kind: "LOW" as const,
-      probability: Math.min(1, normalized.probability * low),
-      multiplier: low,
-    },
-    {
       kind: "PLANNING" as const,
       probability: normalized.probability,
       multiplier: 1,
     },
-    {
-      kind: "STRESS" as const,
-      probability: Math.min(1, normalized.probability * stress),
-      multiplier: stress,
-    },
+    ...(lowMultiplier == null
+      ? []
+      : [
+          {
+            kind: "LOW" as const,
+            probability: Math.min(
+              1,
+              normalized.probability * lowMultiplier
+            ),
+            multiplier: lowMultiplier,
+          },
+        ]),
+    ...(stressMultiplier == null
+      ? []
+      : [
+          {
+            kind: "STRESS" as const,
+            probability: Math.min(
+              1,
+              normalized.probability * stressMultiplier
+            ),
+            multiplier: stressMultiplier,
+          },
+        ]),
   ];
 
   await prisma.$transaction(async (tx) => {
