@@ -4,6 +4,7 @@ import {
   createInfrastructureAssessment,
   updateAssessmentPopulation,
 } from "@/app/actions/infrastructure-assessments";
+import { linkReliabilityEvidence } from "@/app/actions/reliability-evidence";
 import {
   requireOrganizationPagePermission,
   userHasOrganizationPermission,
@@ -53,7 +54,8 @@ export default async function ResilienceAssessmentPage({ params }: PageProps) {
     organizationId
   );
 
-  const assessments = await prisma.infrastructureAssessment.findMany({
+  const [assessments, reliabilityEvidence] = await Promise.all([
+    prisma.infrastructureAssessment.findMany({
     where: { organizationId },
     include: {
       createdBy: {
@@ -70,6 +72,15 @@ export default async function ResilienceAssessmentPage({ params }: PageProps) {
       },
       populations: {
         include: {
+          evidenceLinks: {
+            include: {
+              reliabilityEvidence: true,
+            },
+            orderBy: [
+              { selectedForPlanning: "desc" },
+              { createdAt: "asc" },
+            ],
+          },
           _count: {
             select: {
               assets: true,
@@ -85,7 +96,16 @@ export default async function ResilienceAssessmentPage({ params }: PageProps) {
       },
     },
     orderBy: { createdAt: "desc" },
-  });
+  }),
+    prisma.reliabilityEvidence.findMany({
+      orderBy: [
+        { manufacturer: "asc" },
+        { model: "asc" },
+        { publisher: "asc" },
+      ],
+      take: 500,
+    }),
+  ]);
 
   return (
     <main className="mx-auto max-w-7xl p-8">
@@ -231,6 +251,87 @@ export default async function ResilienceAssessmentPage({ params }: PageProps) {
                         this population yet. Depot should disclose that gap
                         rather than assign an unsupported AFR.
                       </div>
+                    )}
+
+                    {population.evidenceLinks.length > 0 && (
+                      <div className="mt-4 space-y-2">
+                        {population.evidenceLinks.map((link) => (
+                          <div
+                            key={link.id}
+                            className="rounded border p-3 text-sm"
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <strong>
+                                  {link.reliabilityEvidence.sourceTitle}
+                                </strong>
+                                <div className="mt-1 opacity-70">
+                                  {link.reliabilityEvidence.publisher}
+                                  {link.reliabilityEvidence.value != null
+                                    ? ` · ${link.reliabilityEvidence.metricType.replaceAll("_", " ")} ${link.reliabilityEvidence.value}${link.reliabilityEvidence.unit ? ` ${link.reliabilityEvidence.unit}` : ""}`
+                                    : ` · ${link.reliabilityEvidence.metricType.replaceAll("_", " ")}`}
+                                </div>
+                              </div>
+                              {link.selectedForPlanning && (
+                                <span className="rounded border px-2 py-1 text-xs font-medium">
+                                  Planning basis
+                                </span>
+                              )}
+                            </div>
+                            {link.transformation && (
+                              <div className="mt-2 text-xs opacity-60">
+                                CESCo transformation / use: {link.transformation}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {canManage && reliabilityEvidence.length > 0 && (
+                      <form
+                        action={linkReliabilityEvidence.bind(
+                          null,
+                          population.id
+                        )}
+                        className="mt-4 grid gap-3 md:grid-cols-2"
+                      >
+                        <select
+                          name="reliabilityEvidenceId"
+                          required
+                          defaultValue=""
+                          className="rounded border px-3 py-2 md:col-span-2"
+                        >
+                          <option value="" disabled>
+                            Attach published reliability evidence
+                          </option>
+                          {reliabilityEvidence.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {[item.manufacturer, item.model]
+                                .filter(Boolean)
+                                .join(" ") || item.assetClass || "General evidence"}{" "}
+                              — {item.publisher} — {item.metricType.replaceAll("_", " ")}
+                              {item.value != null ? ` ${item.value}` : ""}
+                              {item.unit ? ` ${item.unit}` : ""}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          name="transformation"
+                          placeholder="CESCo transformation / applicability note (optional)"
+                          className="rounded border px-3 py-2"
+                        />
+                        <label className="flex items-center gap-2 text-sm">
+                          <input name="selectedForPlanning" type="checkbox" />
+                          Use as current planning basis
+                        </label>
+                        <button
+                          type="submit"
+                          className="rounded border px-4 py-2 font-medium md:col-span-2"
+                        >
+                          Attach evidence
+                        </button>
+                      </form>
                     )}
 
                     {canManage ? (
@@ -411,10 +512,11 @@ export default async function ResilienceAssessmentPage({ params }: PageProps) {
       <section className="mt-10 rounded border p-5">
         <h2 className="text-xl font-semibold">What comes next</h2>
         <p className="mt-2 max-w-4xl text-sm leading-6 opacity-70">
-          The next analytical step is to attach curated published reliability
-          evidence to each applicable equipment population. Only then should
-          Depot generate low, planning, and stress demand scenarios and
-          candidate spare quantities.
+          Curated published evidence can now be attached to each equipment
+          population and one source can be marked as the current planning
+          basis. The next analytical step is to derive an explicitly labeled
+          planning failure probability where appropriate, then generate low,
+          planning, and stress demand scenarios and candidate spare quantities.
         </p>
       </section>
     </main>
