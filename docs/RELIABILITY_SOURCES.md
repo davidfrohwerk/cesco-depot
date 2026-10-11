@@ -304,3 +304,146 @@ Depot should consider pooled strategic stocking strongest when all or most of th
 - pooling across many endpoints is cheaper than one-for-one local redundancy
 
 The system should explicitly decline or de-emphasize strategic stocking when local redundancy, commodity availability, or low business impact makes a managed spare economically irrational.
+
+
+## Second-tier equipment-class evidence matrix
+
+The second research pass covers servers / edge compute, enterprise PCs / POS controllers, storage devices, UPS / power systems, and specialty printers / scanners. These classes show much more uneven public reliability evidence than enterprise networking equipment, which is exactly why Depot must preserve source type and confidence instead of forcing every class into one AFR field.
+
+| Equipment class | Free OEM evidence availability | Government / public evidence | Quanterion fit | Customer inputs Depot should request | Initial evidence posture | Strategic-spares suitability |
+| --- | --- | --- | --- | --- | --- | --- |
+| Servers / edge compute | Mixed. OEMs publish detailed component, lifecycle, warranty, thermal and service information, but exact-model whole-server AFR/MTBF is not consistently exposed in current product documentation. | Strong class-level public research exists. Microsoft Research reported that about 8% of servers in a large cloud population experienced at least one hardware incident in a year; disks were the most frequently replaced component. Other large studies cover hundreds of thousands of server failure reports. These are empirical class-level references, not SKU AFRs. | Strong for PSU, fan, storage, connector, memory, board and other component/assembly surrogates; FMD can help identify common failure modes. | server model/revision, age, drive count/type, DIMM count, redundant PSU/fan/storage architecture, virtualization role, workload, thermal environment, spare-node/failover capacity, restore/rebuild time, RTO | MODERATE for equipment-class empirical behavior; LOW-MODERATE for exact-model failure probability unless OEM or field evidence exists | VERY HIGH when a branch/edge server is a single local dependency; lower when clustered, virtualized or rapidly recoverable elsewhere |
+| Enterprise PCs / POS controllers | Usually weak for whole-system AFR. OEMs provide service manuals, diagnostics, component options, warranty and lifecycle information; exact-model reliability figures are uncommon. | Useful public class-level evidence exists. Microsoft Research analyzed hardware faults across one million consumer PCs and showed strong dependence on subsystem, workload and recurrence, demonstrating that a desktop/POS controller should not be treated as one homogeneous failure process. | Strong for storage, memory, PSU, fan, board, connector and electromechanical component surrogates. | exact model/form factor/revision, age, SSD/HDD type, duty cycle, thermal/dust environment, standardized image/config, peripheral dependencies, local substitutes, zero-touch/imaging ability, replacement time, business impact, RTO | LOW-MODERATE at whole-system level; MODERATE for well-characterized subsystems | HIGH for proprietary or tightly configured POS/store controllers; MODERATE/LOW for commodity PCs that can be sourced and imaged quickly |
+| Storage devices | Excellent for HDDs and increasingly useful for SSDs. Exact-model OEM MTTF/UBER/workload specs are common. | VERY STRONG. Backblaze publishes downloadable model-level HDD/SSD fleet data with drive-days, failures and AFR; academic field studies show actual replacement rates can materially exceed datasheet-MTTF-derived expectations. | Strong for drive mechanisms, electronics, bearings/motors and related component failure modes, especially when a specific model lacks public field exposure. | exact model, media type, capacity, age, power-on hours/drive-days, workload, RAID/redundancy, write volume where relevant, environment, rebuild time, replacement lead time, data criticality | HIGH when applicable model-level public field data exists; MODERATE when using OEM-only predictions | HIGH for standalone/edge storage and array members with long procurement lead time; spare policy must account for RAID/rebuild architecture rather than treating every drive failure as an outage |
+| UPS / power systems | Good for lifecycle/service variables; whole-unit AFR is less commonly published. OEMs publish battery chemistry, expected battery life, environmental limits, load guidance, self-test behavior and replacement intervals. | Public OEM guidance is highly actionable even without AFR. APC states VRLA batteries commonly last about 3-5 years under optimal conditions and that elevated temperature materially reduces life; APC also states typical UPS chassis/electronics life around 7-10 years for single-phase units. | Strong for batteries, capacitors, fans, relays, connectors and other electromechanical/electronic subassemblies. | UPS model, battery chemistry, battery manufacture/install date, ambient temperature, load percentage, discharge history, self-test status, input power quality, redundancy/topology, runtime requirement, replacement/bypass procedure, RTO | MODERATE for lifecycle/risk modeling; LOW for a single whole-unit AFR unless model-specific evidence exists | VERY HIGH for sites where UPS failure removes critical runtime or orderly shutdown; battery packs may warrant separate lifecycle stocking from whole UPS units |
+| Specialty printers / scanners | Good for duty cycle, recommended monthly volume, consumable/component yields, environmental limits and warranty/service terms; exact whole-device AFR is usually weak. | Public field AFR is sparse. OEM usage specifications can support exposure-sensitive planning. For the Lexmark MS521dn, Lexmark publishes a recommended monthly volume of 2,000-15,000 pages, a 120,000-page maximum monthly duty cycle and an imaging-unit yield around 60,000 pages. | Strong for rollers, motors, power supplies, sensors, fusers, imaging systems and other electromechanical failure-mode evidence. | exact model, age, pages/scans per month, cumulative meter, job profile, environment/dust, consumable and maintenance history, local substitute devices, special media/peripheral requirements, repair turnaround, RTO | LOW for whole-device AFR; MODERATE for usage/lifecycle-based planning | HIGH for specialized label, receipt, check, badge, medical or other workflow-critical devices; LOW for ordinary office printers with nearby substitutes |
+
+### Evidence examples establishing the second-tier matrix
+
+#### Servers / edge compute
+
+Microsoft Research's large cloud-hardware study is a useful class-level empirical anchor. It found that approximately 8% of servers experienced at least one hardware incident in a year and identified hard disks as the most commonly replaced component. The study is valuable as evidence that whole-server incident rates are driven by component count and architecture; it should not be transferred directly to a particular PowerEdge, ProLiant, or edge-server SKU.
+
+A separate four-year study of data-center hardware analyzed more than 290,000 hardware failure reports across hundreds of thousands of servers, reinforcing that component, batch, repeat-failure and temporal effects matter at fleet scale.
+
+#### Enterprise PCs / POS controllers
+
+Microsoft Research's study of one million consumer PCs found that hardware-induced failures are not necessarily independent or transient. CPU, DRAM and disk behavior varied with workload and machine characteristics, and a machine that had already suffered a hardware-related crash was much more likely to crash again.
+
+For Depot, the important conclusion is methodological: a store controller or POS PC should be represented as a configured system with subsystem evidence and operational substitutability, not assigned an arbitrary desktop-class AFR.
+
+#### Storage devices
+
+Backblaze's open Drive Stats dataset is unusually strong source material because it publishes model-level operating exposure and failures. Its 2025 analysis covered 344,196 qualifying hard drives across 30 models and reported an overall annual AFR of 1.36%. Backblaze also imposes minimum drive-count and drive-day thresholds before including models in annual and lifetime comparison tables.
+
+Historical field research from Carnegie Mellon / USENIX studied about 100,000 disks and found that annual field replacement rates commonly ran 2-4%, with some populations much higher, despite datasheet MTTFs implying nominal rates below 1%. This is a standing warning against treating MTTF-derived annual probability as observed AFR.
+
+#### UPS / power systems
+
+APC's published guidance states that VRLA UPS batteries generally last around 3-5 years under optimal conditions. APC further states that elevated temperature significantly shortens battery life and gives a rule-of-thumb that an 8 C increase can roughly halve battery life. Separate APC guidance states that single-phase UPS chassis/electronics often have a typical life around 7-10 years, with fans and electrolytic capacitors also having finite service lives.
+
+Therefore Depot should model a UPS as at least two lifecycle populations:
+
+```
+UPS electronics / chassis
++
+replaceable battery subsystem
+```
+
+A battery replacement plan is not the same thing as a cold spare for the entire UPS.
+
+#### Specialty printers / scanners
+
+Printer reliability is strongly usage-dependent. Lexmark's published specifications for the MS521dn give a recommended monthly page volume of 2,000-15,000 pages, a maximum monthly duty cycle of 120,000 pages, and an imaging-unit estimated yield of about 60,000 pages.
+
+These values are not AFRs. They are useful exposure and maintenance variables that can support a workload-sensitive planning model when whole-device field failure rates are unavailable.
+
+## Additional per-class assessment questions
+
+### Servers / edge compute
+
+Ask:
+
+- Is the workload clustered, replicated, virtualized, or tied to one physical host?
+- How many disks, DIMMs, PSUs and fans are installed?
+- Which components are hot-swappable?
+- Can another host absorb the workload?
+- Is a spare server useful without matching firmware, storage, licenses or configuration?
+- How long does bare-metal restore, imaging, VM restore or application validation take?
+- Is replacement constrained by rack depth, rails, power, NIC/HBA type or proprietary peripherals?
+- What is the business impact if the local compute function disappears completely?
+
+### Enterprise PCs / POS controllers
+
+Ask:
+
+- Is the device truly commodity hardware or does it have proprietary ports/peripherals?
+- Is the software image standardized and escrowed/current?
+- Can another approved model substitute?
+- Does replacement require local data restoration, licensing, device certificates or payment-key injection?
+- What peripherals depend on the controller?
+- Is a spare useful if shipped blank, or must it be preconfigured?
+- How quickly can a field technician swap and validate it?
+
+### Storage devices
+
+Ask:
+
+- Is the drive standalone, mirrored, RAID-protected, erasure-coded, or part of a replicated system?
+- What exact model/firmware/capacity compatibility constraints exist?
+- What are drive age and accumulated drive-days/power-on hours?
+- What is the workload/write volume?
+- How long does rebuild/resilvering take?
+- Does a second drive failure during rebuild materially change risk?
+- Is data availability protected at another system/site?
+- Is the desired spare a drive, tray/caddy, controller, or whole storage appliance?
+
+### UPS / power systems
+
+Ask:
+
+- What battery chemistry and replacement battery cartridge/module is installed?
+- What is the battery manufacture/install date?
+- What is the normal load percentage?
+- What is ambient/internal temperature?
+- How often does the UPS discharge and how deeply?
+- Does the site have redundant UPS paths or bypass?
+- Can the load tolerate a battery-only failure while the UPS electronics remain healthy?
+- Does replacement require shutdown or electrician/vendor involvement?
+- Is the desired resilience strategy spare batteries, a whole spare UPS, or both?
+
+### Specialty printers / scanners
+
+Ask:
+
+- Is the device a normal office convenience or a workflow dependency?
+- What is the monthly/cumulative page or scan count?
+- What media path, cutter, scanner, label, MICR, badge, receipt or specialty features are required?
+- Is there another compatible device on site?
+- Can a different model temporarily substitute?
+- What maintenance kit / imaging / roller / fuser intervals exist?
+- Is the correct spare a whole unit or a smaller field-replaceable module?
+- How much business stops when the device is unavailable?
+
+## Assessment implication
+
+The second-tier research confirms that Depot should support more than one evidence model.
+
+```
+NETWORK APPLIANCE
+often exact-model OEM MTBF
+
+STORAGE DEVICE
+often exact-model empirical field AFR + OEM specification
+
+UPS
+age / temperature / cycle / subsystem lifecycle
+
+PRINTER
+usage / page-count / maintenance lifecycle
+
+PC / POS / SERVER
+system architecture + subsystem evidence + substitutability
+```
+
+The assessment engine should therefore select an evidence strategy by equipment class before it calculates a spare quantity.
