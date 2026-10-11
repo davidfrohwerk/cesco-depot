@@ -27,7 +27,7 @@ test("normalizes published AFR percentage without calling it OEM-derived", () =>
   });
 
   assert.equal(result.supported, true);
-  assert.equal(result.probability, 0.0136);
+  assert.ok(Math.abs(result.probability - 0.0136) < 1e-12);
 });
 
 test("rejects unsupported metric/unit pairs", () => {
