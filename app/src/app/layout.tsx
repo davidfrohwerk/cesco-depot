@@ -32,6 +32,9 @@ export default async function RootLayout({
   const canViewOperations =
     user &&
     userHasInternalPermission(user, "organization.view");
+  const canViewReliability =
+    user &&
+    userHasInternalPermission(user, "reliability_evidence.view");
 
   return (
     <html
@@ -54,6 +57,11 @@ export default async function RootLayout({
                 {canViewServiceLocations && (
                   <Link href="/service-locations" className="underline">
                     Service locations
+                  </Link>
+                )}
+                {canViewReliability && (
+                  <Link href="/reliability" className="underline">
+                    Reliability
                   </Link>
                 )}
                 <span className="opacity-70">
