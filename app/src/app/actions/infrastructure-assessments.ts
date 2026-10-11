@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { requireOrganizationPermission } from "@/lib/access-scope";
 import { prisma } from "@/lib/prisma";
+import {
+  calculateSpareScenario,
+  normalizeAnnualFailureProbability,
+} from "@/lib/reliability-planning";
 
 function optionalNumber(value: FormDataEntryValue | null) {
   const text = String(value ?? "").trim();
@@ -201,6 +205,206 @@ export async function updateAssessmentPopulation(
       customerInputNotes:
         String(formData.get("customerInputNotes") ?? "").trim() || null,
     },
+  });
+
+  revalidatePath(
+    `/organizations/${population.assessment.organizationId}/resilience`
+  );
+}
+
+
+export async function generateAssessmentScenarios(
+  populationId: string,
+  formData: FormData
+) {
+  const population =
+    await prisma.infrastructureAssessmentPopulation.findUnique({
+      where: { id: populationId },
+      include: {
+        assessment: {
+          select: { organizationId: true },
+        },
+        evidenceLinks: {
+          where: { selectedForPlanning: true },
+          include: { reliabilityEvidence: true },
+          take: 1,
+        },
+      },
+    });
+
+  if (!population) {
+    throw new Error("Assessment population not found.");
+  }
+
+  await requireOrganizationPermission(
+    "assessment.manage",
+    population.assessment.organizationId
+  );
+
+  const planningEvidence = population.evidenceLinks[0]?.reliabilityEvidence;
+  if (!planningEvidence) {
+    throw new Error(
+      "Select a published reliability evidence record as the planning basis before generating scenarios."
+    );
+  }
+
+  const normalized = normalizeAnnualFailureProbability({
+    metricType: planningEvidence.metricType,
+    value: planningEvidence.value,
+    unit: planningEvidence.unit,
+  });
+
+  if (!normalized.supported || normalized.probability == null) {
+    throw new Error(
+      normalized.reason ??
+        "The selected source cannot yet be normalized automatically."
+    );
+  }
+
+  const targetServiceLevelPercent = optionalNumber(
+    formData.get("targetServiceLevelPercent")
+  );
+  const exposureWindowDays = optionalNumber(
+    formData.get("exposureWindowDays")
+  );
+  const lowMultiplier = optionalNumber(formData.get("lowMultiplier"));
+  const stressMultiplier = optionalNumber(formData.get("stressMultiplier"));
+  const contingencyReserveRaw = optionalNumber(
+    formData.get("contingencyReserve")
+  );
+
+  if (
+    targetServiceLevelPercent == null ||
+    targetServiceLevelPercent <= 0 ||
+    targetServiceLevelPercent >= 100
+  ) {
+    throw new Error(
+      "Target service level must be greater than 0 and less than 100 percent."
+    );
+  }
+
+  if (exposureWindowDays == null || exposureWindowDays < 0) {
+    throw new Error("Exposure window is required.");
+  }
+
+  const low = lowMultiplier ?? 0.5;
+  const stress = stressMultiplier ?? 2;
+  if (low <= 0 || stress <= 0) {
+    throw new Error("Scenario multipliers must be greater than zero.");
+  }
+
+  const contingencyReserve = Math.trunc(contingencyReserveRaw ?? 0);
+  if (contingencyReserve < 0) {
+    throw new Error("Contingency reserve cannot be negative.");
+  }
+
+  const targetServiceLevel = targetServiceLevelPercent / 100;
+  const scenarios = [
+    {
+      kind: "LOW" as const,
+      probability: Math.min(1, normalized.probability * low),
+      multiplier: low,
+    },
+    {
+      kind: "PLANNING" as const,
+      probability: normalized.probability,
+      multiplier: 1,
+    },
+    {
+      kind: "STRESS" as const,
+      probability: Math.min(1, normalized.probability * stress),
+      multiplier: stress,
+    },
+  ];
+
+  await prisma.$transaction(async (tx) => {
+    for (const scenario of scenarios) {
+      const result = calculateSpareScenario({
+        populationSize: population.assetCount,
+        annualFailureProbability: scenario.probability,
+        exposureWindowDays,
+        targetServiceLevel,
+        contingencyReserve,
+      });
+
+      await tx.infrastructureAssessmentScenario.upsert({
+        where: {
+          populationId_kind: {
+            populationId,
+            kind: scenario.kind,
+          },
+        },
+        update: {
+          annualFailureProbability: scenario.probability,
+          failureRateSource: `${planningEvidence.publisher}: ${planningEvidence.sourceTitle}`,
+          exposureWindowDays,
+          targetServiceLevel,
+          expectedDemand: result.expectedDemand,
+          recommendedSpareCount: result.recommendedSpareCount,
+          repairPipelineReserve: 0,
+          contingencyReserve,
+          totalRecommendedSpareCount:
+            result.totalRecommendedSpareCount,
+          method: "POISSON",
+          confidence: planningEvidence.confidence,
+          assumptions: {
+            sourceEvidenceId: planningEvidence.id,
+            sourceMetricType: planningEvidence.metricType,
+            sourceValue: planningEvidence.value,
+            sourceUnit: planningEvidence.unit,
+            normalization: normalized.transformation,
+            scenarioMultiplier: scenario.multiplier,
+            populationSize: population.assetCount,
+          },
+          limitations:
+            "Poisson scenario assumes independent failure demand during the exposure window. Correlated/common-mode events are not represented by the statistical reserve; contingency reserve is explicit and user-supplied.",
+        },
+        create: {
+          populationId,
+          kind: scenario.kind,
+          annualFailureProbability: scenario.probability,
+          failureRateSource: `${planningEvidence.publisher}: ${planningEvidence.sourceTitle}`,
+          exposureWindowDays,
+          targetServiceLevel,
+          expectedDemand: result.expectedDemand,
+          recommendedSpareCount: result.recommendedSpareCount,
+          repairPipelineReserve: 0,
+          contingencyReserve,
+          totalRecommendedSpareCount:
+            result.totalRecommendedSpareCount,
+          method: "POISSON",
+          confidence: planningEvidence.confidence,
+          assumptions: {
+            sourceEvidenceId: planningEvidence.id,
+            sourceMetricType: planningEvidence.metricType,
+            sourceValue: planningEvidence.value,
+            sourceUnit: planningEvidence.unit,
+            normalization: normalized.transformation,
+            scenarioMultiplier: scenario.multiplier,
+            populationSize: population.assetCount,
+          },
+          limitations:
+            "Poisson scenario assumes independent failure demand during the exposure window. Correlated/common-mode events are not represented by the statistical reserve; contingency reserve is explicit and user-supplied.",
+        },
+      });
+    }
+
+    await tx.infrastructureAssessment.update({
+      where: { id: population.assessmentId },
+      data: { status: "IN_REVIEW" },
+    });
+
+    await tx.infrastructureAssessmentEvidence.updateMany({
+      where: {
+        populationId,
+        selectedForPlanning: true,
+      },
+      data: {
+        transformation: normalized.transformation,
+        derivedMetricValue: normalized.probability,
+        derivedMetricUnit: "annual unit probability",
+      },
+    });
   });
 
   revalidatePath(
