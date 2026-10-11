@@ -8,6 +8,7 @@ import {
   normalizeAnnualFailureProbability,
 } from "@/lib/reliability-planning";
 import { rankReliabilityEvidenceForPopulation } from "@/lib/reliability-evidence-matching";
+import { discoverReliabilityEvidenceForPopulation } from "@/lib/reliability-source-adapters";
 
 function optionalNumber(value: FormDataEntryValue | null) {
   const text = String(value ?? "").trim();
@@ -159,13 +160,76 @@ export async function createInfrastructureAssessment(
     },
   });
 
-  const availableEvidence = await prisma.reliabilityEvidence.findMany();
-
   for (const population of assessment.populations) {
-    const ranked = rankReliabilityEvidenceForPopulation(
+    let availableEvidence = await prisma.reliabilityEvidence.findMany();
+
+    let ranked = rankReliabilityEvidenceForPopulation(
       availableEvidence,
       population
     );
+
+    const hasPlanningCandidate = ranked.some(
+      (candidate) => candidate.canPlanAutomatically
+    );
+
+    if (!hasPlanningCandidate) {
+      const discovered =
+        await discoverReliabilityEvidenceForPopulation(population);
+
+      for (const item of discovered.candidates) {
+        const existing = await prisma.reliabilityEvidence.findFirst({
+          where: {
+            publisher: item.publisher,
+            sourceIdentifier: item.sourceIdentifier,
+            manufacturer: item.manufacturer,
+            model: item.model,
+            metricType: item.metricType,
+            value: item.value,
+            unit: item.unit,
+          },
+          select: { id: true },
+        });
+
+        if (existing) continue;
+
+        await prisma.reliabilityEvidence.create({
+          data: {
+            createdByUserId: user.id,
+            manufacturer: item.manufacturer,
+            model: item.model,
+            modelFamily: item.modelFamily,
+            assetClass: item.assetClass,
+            metricType: item.metricType,
+            value: item.value,
+            unit: item.unit,
+            evidenceType: item.evidenceType,
+            specificity: item.specificity,
+            confidence: item.confidence,
+            publisher: item.publisher,
+            sourceTitle: item.sourceTitle,
+            sourceUrl: item.sourceUrl,
+            sourceIdentifier: item.sourceIdentifier,
+            methodology: item.methodology,
+            observed: item.observed,
+            operatingEnvironment: item.operatingEnvironment,
+            temperatureC: item.temperatureC,
+            applicabilityNotes: item.applicabilityNotes,
+            limitations: item.limitations,
+            licenseNotes: item.licenseNotes,
+            sourceMetadata: {
+              adapterKey: item.adapterKey,
+              automaticallyDiscovered: true,
+            },
+          },
+        });
+      }
+
+      availableEvidence = await prisma.reliabilityEvidence.findMany();
+      ranked = rankReliabilityEvidenceForPopulation(
+        availableEvidence,
+        population
+      );
+    }
 
     if (ranked.length === 0) continue;
 
