@@ -527,3 +527,41 @@ Every major feature should answer at least one of these better than the customer
 - Who can authorize it?
 - What will it cost?
 - What evidence proves the handoff?
+
+
+## Automated source-enrichment requirement
+
+Reliability research is a platform responsibility, not a customer data-entry task.
+
+The intended customer flow is:
+
+```
+customer imports assets
+-> Depot identifies manufacturer/model/class
+-> Depot queries/matches approved reliability sources
+-> Depot parses native source metrics and conditions
+-> Depot ranks applicable evidence
+-> Depot selects a defensible planning basis when one exists
+-> Depot calculates scenarios
+-> customer reviews the recommendation and only supplies operational facts
+   that Depot cannot infer from public technical data
+```
+
+The customer should not be asked to locate MTBF/AFR values, interpret OEM reliability documents, select a Quanterion record, or manually attach evidence to a model.
+
+The internal reliability registry is an evidence cache / provenance store and an administrative fallback, not the normal workflow.
+
+The source-enrichment engine should support adapters for:
+
+- OEM technical/documentation sources
+- government technical and reliability repositories
+- FCC equipment-authorization enrichment where applicable
+- public empirical fleet datasets
+- licensed Quanterion EPRD/NPRD/FMD/ROADS data when CESCo has rights to automate access
+- other approved published sources
+
+Each adapter should return structured candidate evidence with source provenance, native metric, conditions, specificity, confidence signals, and licensing metadata. The engine then ranks candidates against the client asset population.
+
+When no defensible source is found, Depot should report the evidence gap automatically rather than ask the client to research it.
+
+Manual evidence entry remains available only as an internal research/admin override for unusual sources, corrected metadata, or sources that cannot yet be machine-ingested.
