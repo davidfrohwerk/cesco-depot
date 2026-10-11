@@ -271,3 +271,32 @@ The first software slice should be deliberately narrow:
 10. Preserve the assessment so a later placement module can consume it.
 
 This slice is sufficient to prove that Depot can turn an uploaded infrastructure inventory into explainable decision support without pretending uncertainty does not exist.
+
+
+## Implemented foundation
+
+The first product foundation now includes persistent models and workspaces for:
+
+- curated published reliability evidence
+- organization-scoped infrastructure assessments
+- snapshot equipment populations tied to the source assets
+- customer criticality and recovery inputs
+- links from an assessment population to one or more published evidence records
+- an explicit current planning-basis evidence selection
+- future LOW / PLANNING / STRESS scenario records
+
+Current application routes:
+
+- `/reliability` - CESCo internal reliability evidence registry
+- `/organizations/[id]/resilience` - client-scoped infrastructure resilience assessment workspace
+
+Creating an assessment snapshots the current asset population into groups using manufacturer, model, asset class, and compatibility class, and records the individual source assets in each population. This preserves the analytical basis even if the live inventory later changes.
+
+The current slice intentionally stops before automatically deriving failure probabilities or spare quantities. The next implementation stage should:
+
+1. define approved transformations from native published metrics to planning inputs
+2. calculate a planning failure probability only when the source metric and assumptions support it
+3. implement Poisson service-level reserve calculations
+4. create LOW / PLANNING / STRESS scenarios
+5. keep contingency reserve separate from independent-failure demand
+6. display the full source -> transformation -> model-input -> output chain
