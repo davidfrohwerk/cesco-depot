@@ -39,6 +39,13 @@ export type Endpoint = Base & {
 };
 export type Equipment = Base & {
     externalId: string;
+    customerAssetTag?: string;
+    deviceType?: string;
+    description?: string;
+    declaredStatus?: string;
+    declaredVerifiedAt?: string;
+    declaredNextVerificationAt?: string;
+    declaredVerificationNotes?: string;
     manufacturer: string;
     model: string;
     serial: string;
