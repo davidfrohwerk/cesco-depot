@@ -449,6 +449,8 @@ model Organization {
   importProfiles      ImportProfile[]
   evidence           Evidence[]
   infrastructureAssessments InfrastructureAssessment[]
+  serviceAgreements ServiceAgreement[]
+  commercialCharges CommercialCharge[]
 }
 
 model Membership {
@@ -1504,4 +1506,104 @@ model InfrastructureAssessmentScenario {
   @@unique([populationId, kind])
   @@index([populationId])
   @@index([kind])
+}
+
+
+// Commercial foundation: proposed contracts, billable rates, and reviewable charge events.
+// These tables are additive; no existing asset or work-order data is rewritten.
+enum ServiceAgreementStatus {
+  DRAFT
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  TERMINATED
+}
+
+enum CommercialRateUnit {
+  EACH
+  PER_ASSET_DAY
+  PER_ASSET_MONTH
+  PER_HOUR
+  FLAT
+}
+
+enum CommercialChargeStatus {
+  DRAFT
+  APPROVED
+  EXPORTED
+  VOIDED
+}
+
+model ServiceAgreement {
+  id             String                 @id @default(cuid())
+  organizationId String
+  agreementCode  String
+  name           String
+  status         ServiceAgreementStatus @default(DRAFT)
+  currency       String                 @default("USD")
+  effectiveFrom  DateTime?
+  effectiveTo    DateTime?
+  notes          String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  organization   Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  rates          CommercialRate[]
+  charges        CommercialCharge[]
+
+  @@unique([organizationId, agreementCode])
+  @@index([organizationId, status])
+}
+
+model CommercialRate {
+  id             String             @id @default(cuid())
+  agreementId    String
+  serviceCode    String
+  description    String
+  unit           CommercialRateUnit
+  unitPriceCents Int
+  currency       String             @default("USD")
+  effectiveFrom  DateTime
+  effectiveTo    DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  agreement      ServiceAgreement   @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  charges        CommercialCharge[]
+
+  @@index([agreementId, serviceCode, effectiveFrom])
+}
+
+model CommercialCharge {
+  id               String                 @id @default(cuid())
+  organizationId   String
+  agreementId      String
+  rateId           String
+  sourceType       String
+  sourceId         String
+  idempotencyKey   String
+  serviceCode      String
+  description      String
+  quantity         Decimal                @db.Decimal(18, 6)
+  unitPriceCents   Int
+  amountCents      Int
+  currency         String                 @default("USD")
+  serviceFrom      DateTime
+  serviceTo        DateTime?
+  status           CommercialChargeStatus @default(DRAFT)
+  approvedAt       DateTime?
+  approvedByUserId String?
+  exportedAt       DateTime?
+  invoiceReference String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  agreement        ServiceAgreement       @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+  rate             CommercialRate         @relation(fields: [rateId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, status, serviceFrom])
+  @@index([agreementId, serviceFrom])
+  @@index([sourceType, sourceId])
 }
