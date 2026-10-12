@@ -162,6 +162,15 @@ export default async function OperationsPage() {
         <p className="text-sm opacity-60">CESCo internal operations</p>
         <h1 className="text-3xl font-bold">Operations queue</h1>
         <Link href="/operations/receiving" className="mt-3 inline-block text-sm underline">Receiving verification queue →</Link>
+        <section className="mt-6 rounded border p-5">
+          <h2 className="text-xl font-semibold">Start operational work</h2>
+          <p className="mt-2 text-sm opacity-70">The queue is empty until a client, asset, and service request exist. Start with customer setup, then prepare an inbound service request.</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link href="/organizations" className="rounded border px-4 py-2 text-sm font-medium">Organizations / add client</Link>
+            <Link href="/service-locations" className="rounded border px-4 py-2 text-sm font-medium">Configure service locations</Link>
+            <Link href="/operations/receiving" className="rounded border px-4 py-2 text-sm font-medium">Verify received packages</Link>
+          </div>
+        </section>
         <p className="mt-3 max-w-4xl leading-7 opacity-70">
           Client activity lands here as work to be routed, received, executed,
           tracked, or resolved. This is the internal counterpart to the client
