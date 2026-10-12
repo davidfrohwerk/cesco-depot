@@ -126,7 +126,7 @@ export default async function OrganizationOnboardingPage({
         </h1>
         <p className="mt-3 max-w-3xl leading-7 opacity-70">
           CESCo Depot can start with the data and people you already have.
-          Complete the core steps below, then add operational capabilities as
+          Add customer locations and assets when you have them; you can register assets without an endpoint. Then add operational capabilities as
           they become useful. You do not need to understand the underlying
           data model to get started.
         </p>
@@ -139,7 +139,7 @@ export default async function OrganizationOnboardingPage({
             <p className="mt-1 text-sm opacity-70">
               {coreComplete
                 ? "Your organization has locations and assets in CESCo Depot."
-                : "Start with locations, then bring in the assets assigned to them."}
+                : "Add assets and customer locations in whichever order suits your records. Neither requires the other."}
             </p>
           </div>
           <span className="rounded border px-3 py-1 text-sm">
