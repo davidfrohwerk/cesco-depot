@@ -231,7 +231,7 @@ export function ready(a: Equipment) { return a.status === 'READY' && a.condition
 export function candidates(s: State, asset: Equipment) { return s.equipment.filter(x => compatible(asset, x) && ready(x)); }
 export const fields = {
     endpoints: ['externalId', 'name', 'siteType', 'addressLine1', 'addressLine2', 'city', 'state', 'postalCode', 'country', 'market', 'contactName', 'contactEmail', 'contactPhone', 'accessNotes', 'active'],
-    equipment: ['externalId', 'manufacturer', 'model', 'serial', 'configuration', 'pool', 'purpose', 'endpointId', 'volume', 'recoveryTargetHours']
+    equipment: ['externalId', 'manufacturer', 'model', 'serial', 'configuration', 'pool', 'purpose', 'endpointId', 'customerAssetTag', 'deviceType', 'description', 'declaredStatus', 'declaredVerifiedAt', 'declaredNextVerificationAt', 'declaredVerificationNotes', 'volume', 'recoveryTargetHours']
 };
 export function previewImport(s: State, orgId: string, kind: string, csv: string, mapping: Record<string, string> = {}) {
     assert(kind === 'endpoints' || kind === 'equipment', 'Choose endpoints or equipment.');
@@ -264,6 +264,10 @@ export function previewImport(s: State, orgId: string, kind: string, csv: string
                 str(r.serial, 'Serial', 200);
                 str(r.configuration, 'Configuration', 200);
                 str(r.pool, 'Compatibility pool', 200);
+                for (const key of ['customerAssetTag', 'deviceType', 'description', 'declaredStatus', 'declaredVerificationNotes'])
+                    assert(r[key].length <= 2000, `Customer field ${key} exceeds 2000 characters.`);
+                for (const key of ['declaredVerifiedAt', 'declaredNextVerificationAt'])
+                    if (r[key]) assert(r[key].length <= 40 && !Number.isNaN(Date.parse(r[key])), `Invalid customer verification date: ${key}.`);
                 if (r.purpose) assert(['SUPPORTED', 'SPARE'].includes(r.purpose), 'Purpose must be SUPPORTED or SPARE when supplied.');
                 if (r.volume)
                     num(r.volume, 'Volume', 0, 1e6);
