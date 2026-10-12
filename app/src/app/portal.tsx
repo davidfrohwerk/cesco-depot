@@ -58,7 +58,7 @@ const importFieldLabels: Record<string, string> = {
 };
 
 const importAliases: Record<string, string[]> = {
-    externalId: ['endpoint id', 'site id', 'location id', 'store number', 'store id', 'code', 'external id', 'external asset id', 'asset id', 'asset tag', 'equipment id'],
+    externalId: ['endpoint id', 'site id', 'location id', 'store number', 'store id', 'code', 'external id', 'external asset id', 'asset id', 'asset tag', 'equipment id', 'device id'],
     name: ['endpoint name', 'site name', 'location name', 'store name', 'name'],
     siteType: ['site type', 'location type', 'type'],
     addressLine1: ['address line 1', 'street', 'street address', 'address'],
@@ -73,11 +73,11 @@ const importAliases: Record<string, string[]> = {
     contactPhone: ['phone', 'telephone', 'contact phone'],
     accessNotes: ['notes', 'access notes', 'delivery notes', 'service notes'],
     active: ['enabled', 'active'],
-    manufacturer: ['manufacturer', 'make', 'vendor'],
-    model: ['model'],
+    manufacturer: ['manufacturer', 'make', 'vendor', 'oem', 'mfr'],
+    model: ['model', 'product', 'product model', 'device model'],
     serial: ['serial', 'serial number', 'serial no', 'serial #'],
     configuration: ['configuration', 'configuration version', 'config', 'image', 'image version'],
-    pool: ['compatibility pool', 'pool', 'compatibility class'],
+    pool: ['compatibility pool', 'pool', 'compatibility class', 'compatibility'],
     purpose: ['purpose', 'role'],
     endpointId: ['endpoint id', 'endpoint external id', 'endpoint code', 'site id', 'location id', 'store number', 'store id'],
     volume: ['volume', 'storage volume'],
