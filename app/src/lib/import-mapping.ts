@@ -21,6 +21,13 @@ const importAliases: Record<string, string[]> = {
     pool: ['compatibility pool', 'pool', 'compatibility class', 'compatibility'],
     purpose: ['purpose', 'role'],
     endpointId: ['endpoint id', 'endpoint external id', 'endpoint code', 'site id', 'location id', 'store number', 'store id'],
+    customerAssetTag: ['asset tag', 'customer asset tag', 'client asset tag'],
+    deviceType: ['device type', 'equipment type', 'asset class', 'category'],
+    description: ['asset description', 'description', 'equipment description'],
+    declaredStatus: ['status', 'asset status', 'equipment status'],
+    declaredVerifiedAt: ['last verified', 'last readiness verified'],
+    declaredNextVerificationAt: ['next verification', 'next readiness due'],
+    declaredVerificationNotes: ['verification notes', 'readiness notes', 'test notes'],
     volume: ['volume', 'storage volume'],
     recoveryTargetHours: ['recovery target', 'recovery target hours', 'rto', 'rto hours'],
 };
@@ -28,7 +35,7 @@ const importAliases: Record<string, string[]> = {
 export function inferMapping(kind: string, headers: string[]) {
     const fields = kind === 'endpoints'
         ? ['externalId', 'name', 'siteType', 'addressLine1', 'addressLine2', 'city', 'state', 'postalCode', 'country', 'market', 'contactName', 'contactEmail', 'contactPhone', 'accessNotes', 'active']
-        : ['externalId', 'manufacturer', 'model', 'serial', 'configuration', 'pool', 'purpose', 'endpointId', 'volume', 'recoveryTargetHours'];
+        : ['externalId', 'manufacturer', 'model', 'serial', 'configuration', 'pool', 'purpose', 'endpointId', 'customerAssetTag', 'deviceType', 'description', 'declaredStatus', 'declaredVerifiedAt', 'declaredNextVerificationAt', 'declaredVerificationNotes', 'volume', 'recoveryTargetHours'];
     const canonical = (value: string) => value.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/[^a-z0-9# ]+/g, ' ').replace(/\s+/g, ' ').trim();
     const normalized = new Map(headers.map(h => [canonical(h), h]));
     const mapping: Record<string, string> = {};
