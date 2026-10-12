@@ -426,6 +426,34 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             entityId = job.id;
             break;
         }
+        case 'enrichmentPreview': {
+            requireCap(u, orgId, 'onboard');
+            const source = get(s.imports, p.id, orgId);
+            const review = previewEnrichment(s, orgId, source);
+            assert(review.updates.length || review.errors.length, 'No missing customer metadata found to enrich.');
+            const job: ImportJob = { id: id(), orgId, kind: 'enrichment', csv: source.csv, mapping: { ...source.mapping, __sourceImportId: source.id }, status: 'PREVIEW', count: review.count, errors: review.errors, createdAt: now(), actor: u.email };
+            s.imports.push(job);
+            entityId = job.id;
+            break;
+        }
+        case 'enrichmentCommit': {
+            requireCap(u, orgId, 'onboard');
+            const job = get(s.imports, p.id, orgId);
+            assert(job.kind === 'enrichment' && job.status === 'PREVIEW', 'Choose a pending enrichment review.');
+            const source = get(s.imports, job.mapping.__sourceImportId, orgId);
+            const review = previewEnrichment(s, orgId, source);
+            assert(!review.errors.length, review.errors.slice(0, 5).join(' '));
+            assert(review.updates.length, 'No eligible fields remain to enrich.');
+            for (const row of review.updates) {
+                const a = get(s.equipment, row.id, orgId);
+                Object.assign(a, row.changes);
+                log(s, u, orgId, 'CUSTOMER_METADATA_ENRICHED', a.id, `Source import ${source.id}; fields: ${Object.keys(row.changes).join(', ')}`);
+            }
+            job.status = 'COMMITTED';
+            job.errors = [];
+            entityId = job.id;
+            break;
+        }
         case 'classifyEquipment': {
             requireCap(u, orgId, 'onboard');
             const a = get(s.equipment, p.id, orgId);
