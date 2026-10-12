@@ -71,3 +71,45 @@ test('recovery target belongs to supported equipment, not endpoint', () => {
     assert.equal(f.s.equipment[0].recoveryTargetHours, 4);
     assert.equal('recoveryTargetHours' in f.s.endpoints[0], false);
 });
+
+
+test('legacy asset exports map snake_case headers and preserve ambiguity', () => {
+    const f = fixture();
+    const endpointCsv = 'STORE NUMBER,STORE NAME,STREET\nSTORE-101,ACME Store 101,123 Main St';
+    const endpointMapping = { externalId: 'STORE NUMBER', name: 'STORE NAME', addressLine1: 'STREET' };
+    const ej = mutate(f.s, f.client, 'acme', 'importPreview', { kind: 'endpoints', csv: endpointCsv, mapping: endpointMapping });
+    mutate(f.s, f.client, 'acme', 'importCommit', { id: ej });
+
+    const csv = 'external_asset_id,asset_tag,endpoint_external_id,manufacturer,model,serial_number,asset_class,compatibility_class,configuration_version,status\nDEV-0001,POS-001,STORE-101,Dell,OptiPlex 7090,SN-001,Desktop PC,ACME-DESKTOP-STD,ACME-W11-2026,READY';
+    const mapping = {
+        externalId: 'external_asset_id',
+        endpointId: 'endpoint_external_id',
+        manufacturer: 'manufacturer',
+        model: 'model',
+        serial: 'serial_number',
+        pool: 'compatibility_class',
+        configuration: 'configuration_version'
+    };
+    const preview = previewImport(f.s, 'acme', 'equipment', csv, mapping);
+    assert.deepEqual(preview.errors, []);
+    const id = mutate(f.s, f.client, 'acme', 'importPreview', { kind: 'equipment', csv, mapping });
+    mutate(f.s, f.client, 'acme', 'importCommit', { id });
+    assert.equal(f.s.equipment[0].externalId, 'DEV-0001');
+    assert.equal(f.s.equipment[0].purpose, 'UNCLASSIFIED');
+    assert.equal(f.s.equipment[0].status, 'REGISTERED');
+    assert.equal(f.s.equipment[0].endpointId, f.s.endpoints[0].id);
+});
+
+test('unclassified equipment must be explicitly classified before recovery use', () => {
+    const f = fixture();
+    importCsv(f.s, f.client, 'endpoints', 'externalId,name,addressLine1\nIND,Indy,Indianapolis IN');
+    const csv = 'externalId,manufacturer,model,serial,configuration,pool,endpointId\nR1,OEM,X,001,v1,routers,IND';
+    const j = mutate(f.s, f.client, 'acme', 'importPreview', { kind: 'equipment', csv });
+    mutate(f.s, f.client, 'acme', 'importCommit', { id: j });
+    const a = f.s.equipment[0];
+    assert.equal(a.purpose, 'UNCLASSIFIED');
+    mutate(f.s, f.client, 'acme', 'classifyEquipment', { id: a.id, purpose: 'SUPPORTED', recoveryTargetHours: 4 });
+    assert.equal(a.purpose, 'SUPPORTED');
+    assert.equal(a.status, 'INSTALLED');
+    assert.equal(a.recoveryTargetHours, 4);
+});
