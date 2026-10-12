@@ -388,6 +388,7 @@ model User {
   importProfiles         ImportProfile[]      @relation("ImportProfileCreator")
   uploadedEvidence     Evidence[]         @relation("EvidenceUploader")
   evidenceAccessEvents EvidenceAccessEvent[] @relation("EvidenceAccessActor")
+  verifiedReceiptReconciliations ReceiptReconciliation[] @relation("ReceiptReconciliationVerifier")
   reliabilityEvidenceCreated ReliabilityEvidence[] @relation("ReliabilityEvidenceCreator")
   infrastructureAssessmentsCreated InfrastructureAssessment[] @relation("InfrastructureAssessmentCreator")
 }
@@ -451,6 +452,7 @@ model Organization {
   infrastructureAssessments InfrastructureAssessment[]
   serviceAgreements ServiceAgreement[]
   commercialCharges CommercialCharge[]
+  receiptReconciliations ReceiptReconciliation[]
 }
 
 model Membership {
@@ -1139,6 +1141,7 @@ model Receipt {
   storageLocation StorageLocation? @relation(fields: [storageLocationId], references: [id])
   storagePosition StoragePosition? @relation(fields: [storagePositionId], references: [id])
   evidence        Evidence[]
+  reconciliation ReceiptReconciliation?
 
   @@index([receivedByUserId])
   @@index([storageLocationId])
@@ -1606,4 +1609,24 @@ model CommercialCharge {
   @@index([organizationId, status, serviceFrom])
   @@index([agreementId, serviceFrom])
   @@index([sourceType, sourceId])
+}
+
+
+// One accepted reconciliation per physical receipt. Amendments must use a new
+// explicit operational workflow, not modify billed quantities in place.
+model ReceiptReconciliation {
+  id               String   @id @default(cuid())
+  receiptId        String   @unique
+  organizationId   String
+  verifiedUnitCount Int
+  verifiedByUserId String
+  verifiedAt       DateTime
+  evidenceNotes    String?
+  createdAt        DateTime @default(now())
+
+  receipt          Receipt  @relation(fields: [receiptId], references: [id], onDelete: Restrict)
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  verifiedBy       User     @relation("ReceiptReconciliationVerifier", fields: [verifiedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, verifiedAt])
 }
