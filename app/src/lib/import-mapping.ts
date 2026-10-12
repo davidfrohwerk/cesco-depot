@@ -33,7 +33,10 @@ export function inferMapping(kind: string, headers: string[]) {
     const normalized = new Map(headers.map(h => [canonical(h), h]));
     const mapping: Record<string, string> = {};
     for (const field of fields) {
-        const match = (importAliases[field] || [field]).map(x => normalized.get(canonical(x))).find(Boolean);
+        const aliases = field === 'externalId' && kind === 'equipment'
+            ? ['device id', 'external asset id', 'asset id', 'equipment id', 'asset tag', 'external id']
+            : (importAliases[field] || [field]);
+        const match = aliases.map(x => normalized.get(canonical(x))).find(Boolean);
         if (match) mapping[field] = match;
     }
     return mapping;
