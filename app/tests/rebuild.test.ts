@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { inferMapping } from '../src/lib/import-mapping.ts';
 import assert from 'node:assert/strict';
 import { emptyState, id, mutate, previewImport, balance, creditBalance, scoped, type State, type User } from '../src/lib/domain.ts';
 function fixture() { const s = emptyState(); s.organizations.push({ id: 'acme', name: 'Acme', termsDays: 30, currency: 'USD' }, { id: 'other', name: 'Other', termsDays: 0, currency: 'USD' }); const admin: User = { id: 'ops', orgId: 'internal', name: 'Ops', email: 'ops@example.com', password: '', role: 'SYSTEM_ADMIN' }; const client: User = { id: 'client', orgId: 'acme', name: 'Client', email: 'client@example.com', password: '', role: 'CLIENT_ADMIN' }; s.users.push(admin, client); return { s, admin, client }; }
@@ -112,4 +113,32 @@ test('unclassified equipment must be explicitly classified before recovery use',
     assert.equal(a.purpose, 'SUPPORTED');
     assert.equal(a.status, 'INSTALLED');
     assert.equal(a.recoveryTargetHours, 4);
+});
+
+
+test('legacy five-row equipment CSV maps OEM/Product/Device ID without inventing custody or readiness', () => {
+    const { s, client } = fixture();
+    importCsv(s, client, 'endpoints', 'externalId,name,addressLine1\n' +
+        Array.from({ length: 5 }, (_, i) => `STORE-10${i + 1},Site ${i + 1},Indianapolis`).join('\n'));
+    const csv = [
+        'Device ID,Asset Tag,Store Number,OEM,Product,Serial,Device Type,Compatibility,Image Version,Status,Asset Description,Last Verified,Next Verification,Verification Notes',
+        'DEV-0001,POS-001,STORE-101,Dell,OptiPlex 7090,SN-D7090-001,Desktop PC,ACME-DESKTOP-STD,ACME-W11-2026,READY,Front counter workstation,2026-10-08,2027-01-08,Passed boot network and peripheral checks',
+        'DEV-0002,POS-002,STORE-102,Dell,OptiPlex 7090,SN-D7090-002,Desktop PC,ACME-DESKTOP-STD,ACME-W11-2026,REGISTERED,Back office workstation,,,Imported from client inventory',
+        'DEV-0003,PRN-001,STORE-103,Lexmark,MS521dn,SN-LMS521-001,Printer,ACME-PRINT-LASER,PRINT-FW-2026.09,READY,Primary receipt printer,2026-10-07,2027-01-07,Known good test page passed',
+        'DEV-0004,SW-001,STORE-104,Cisco,CBS350-24T-4G,SN-CBS350-001,Network Switch,ACME-SWITCH-24P,CFG-2026.10,REGISTERED,Clinic access switch,,,Imported existing deployed asset',
+        'DEV-0005,SPARE-001,STORE-105,Dell,OptiPlex 7090,SN-D7090-SP01,Desktop PC,ACME-DESKTOP-STD,ACME-W11-2026,READY,Strategic spare candidate,2026-10-09,2027-01-09,Known good spare ready for dispatch'
+    ].join('\n');
+    const mapping = inferMapping('equipment', csv.split('\n')[0].split(','));
+    assert.equal(mapping.externalId, 'Device ID');
+    assert.equal(mapping.manufacturer, 'OEM');
+    assert.equal(mapping.model, 'Product');
+    assert.equal(mapping.pool, 'Compatibility');
+    assert.equal(mapping.endpointId, 'Store Number');
+    assert.equal(previewImport(s, 'acme', 'equipment', csv, mapping).errors.length, 0);
+    const job = mutate(s, client, 'acme', 'importPreview', { kind: 'equipment', csv, mapping });
+    mutate(s, client, 'acme', 'importCommit', { id: job });
+    assert.equal(s.equipment.length, 5);
+    assert.deepEqual(s.equipment.map(x => x.externalId), ['DEV-0001','DEV-0002','DEV-0003','DEV-0004','DEV-0005']);
+    assert.ok(s.equipment.every(x => x.purpose === 'UNCLASSIFIED' && x.status === 'REGISTERED' && x.custodian === 'Client' && x.testedAt === null));
+    assert.ok(s.imports.find(x => x.id === job)?.csv.includes('Last Verified'));
 });
