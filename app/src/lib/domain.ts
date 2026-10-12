@@ -341,6 +341,29 @@ export function previewEnrichment(s: State, orgId: string, source: ImportJob) {
     }
     return { count: rows.length, updates, errors };
 }
+export function reviewBulkClassification(s: State, orgId: string, equipmentIds: unknown, purpose: unknown, recoveryTargetHours: unknown) {
+    assert(Array.isArray(equipmentIds) && equipmentIds.length > 0 && equipmentIds.length <= 10000, 'Select 1–10,000 equipment records.');
+    assert(equipmentIds.every(x => typeof x === 'string') && new Set(equipmentIds).size === equipmentIds.length, 'Equipment selections must be unique.');
+    assert(purpose === 'SUPPORTED' || purpose === 'SPARE', 'Choose supported equipment or client-owned spare.');
+    const target = purpose as 'SUPPORTED' | 'SPARE';
+    const hours = recoveryTargetHours === '' || recoveryTargetHours === null || recoveryTargetHours === undefined ? null : num(recoveryTargetHours, 'Recovery target', .1, 8760);
+    assert(target === 'SUPPORTED' || hours === null, 'Recovery targets apply only to supported equipment.');
+    const rows = equipmentIds.map(x => get(s.equipment, x, orgId));
+    for (const a of rows) {
+        assert(a.purpose === 'UNCLASSIFIED' && a.status === 'REGISTERED' && a.custodian === 'Client' && !a.intakeId && !a.requestId,
+            `Equipment ${a.externalId} is not eligible for initial classification.`);
+        assert(a.manufacturer && a.model && a.serial && a.pool && a.configuration, `Equipment ${a.externalId} lacks required identification or compatibility details.`);
+        if (target === 'SUPPORTED') {
+            assert(a.endpointId && s.endpoints.some(e => e.orgId === orgId && e.id === a.endpointId && e.active),
+                `Equipment ${a.externalId} needs an active onboarded endpoint.`);
+        } else {
+            assert(s.equipment.some(x => x.orgId === orgId && x.purpose === 'SUPPORTED' && x.pool === a.pool && x.configuration === a.configuration),
+                `Spare ${a.externalId} has no confirmed supported equipment with the same pool and configuration.`);
+        }
+    }
+    return { rows: rows.map(a => ({ id: a.id, externalId: a.externalId, model: a.model, pool: a.pool, configuration: a.configuration, endpointId: a.endpointId })),
+        purpose: target, recoveryTargetHours: hours };
+}
 export function mutate(s: State, u: User, orgId: string, action: string, p: Record<string, unknown>) {
     const org = s.organizations.find(x => x.id === orgId);
     assert(org, 'Account not found.');
@@ -451,6 +474,34 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             }
             job.status = 'COMMITTED';
             job.errors = [];
+            entityId = job.id;
+            break;
+        }
+        case 'bulkClassifyPreview': {
+            requireCap(u, orgId, 'onboard');
+            const result = reviewBulkClassification(s, orgId, p.equipmentIds, p.purpose, p.recoveryTargetHours);
+            const job: ImportJob = { id: id(), orgId, kind: 'classification', csv: '', mapping: {
+                equipmentIds: JSON.stringify(result.rows.map(x => x.id)),
+                purpose: result.purpose,
+                recoveryTargetHours: result.recoveryTargetHours === null ? '' : String(result.recoveryTargetHours)
+            }, status: 'PREVIEW', count: result.rows.length, errors: [], createdAt: now(), actor: u.email };
+            s.imports.push(job);
+            entityId = job.id;
+            break;
+        }
+        case 'bulkClassifyCommit': {
+            requireCap(u, orgId, 'onboard');
+            const job = get(s.imports, p.id, orgId);
+            assert(job.kind === 'classification' && job.status === 'PREVIEW', 'Choose a pending classification review.');
+            const result = reviewBulkClassification(s, orgId, JSON.parse(job.mapping.equipmentIds), job.mapping.purpose, job.mapping.recoveryTargetHours);
+            for (const row of result.rows) {
+                const a = get(s.equipment, row.id, orgId);
+                a.purpose = result.purpose;
+                a.status = result.purpose === 'SUPPORTED' ? 'INSTALLED' : 'CLIENT_HELD';
+                if (result.recoveryTargetHours !== null) a.recoveryTargetHours = result.recoveryTargetHours;
+                log(s, u, orgId, 'EQUIPMENT_CLASSIFIED', a.id, `Batch ${job.id}; role ${result.purpose}; recovery target ${result.recoveryTargetHours ?? 'unchanged'}`);
+            }
+            job.status = 'COMMITTED';
             entityId = job.id;
             break;
         }
