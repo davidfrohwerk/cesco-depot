@@ -161,6 +161,7 @@ export default async function OperationsPage() {
       <div>
         <p className="text-sm opacity-60">CESCo internal operations</p>
         <h1 className="text-3xl font-bold">Operations queue</h1>
+        <Link href="/operations/receiving" className="mt-3 inline-block text-sm underline">Receiving verification queue →</Link>
         <p className="mt-3 max-w-4xl leading-7 opacity-70">
           Client activity lands here as work to be routed, received, executed,
           tracked, or resolved. This is the internal counterpart to the client
