@@ -30,9 +30,41 @@ export async function GET(req: NextRequest, { params }: {
             const entity = path[1];
             let rows: Record<string, unknown>[] = [];
             if (entity === 'endpoints')
-                rows = s.endpoints.filter(x => x.orgId === orgId).map(x => ({ code: x.code, name: x.name, address: x.address, rtoHours: x.rtoHours }));
+                rows = s.endpoints.filter(x => x.orgId === orgId).map(x => ({
+                    externalId: x.externalId,
+                    name: x.name,
+                    siteType: x.siteType,
+                    addressLine1: x.addressLine1,
+                    addressLine2: x.addressLine2,
+                    city: x.city,
+                    state: x.state,
+                    postalCode: x.postalCode,
+                    country: x.country,
+                    market: x.market,
+                    contactName: x.contactName,
+                    contactEmail: x.contactEmail,
+                    contactPhone: x.contactPhone,
+                    accessNotes: x.accessNotes,
+                    active: x.active
+                }));
             else if (entity === 'equipment')
-                rows = s.equipment.filter(x => x.orgId === orgId).map(x => ({ externalId: x.externalId, manufacturer: x.manufacturer, model: x.model, serial: x.serial, configuration: x.configuration, pool: x.pool, purpose: x.purpose, endpointCode: s.endpoints.find(e => e.id === x.endpointId)?.code || '', volume: x.volume, status: x.status, condition: x.condition, location: x.location, custodian: x.custodian, testedAt: x.testedAt }));
+                rows = s.equipment.filter(x => x.orgId === orgId).map(x => ({
+                    externalId: x.externalId,
+                    manufacturer: x.manufacturer,
+                    model: x.model,
+                    serial: x.serial,
+                    configuration: x.configuration,
+                    pool: x.pool,
+                    purpose: x.purpose,
+                    endpointId: s.endpoints.find(e => e.id === x.endpointId)?.externalId || '',
+                    recoveryTargetHours: x.recoveryTargetHours ?? '',
+                    volume: x.volume,
+                    status: x.status,
+                    condition: x.condition,
+                    location: x.location,
+                    custodian: x.custodian,
+                    testedAt: x.testedAt
+                }));
             else if (entity === 'billing') {
                 requireCap(u, orgId, 'billing');
                 rows = s.activities.filter(x => x.orgId === orgId).map(x => ({ invoice: s.invoices.find(v => v.id === x.invoiceId)?.number || '', service: x.description, quantity: x.quantity, unit: x.unit, unitCents: x.unitCents, amountCents: x.amount, agreement: x.rateVersion, status: x.status, workOrder: s.intakes.find(v => v.id === x.intakeId)?.workOrder || s.requests.find(v => v.id === x.requestId)?.number || '', periodStart: x.periodStart, periodEnd: x.periodEnd, performedAt: x.performedAt }));
