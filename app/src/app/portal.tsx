@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState, type FormEvent } from 'react';
 import { parseCsv } from '@/lib/csv';
+import { inferMapping } from '@/lib/import-mapping';
 import type { scoped } from '@/lib/domain';
 type Data = ReturnType<typeof scoped>;
 type Field = {
@@ -56,47 +57,6 @@ const importFieldLabels: Record<string, string> = {
     volume: 'Storage volume',
     recoveryTargetHours: 'Recovery target (hours)',
 };
-
-const importAliases: Record<string, string[]> = {
-    externalId: ['endpoint id', 'site id', 'location id', 'store number', 'store id', 'code', 'external id', 'external asset id', 'asset id', 'asset tag', 'equipment id', 'device id'],
-    name: ['endpoint name', 'site name', 'location name', 'store name', 'name'],
-    siteType: ['site type', 'location type', 'type'],
-    addressLine1: ['address line 1', 'street', 'street address', 'address'],
-    addressLine2: ['address line 2', 'suite', 'unit'],
-    city: ['city'],
-    state: ['state', 'province'],
-    postalCode: ['zip', 'zip code', 'postal code'],
-    country: ['country'],
-    market: ['market', 'region'],
-    contactName: ['contact', 'contact name', 'site contact'],
-    contactEmail: ['email', 'contact email'],
-    contactPhone: ['phone', 'telephone', 'contact phone'],
-    accessNotes: ['notes', 'access notes', 'delivery notes', 'service notes'],
-    active: ['enabled', 'active'],
-    manufacturer: ['manufacturer', 'make', 'vendor', 'oem', 'mfr'],
-    model: ['model', 'product', 'product model', 'device model'],
-    serial: ['serial', 'serial number', 'serial no', 'serial #'],
-    configuration: ['configuration', 'configuration version', 'config', 'image', 'image version'],
-    pool: ['compatibility pool', 'pool', 'compatibility class', 'compatibility'],
-    purpose: ['purpose', 'role'],
-    endpointId: ['endpoint id', 'endpoint external id', 'endpoint code', 'site id', 'location id', 'store number', 'store id'],
-    volume: ['volume', 'storage volume'],
-    recoveryTargetHours: ['recovery target', 'recovery target hours', 'rto', 'rto hours'],
-};
-
-function inferMapping(kind: string, headers: string[]) {
-    const fields = kind === 'endpoints'
-        ? ['externalId', 'name', 'siteType', 'addressLine1', 'addressLine2', 'city', 'state', 'postalCode', 'country', 'market', 'contactName', 'contactEmail', 'contactPhone', 'accessNotes', 'active']
-        : ['externalId', 'manufacturer', 'model', 'serial', 'configuration', 'pool', 'purpose', 'endpointId', 'volume', 'recoveryTargetHours'];
-    const canonical = (value: string) => value.trim().toLowerCase().replace(/[_-]+/g, ' ').replace(/[^a-z0-9# ]+/g, ' ').replace(/\s+/g, ' ').trim();
-    const normalized = new Map(headers.map(h => [canonical(h), h]));
-    const mapping: Record<string, string> = {};
-    for (const field of fields) {
-        const match = (importAliases[field] || [field]).map(x => normalized.get(canonical(x))).find(Boolean);
-        if (match) mapping[field] = match;
-    }
-    return mapping;
-}
 
 function endpointAddress(e: { addressLine1: string; addressLine2: string; city: string; state: string; postalCode: string; country: string; }) {
     return [e.addressLine1, e.addressLine2, [e.city, e.state, e.postalCode].filter(Boolean).join(' '), e.country]
