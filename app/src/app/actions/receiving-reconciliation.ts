@@ -57,7 +57,7 @@ export async function verifyReceivedPackage(formData: FormData) {
     if (!Number.isSafeInteger(expectedCount) || expectedCount !== verifiedUnitCount) {
       throw new Error("Quantity discrepancy requires exception handling.");
     }
-    const created = await tx.receiptReconciliation.create({
+    await tx.receiptReconciliation.create({
       data: {
         receiptId,
         organizationId: pkg.shipment.serviceRequest.organizationId,
@@ -67,9 +67,8 @@ export async function verifyReceivedPackage(formData: FormData) {
         evidenceNotes
       }
     });
-    return { id: created.id, requestId: pkg.shipment.serviceRequestId };
+    return { requestId: pkg.shipment.serviceRequestId };
   });
   revalidatePath("/operations/receiving");
   revalidatePath(`/service-requests/${result.requestId}`);
-  return result.id;
 }
