@@ -95,7 +95,9 @@ export default function Portal() {
     }
     async function refresh(selected = orgId) { try {
         const result = await api('state' + (selected ? '?orgId=' + encodeURIComponent(selected) : ''));
-        setData(result);
+        if (!result.organization || typeof result.organization !== 'object' || !('id' in result.organization) || typeof result.organization.id !== 'string')
+            throw Error('Depot API returned an invalid organization.');
+        setData(result as Data);
         setOrgId(result.organization.id);
         setError('');
     }
