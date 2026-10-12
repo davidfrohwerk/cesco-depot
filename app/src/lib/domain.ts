@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { sparePlan } from './planning.ts';
 import { parseCsv, rowsToObjects } from './csv.ts';
+import { inferMapping } from './import-mapping.ts';
 export type Role = 'SYSTEM_ADMIN' | 'OPERATIONS' | 'FINANCE' | 'CLIENT_ADMIN' | 'HELPDESK' | 'CLIENT_BILLING' | 'AUDITOR';
 export type User = {
     id: string;
@@ -294,6 +295,51 @@ export function previewImport(s: State, orgId: string, kind: string, csv: string
         }
     }
     return { count: rows.length, records, errors };
+}
+export const customerDeclarationFields = ['customerAssetTag', 'deviceType', 'description', 'declaredStatus', 'declaredVerifiedAt', 'declaredNextVerificationAt', 'declaredVerificationNotes'] as const;
+export type CustomerDeclarationField = typeof customerDeclarationFields[number];
+export function previewEnrichment(s: State, orgId: string, source: ImportJob) {
+    assert(source.orgId === orgId && source.kind === 'equipment' && source.status === 'COMMITTED', 'Choose a committed equipment import from this account.');
+    const rows = rowsToObjects(parseCsv(source.csv.replace(/^\uFEFF/, '')));
+    const errors: string[] = [];
+    const updates: Array<{ id: string; changes: Partial<Pick<Equipment, CustomerDeclarationField>> }> = [];
+    const seen = new Set<string>();
+    const { inferMapping } = requireImportMapping();
+    const detected = inferMapping('equipment', parseCsv(source.csv)[0] || []);
+    const mapping = { ...detected, ...source.mapping };
+    for (const row of rows) {
+        const read = (field: string) => String(row.record[mapping[field] || field] || '').trim();
+        const externalId = read('externalId');
+        const manufacturer = read('manufacturer');
+        const model = read('model');
+        const serial = read('serial');
+        const a = s.equipment.find(x => x.orgId === orgId && x.externalId === externalId);
+        if (!externalId || seen.has(externalId) || !a || !manufacturer || !model || !serial ||
+            a.manufacturer.toLowerCase() !== manufacturer.toLowerCase() ||
+            a.model.toLowerCase() !== model.toLowerCase() ||
+            a.serial.toLowerCase() !== serial.toLowerCase()) {
+            errors.push(`Row ${row.rowNumber}: Missing, repeated, or mismatched equipment identity ${externalId || '(blank)'}.`);
+            continue;
+        }
+        seen.add(externalId);
+        const changes: Partial<Pick<Equipment, CustomerDeclarationField>> = {};
+        for (const field of customerDeclarationFields) {
+            const incoming = read(field);
+            if (!incoming) continue;
+            if (incoming.length > 2000 || (field.includes('At') && (incoming.length > 40 || Number.isNaN(Date.parse(incoming))))) {
+                errors.push(`Row ${row.rowNumber}: Invalid ${field} value.`);
+                continue;
+            }
+            const current = a[field] || '';
+            if (current && current !== incoming) {
+                errors.push(`Row ${row.rowNumber}: ${field} conflicts with existing equipment ${externalId}; existing value will not be overwritten.`);
+                continue;
+            }
+            if (!current) changes[field] = incoming;
+        }
+        if (Object.keys(changes).length) updates.push({ id: a.id, changes });
+    }
+    return { count: rows.length, updates, errors };
 }
 export function mutate(s: State, u: User, orgId: string, action: string, p: Record<string, unknown>) {
     const org = s.organizations.find(x => x.id === orgId);
