@@ -156,6 +156,7 @@ export type ImportJob = Base & {
     errors: string[];
     createdAt: string;
     actor: string;
+    proposedChanges?: Array<{ equipmentId: string; fields: string[] }>;
 };
 export type Evidence = Base & {
     entityId: string;
@@ -431,7 +432,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             const source = get(s.imports, p.id, orgId);
             const review = previewEnrichment(s, orgId, source);
             assert(review.updates.length || review.errors.length, 'No missing customer metadata found to enrich.');
-            const job: ImportJob = { id: id(), orgId, kind: 'enrichment', csv: source.csv, mapping: { ...source.mapping, __sourceImportId: source.id }, status: 'PREVIEW', count: review.count, errors: review.errors, createdAt: now(), actor: u.email };
+            const job: ImportJob = { id: id(), orgId, kind: 'enrichment', csv: source.csv, mapping: { ...source.mapping, __sourceImportId: source.id }, status: 'PREVIEW', count: review.count, errors: review.errors, proposedChanges: review.updates.map(x => ({ equipmentId: x.id, fields: Object.keys(x.changes) })), createdAt: now(), actor: u.email };
             s.imports.push(job);
             entityId = job.id;
             break;
