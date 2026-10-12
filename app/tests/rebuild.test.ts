@@ -210,3 +210,41 @@ test('enrichment rejects changed identities and conflicting declarations without
     assert.throws(() => mutate(f.s, f.client, 'acme', 'enrichmentCommit', { id: review }), /mismatched equipment identity/);
     assert.equal(a.customerAssetTag, '');
 });
+
+test('bulk classification previews supported units, requires confirmation and preserves custody', () => {
+    const f = fixture();
+    importCsv(f.s, f.client, 'endpoints', 'externalId,name,addressLine1\nIND,Indy,Indiana');
+    importCsv(f.s, f.client, 'equipment', 'externalId,manufacturer,model,serial,configuration,pool,endpointId\nDEV-1,Dell,7090,S1,Win11,Desktop,IND\nDEV-2,Dell,7090,S2,Win11,Desktop,IND\nSPARE-1,Dell,7090,S3,Win11,Desktop,');
+    const ids = f.s.equipment.slice(0, 2).map(x => x.id);
+    const preview = mutate(f.s, f.client, 'acme', 'bulkClassifyPreview', { equipmentIds: ids, purpose: 'SUPPORTED', recoveryTargetHours: 4 });
+    assert.ok(f.s.equipment.every(x => x.purpose === 'UNCLASSIFIED'));
+    assert.equal(scoped(f.s, f.client, 'acme').imports.find(x => x.id === preview)?.count, 2);
+    mutate(f.s, f.client, 'acme', 'bulkClassifyCommit', { id: preview });
+    assert.deepEqual(f.s.equipment.slice(0, 2).map(x => x.purpose), ['SUPPORTED','SUPPORTED']);
+    assert.equal(f.s.equipment[0].recoveryTargetHours, 4);
+    assert.equal(f.s.equipment[0].status, 'INSTALLED');
+    assert.equal(f.s.equipment[0].custodian, 'Client');
+    assert.equal(f.s.equipment[0].testedAt, null);
+    assert.equal(f.s.equipment[2].purpose, 'UNCLASSIFIED');
+    const spare = mutate(f.s, f.client, 'acme', 'bulkClassifyPreview', { equipmentIds: [f.s.equipment[2].id], purpose: 'SPARE', recoveryTargetHours: '' });
+    mutate(f.s, f.client, 'acme', 'bulkClassifyCommit', { id: spare });
+    assert.equal(f.s.equipment[2].purpose, 'SPARE');
+    assert.equal(f.s.equipment[2].status, 'CLIENT_HELD');
+    assert.equal(f.s.equipment[2].custodian, 'Client');
+    assert.equal(f.s.equipment[2].testDue, null);
+    assert.equal(f.s.audit.filter(x => x.action === 'EQUIPMENT_CLASSIFIED').length, 3);
+    assert.throws(() => mutate(f.s, f.client, 'acme', 'bulkClassifyCommit', { id: spare }), /pending classification/);
+});
+test('bulk classification rejects missing support, duplicate selection and stale reviews atomically', () => {
+    const f = fixture();
+    importCsv(f.s, f.client, 'endpoints', 'externalId,name,addressLine1\nIND,Indy,Indiana');
+    importCsv(f.s, f.client, 'equipment', 'externalId,manufacturer,model,serial,configuration,pool,endpointId\nDEV-1,Dell,7090,S1,Win11,Desktop,IND\nDEV-2,Dell,7090,S2,Win11,Desktop,IND');
+    const [first, second] = f.s.equipment;
+    assert.throws(() => mutate(f.s, f.client, 'acme', 'bulkClassifyPreview', {equipmentIds: [first.id], purpose: 'SPARE'}), /no confirmed supported equipment/);
+    assert.throws(() => mutate(f.s, f.client, 'acme', 'bulkClassifyPreview', {equipmentIds: [first.id, first.id], purpose: 'SUPPORTED'}), /unique/);
+    const job = mutate(f.s, f.client, 'acme', 'bulkClassifyPreview', { equipmentIds: [first.id, second.id], purpose: 'SUPPORTED' });
+    second.status = 'EXCEPTION';
+    assert.throws(() => mutate(f.s, f.client, 'acme', 'bulkClassifyCommit', {id: job}), /not eligible/);
+    assert.equal(first.purpose, 'UNCLASSIFIED');
+    assert.equal(f.s.imports.find(x => x.id === job)?.status, 'PREVIEW');
+});
