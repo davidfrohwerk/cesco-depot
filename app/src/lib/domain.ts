@@ -305,7 +305,6 @@ export function previewEnrichment(s: State, orgId: string, source: ImportJob) {
     const errors: string[] = [];
     const updates: Array<{ id: string; changes: Partial<Pick<Equipment, CustomerDeclarationField>> }> = [];
     const seen = new Set<string>();
-    const { inferMapping } = requireImportMapping();
     const detected = inferMapping('equipment', parseCsv(source.csv)[0] || []);
     const mapping = { ...detected, ...source.mapping };
     for (const row of rows) {
