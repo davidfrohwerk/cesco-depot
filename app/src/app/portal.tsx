@@ -105,8 +105,26 @@ function endpointAddress(e: { addressLine1: string; addressLine2: string; city: 
 
 export default function Portal() {
     const [data, setData] = useState<Data | null>(null), [loading, setLoading] = useState(true), [tab, setTab] = useState('Overview'), [orgId, setOrgId] = useState(''), [error, setError] = useState(''), [notice, setNotice] = useState(''), [modal, setModal] = useState<Modal | null>(null), [busy, setBusy] = useState(false), [register, setRegister] = useState(false), [search, setSearch] = useState(''), [page, setPage] = useState(0), [csv, setCsv] = useState(''), [kind, setKind] = useState('endpoints'), [headers, setHeaders] = useState<string[]>([]), [mapping, setMapping] = useState<Record<string, string>>({}), [invite, setInvite] = useState('');
-    async function api(path: string, body?: unknown) { const response = await fetch('/api/' + path, { method: body ? 'POST' : 'GET', headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined }); const result = await response.json(); if (!response.ok)
-        throw Error(result.error || 'Request failed.'); return result; }
+    async function api(path: string, body?: unknown) {
+        const response = await fetch('/api/' + path, {
+            method: body ? 'POST' : 'GET',
+            headers: body ? { 'Content-Type': 'application/json' } : undefined,
+            body: body ? JSON.stringify(body) : undefined
+        });
+        const text = await response.text();
+        let result: Record<string, unknown> = {};
+        if (text) {
+            try {
+                result = JSON.parse(text) as Record<string, unknown>;
+            }
+            catch {
+                throw Error(`Depot API returned an invalid response (HTTP ${response.status}). Check the server log.`);
+            }
+        }
+        if (!response.ok)
+            throw Error(String(result.error || `Request failed with HTTP ${response.status}.`));
+        return result;
+    }
     async function refresh(selected = orgId) { try {
         const result = await api('state' + (selected ? '?orgId=' + encodeURIComponent(selected) : ''));
         setData(result);
