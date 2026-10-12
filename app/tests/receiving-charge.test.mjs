@@ -11,11 +11,12 @@ function fixture(changes={}) {
     serviceAgreement:{findUnique:async()=>changes.agreement??agreement},
     commercialRate:{findUnique:async()=>changes.rate??rate},
     receipt:{findUnique:async()=>changes.receipt??receipt},
+    receiptReconciliation:{findUnique:async()=>changes.reconciliation === undefined ? {id:"rec-1",organizationId:"msp",receiptId:"receipt1",verifiedUnitCount:10,verifiedByUserId:"u1",verifiedAt:new Date("2026-10-11")} : changes.reconciliation},
     commercialCharge:{upsert:async(args)=>{calls++;saved=args;return args.create;}}
   };
   return {tx,get calls(){return calls},get saved(){return saved}};
 }
-const args={organizationId:"msp",agreementId:"a1",rateId:"r1",receiptId:"receipt1",reconciliationId:"reconcile-001",verifiedUnitCount:10};
+const args={organizationId:"msp",agreementId:"a1",rateId:"r1",receiptId:"receipt1"};
 test("verified ten-unit intake produces a draft $75 charge",async()=>{
  const f=fixture();const result=await recordReceivingCharge(f.tx,args);
  assert.equal(result.amountCents,7500);assert.equal(result.status,"DRAFT");
@@ -25,8 +26,8 @@ test("cross-tenant receipt is rejected before write",async()=>{
  const f=fixture({receipt:{...receipt,package:{shipment:{serviceRequest:{organizationId:"other"}}}}});
  await assert.rejects(()=>recordReceivingCharge(f.tx,args),/tenant mismatch/);assert.equal(f.calls,0);
 });
-test("does not bill expected inventory without reconciliation ID",async()=>{
- const f=fixture();await assert.rejects(()=>recordReceivingCharge(f.tx,{...args,reconciliationId:""}),/Missing/);assert.equal(f.calls,0);
+test("cannot bill without stored reconciliation",async()=>{
+ const f=fixture({reconciliation:null});await assert.rejects(()=>recordReceivingCharge(f.tx,args),/reconciliation required/);assert.equal(f.calls,0);
 });
 test("rejects an unapproved or non-receiving rate",async()=>{
  const f=fixture({rate:{...rate,serviceCode:"STORAGE"}});
@@ -35,4 +36,13 @@ test("rejects an unapproved or non-receiving rate",async()=>{
 test("repeated invocation uses the same scoped uniqueness key",async()=>{
  const f=fixture();await recordReceivingCharge(f.tx,args);const first=f.saved.where.organizationId_idempotencyKey;
  await recordReceivingCharge(f.tx,args);assert.deepEqual(f.saved.where.organizationId_idempotencyKey,first);
+});
+
+test("rejects a reconciliation from a different tenant",async()=>{
+ const f=fixture({reconciliation:{id:"rec-1",organizationId:"other",receiptId:"receipt1",verifiedUnitCount:10,verifiedByUserId:"u1",verifiedAt:new Date("2026-10-11")}});
+ await assert.rejects(()=>recordReceivingCharge(f.tx,args),/reconciliation required/);assert.equal(f.calls,0);
+});
+test("rejects unverified reconciliation",async()=>{
+ const f=fixture({reconciliation:{id:"rec-1",organizationId:"msp",receiptId:"receipt1",verifiedUnitCount:10,verifiedByUserId:null,verifiedAt:new Date("2026-10-11")}});
+ await assert.rejects(()=>recordReceivingCharge(f.tx,args),/reconciliation required/);assert.equal(f.calls,0);
 });
