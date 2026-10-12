@@ -46,12 +46,12 @@ test('HTTP authentication, CSRF, free account, bulk commit, role isolation, evid
         assert.equal(state.intakes.length, 0);
         assert.equal(state.activities.length, 0);
         assert.equal(state.organization.name, 'Acme');
-        const csrf = await post('action', { orgId, action: 'endpoint', code: 'X', name: 'X', address: 'X', rtoHours: 4 }, cookie, 'https://malicious.example');
+        const csrf = await post('action', { orgId, action: 'endpoint', externalId: 'X', name: 'X', addressLine1: 'X' }, cookie, 'https://malicious.example');
         assert.equal(csrf.r.status, 400);
         assert.match(csrf.body.error, /origin/);
         const forbidden = await fetch(origin + '/api/state?orgId=cesco', { headers: { Cookie: cookie } });
         assert.equal(forbidden.status, 400);
-        const csv = 'code,name,address,rtoHours\nIND,Indy,Indianapolis IN,4';
+        const csv = 'externalId,name,addressLine1\nIND,Indy,Indianapolis IN';
         const preview = await post('action', { orgId, action: 'importPreview', kind: 'endpoints', csv }, cookie);
         assert.equal(preview.r.status, 200, JSON.stringify(preview.body));
         const commit = await post('action', { orgId, action: 'importCommit', id: preview.body.id }, cookie);
@@ -63,7 +63,7 @@ test('HTTP authentication, CSRF, free account, bulk commit, role isolation, evid
         assert.equal(rate.r.status, 200);
         const denied = await post('action', { orgId, action: 'rate', name: 'Fraud', category: 'RECEIVING', unit: 'item', cents: 1, version: 'x' }, cookie);
         assert.equal(denied.r.status, 400);
-        const equip = 'externalId,manufacturer,model,serial,configuration,pool,purpose,endpointCode,volume\nR1,OEM,X,001,v1,routers,SUPPORTED,IND,0\nS1,OEM,X,002,v1,routers,SPARE,,1';
+        const equip = 'externalId,manufacturer,model,serial,configuration,pool,purpose,endpointId,volume,recoveryTargetHours\nR1,OEM,X,001,v1,routers,SUPPORTED,IND,0,4\nS1,OEM,X,002,v1,routers,SPARE,,1,';
         const ej = await post('action', { orgId, action: 'importPreview', kind: 'equipment', csv: equip }, cookie);
         assert.equal(ej.r.status, 200);
         assert.equal((await post('action', { orgId, action: 'importCommit', id: ej.body.id }, cookie)).r.status, 200);
