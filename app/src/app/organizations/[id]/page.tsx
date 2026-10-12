@@ -374,9 +374,8 @@ export default async function OrganizationPage({
           className="mt-5 grid gap-3 md:grid-cols-2"
         >
           <input
-            name="assetTag"
-            placeholder="CESCo asset tag"
-            required
+            name="customerAssetId"
+            placeholder="Customer asset ID (optional)"
             className="rounded border px-3 py-2"
           />
 
