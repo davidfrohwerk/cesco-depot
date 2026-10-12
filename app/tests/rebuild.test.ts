@@ -1,7 +1,7 @@
 import test from 'node:test';
 import { inferMapping } from '../src/lib/import-mapping.ts';
 import assert from 'node:assert/strict';
-import { emptyState, id, mutate, previewImport, balance, creditBalance, scoped, type State, type User } from '../src/lib/domain.ts';
+import { emptyState, id, mutate, previewImport, previewEnrichment, balance, creditBalance, scoped, type State, type User } from '../src/lib/domain.ts';
 function fixture() { const s = emptyState(); s.organizations.push({ id: 'acme', name: 'Acme', termsDays: 30, currency: 'USD' }, { id: 'other', name: 'Other', termsDays: 0, currency: 'USD' }); const admin: User = { id: 'ops', orgId: 'internal', name: 'Ops', email: 'ops@example.com', password: '', role: 'SYSTEM_ADMIN' }; const client: User = { id: 'client', orgId: 'acme', name: 'Client', email: 'client@example.com', password: '', role: 'CLIENT_ADMIN' }; s.users.push(admin, client); return { s, admin, client }; }
 function importCsv(s: State, u: User, kind: string, csv: string) { const job = mutate(s, u, 'acme', 'importPreview', { kind, csv }); mutate(s, u, 'acme', 'importCommit', { id: job }); }
 function basic() { const f = fixture(); importCsv(f.s, f.client, 'endpoints', 'externalId,name,addressLine1\nIND,Indy,Indianapolis IN'); importCsv(f.s, f.client, 'equipment', 'externalId,manufacturer,model,serial,configuration,pool,purpose,endpointId,volume,recoveryTargetHours\nR1,OEM,X,001,v1,routers,SUPPORTED,IND,0,4\nS1,OEM,X,002,v1,routers,SPARE,,1,'); return f; }
@@ -157,4 +157,56 @@ test('legacy five-row equipment CSV maps OEM/Product/Device ID without inventing
     assert.equal(s.equipment[1].declaredStatus, 'REGISTERED');
     assert.equal(s.equipment[1].declaredVerifiedAt, '');
     assert.ok(s.imports.find(x => x.id === job)?.csv.includes('Last Verified'));
+});
+
+
+test('historical enrichment previews retained CSV and fills only blank client declarations', () => {
+    const f = fixture();
+    importCsv(f.s, f.client, 'endpoints', 'externalId,name,addressLine1\nIND,Indianapolis,Indiana');
+    const csv = 'Device ID,OEM,Product,Serial,Image Version,Compatibility,Store Number,Asset Tag,Device Type,Asset Description,Status,Last Verified,Next Verification,Verification Notes\nDEV-1,Dell,7090,SN-1,Win11,Desktop,IND,TAG-1,Desktop PC,Counter device,READY,2026-10-08,2027-01-08,Customer boot test';
+    const mapping = { externalId: 'Device ID', manufacturer: 'OEM', model: 'Product', serial: 'Serial', configuration: 'Image Version', pool: 'Compatibility', endpointId: 'Store Number' };
+    const source = mutate(f.s, f.client, 'acme', 'importPreview', { kind: 'equipment', csv, mapping });
+    mutate(f.s, f.client, 'acme', 'importCommit', { id: source });
+    const a = f.s.equipment[0];
+    assert.equal(a.customerAssetTag, '');
+    assert.equal(a.status, 'REGISTERED');
+    assert.equal(a.testedAt, null);
+    const report = previewEnrichment(f.s, 'acme', f.s.imports.find(x => x.id === source)!);
+    assert.equal(report.errors.length, 0);
+    assert.equal(report.updates.length, 1);
+    assert.equal(report.updates[0].changes.customerAssetTag, 'TAG-1');
+    const review = mutate(f.s, f.client, 'acme', 'enrichmentPreview', { id: source });
+    assert.equal(a.customerAssetTag, '');
+    mutate(f.s, f.client, 'acme', 'enrichmentCommit', { id: review });
+    assert.equal(a.customerAssetTag, 'TAG-1');
+    assert.equal(a.deviceType, 'Desktop PC');
+    assert.equal(a.description, 'Counter device');
+    assert.equal(a.declaredStatus, 'READY');
+    assert.equal(a.declaredVerifiedAt, '2026-10-08');
+    assert.equal(a.declaredNextVerificationAt, '2027-01-08');
+    assert.equal(a.declaredVerificationNotes, 'Customer boot test');
+    assert.equal(a.status, 'REGISTERED');
+    assert.equal(a.custodian, 'Client');
+    assert.equal(a.testedAt, null);
+    assert.equal(a.testDue, null);
+    assert.equal(f.s.audit.filter(x => x.action === 'CUSTOMER_METADATA_ENRICHED').length, 1);
+    assert.throws(() => mutate(f.s, f.client, 'acme', 'enrichmentCommit', { id: review }), /pending enrichment/);
+});
+
+test('enrichment rejects changed identities and conflicting declarations without writes', () => {
+    const f = fixture();
+    importCsv(f.s, f.client, 'endpoints', 'externalId,name,addressLine1\nIND,Indianapolis,Indiana');
+    const csv = 'Device ID,OEM,Product,Serial,Image Version,Compatibility,Store Number,Asset Tag\nDEV-1,Dell,7090,SN-1,Win11,Desktop,IND,TAG-1';
+    const mapping = { externalId: 'Device ID', manufacturer: 'OEM', model: 'Product', serial: 'Serial', configuration: 'Image Version', pool: 'Compatibility', endpointId: 'Store Number' };
+    const source = mutate(f.s, f.client, 'acme', 'importPreview', { kind: 'equipment', csv, mapping });
+    mutate(f.s, f.client, 'acme', 'importCommit', { id: source });
+    const a = f.s.equipment[0];
+    const review = mutate(f.s, f.client, 'acme', 'enrichmentPreview', { id: source });
+    a.customerAssetTag = 'CONFLICTING-TAG';
+    assert.throws(() => mutate(f.s, f.client, 'acme', 'enrichmentCommit', { id: review }), /conflicts with existing equipment/);
+    assert.equal(a.customerAssetTag, 'CONFLICTING-TAG');
+    a.customerAssetTag = '';
+    a.serial = 'MISMATCH';
+    assert.throws(() => mutate(f.s, f.client, 'acme', 'enrichmentCommit', { id: review }), /mismatched equipment identity/);
+    assert.equal(a.customerAssetTag, '');
 });
