@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { currentUserLabel } from "@/lib/auth";
@@ -16,7 +17,8 @@ export async function createAsset(
   );
   const actorLabel = currentUserLabel(user);
 
-  const assetTag = String(formData.get("assetTag") ?? "").trim();
+  const customerAssetId = String(formData.get("customerAssetId") ?? "").trim();
+  const assetTag = `DEPOT-${randomUUID()}`;
   const endpointId = String(formData.get("endpointId") ?? "").trim();
   const manufacturer = String(formData.get("manufacturer") ?? "").trim();
   const model = String(formData.get("model") ?? "").trim();
@@ -50,10 +52,6 @@ export async function createAsset(
     Number.isNaN(warrantyExpiresAt.getTime())
   ) {
     throw new Error("Warranty expiration date is invalid.");
-  }
-
-  if (!assetTag) {
-    throw new Error("Asset tag is required.");
   }
 
   const existingAsset = await prisma.asset.findUnique({
@@ -99,6 +97,7 @@ export async function createAsset(
         assetTag,
         organizationId,
         ownerOrganizationId: organizationId,
+        externalId: customerAssetId || null,
         currentEndpointId: endpointId || null,
         currentStoragePositionId: null,
         currentCustodyType: "CUSTOMER",
