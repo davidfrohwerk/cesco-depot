@@ -1,6 +1,6 @@
 "use server";
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import {
@@ -804,7 +804,7 @@ export async function commitImportJob(
           const assetData = {
             externalId:
               (data.externalId as string | null) ?? null,
-            assetTag: String(data.assetTag ?? ""),
+            assetTag: String(data.assetTag ?? "") || `DEPOT-${randomUUID()}`,
             currentEndpointId: endpoint?.id ?? null,
             currentStoragePositionId: null,
             currentCustodyType: "CUSTOMER" as const,
@@ -849,7 +849,10 @@ export async function commitImportJob(
           ) {
             const updated = await tx.asset.update({
               where: { id: row.matchedRecordId },
-              data: assetData,
+              data: {
+                ...assetData,
+                ...(data.assetTag ? {} : { assetTag: undefined }),
+              },
               select: { id: true },
             });
             assetId = updated.id;
