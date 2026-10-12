@@ -50,3 +50,5 @@ generated/prisma/
 .devin/
 AGENTS.md
 CLAUDE.md
+
+!.env.example
