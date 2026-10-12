@@ -44,7 +44,7 @@ export type Equipment = Base & {
     serial: string;
     configuration: string;
     pool: string;
-    purpose: 'SUPPORTED' | 'SPARE';
+    purpose: 'SUPPORTED' | 'SPARE' | 'UNCLASSIFIED';
     endpointId: string | null;
     status: string;
     condition: string;
@@ -257,7 +257,7 @@ export function previewImport(s: State, orgId: string, kind: string, csv: string
                 str(r.serial, 'Serial', 200);
                 str(r.configuration, 'Configuration', 200);
                 str(r.pool, 'Compatibility pool', 200);
-                assert(['SUPPORTED', 'SPARE'].includes(r.purpose), 'Purpose must be SUPPORTED or SPARE.');
+                if (r.purpose) assert(['SUPPORTED', 'SPARE'].includes(r.purpose), 'Purpose must be SUPPORTED or SPARE when supplied.');
                 if (r.volume)
                     num(r.volume, 'Volume', 0, 1e6);
                 if (r.recoveryTargetHours)
@@ -266,8 +266,10 @@ export function previewImport(s: State, orgId: string, kind: string, csv: string
                 const key = `${r.manufacturer.toLowerCase()}|${r.serial.toLowerCase()}`;
                 assert(!serials.has(key) && !s.equipment.some(x => x.orgId === orgId && `${x.manufacturer.toLowerCase()}|${x.serial.toLowerCase()}` === key), 'Duplicate manufacturer/serial in this account.');
                 serials.add(key);
-                if (r.purpose === 'SUPPORTED' || r.endpointId)
+                if (r.endpointId)
                     assert(s.endpoints.some(x => x.orgId === orgId && x.externalId === r.endpointId), 'Endpoint ID must refer to an onboarded endpoint.');
+                if (r.purpose === 'SUPPORTED')
+                    assert(r.endpointId, 'Supported equipment must reference an onboarded endpoint.');
                 if (r.purpose === 'SPARE')
                     assert(s.equipment.some(x => x.orgId === orgId && x.purpose === 'SUPPORTED' && x.pool === r.pool && x.configuration === r.configuration) || rows.some(v => (v.record[mapping.purpose || 'purpose'] === 'SUPPORTED') && (v.record[mapping.pool || 'pool'] === r.pool) && (v.record[mapping.configuration || 'configuration'] === r.configuration)), 'Spare must support an onboarded compatibility pool/configuration.');
             }
@@ -356,12 +358,30 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
                         contactPhone: r.contactPhone || '', accessNotes: r.accessNotes || '',
                         active: !r.active || ['yes', 'true', '1'].includes(r.active.trim().toLowerCase())
                     });
-                else
-                    s.equipment.push({ id: id(), orgId, externalId: r.externalId, manufacturer: r.manufacturer, model: r.model, serial: r.serial, configuration: r.configuration, pool: r.pool, purpose: r.purpose as Equipment['purpose'], endpointId: s.endpoints.find(x => x.orgId === orgId && x.externalId === r.endpointId)?.id || null, status: r.purpose === 'SUPPORTED' ? 'INSTALLED' : 'CLIENT_HELD', condition: 'UNKNOWN', location: r.purpose === 'SUPPORTED' ? s.endpoints.find(x => x.orgId === orgId && x.externalId === r.endpointId)?.name || 'Client' : 'Client', position: '', custodian: 'Client', testedAt: null, testDue: null, intakeId: null, requestId: null, volume: Number(r.volume || 0), recoveryTargetHours: r.recoveryTargetHours ? Number(r.recoveryTargetHours) : null });
+                else {
+                    const purpose = (r.purpose || 'UNCLASSIFIED') as Equipment['purpose'];
+                    const endpoint = s.endpoints.find(x => x.orgId === orgId && x.externalId === r.endpointId);
+                    s.equipment.push({ id: id(), orgId, externalId: r.externalId, manufacturer: r.manufacturer, model: r.model, serial: r.serial, configuration: r.configuration, pool: r.pool, purpose, endpointId: endpoint?.id || null, status: purpose === 'SUPPORTED' ? 'INSTALLED' : purpose === 'SPARE' ? 'CLIENT_HELD' : 'REGISTERED', condition: 'UNKNOWN', location: endpoint?.name || 'Client', position: '', custodian: 'Client', testedAt: null, testDue: null, intakeId: null, requestId: null, volume: Number(r.volume || 0), recoveryTargetHours: r.recoveryTargetHours ? Number(r.recoveryTargetHours) : null });
+                }
             }
             job.status = 'COMMITTED';
             job.errors = [];
             entityId = job.id;
+            break;
+        }
+        case 'classifyEquipment': {
+            requireCap(u, orgId, 'onboard');
+            const a = get(s.equipment, p.id, orgId);
+            assert(a.purpose === 'UNCLASSIFIED', 'Equipment is already classified.');
+            const purpose = str(p.purpose, 'Equipment role');
+            assert(['SUPPORTED', 'SPARE'].includes(purpose), 'Choose supported equipment or client-owned spare.');
+            if (purpose === 'SUPPORTED')
+                assert(a.endpointId, 'Supported equipment must be associated with an endpoint.');
+            a.purpose = purpose as Equipment['purpose'];
+            a.status = purpose === 'SUPPORTED' ? 'INSTALLED' : 'CLIENT_HELD';
+            if (p.recoveryTargetHours !== '' && p.recoveryTargetHours !== null && p.recoveryTargetHours !== undefined)
+                a.recoveryTargetHours = num(p.recoveryTargetHours, 'Recovery target', .1, 8760);
+            entityId = a.id;
             break;
         }
         case 'intake': {
