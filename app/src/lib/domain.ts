@@ -21,10 +21,21 @@ export type Organization = {
     currency: string;
 };
 export type Endpoint = Base & {
-    code: string;
+    externalId: string;
     name: string;
-    address: string;
-    rtoHours: number;
+    siteType: string;
+    addressLine1: string;
+    addressLine2: string;
+    city: string;
+    state: string;
+    postalCode: string;
+    country: string;
+    market: string;
+    contactName: string;
+    contactEmail: string;
+    contactPhone: string;
+    accessNotes: string;
+    active: boolean;
 };
 export type Equipment = Base & {
     externalId: string;
@@ -45,6 +56,7 @@ export type Equipment = Base & {
     intakeId: string | null;
     requestId: string | null;
     volume: number;
+    recoveryTargetHours: number | null;
 };
 export type Intake = Base & {
     number: string;
@@ -210,7 +222,10 @@ export function creditBalance(s: State, orgId: string) { return s.settlements.fi
 export function compatible(a: Equipment, b: Equipment) { return a.orgId === b.orgId && a.pool === b.pool && a.configuration === b.configuration && a.purpose === 'SUPPORTED' && b.purpose === 'SPARE'; }
 export function ready(a: Equipment) { return a.status === 'READY' && a.condition === 'GOOD' && !!a.testedAt && !!a.testDue && new Date(a.testDue).getTime() > Date.now(); }
 export function candidates(s: State, asset: Equipment) { return s.equipment.filter(x => compatible(asset, x) && ready(x)); }
-export const fields = { endpoints: ['code', 'name', 'address', 'rtoHours'], equipment: ['externalId', 'manufacturer', 'model', 'serial', 'configuration', 'pool', 'purpose', 'endpointCode', 'volume'] };
+export const fields = {
+    endpoints: ['externalId', 'name', 'siteType', 'addressLine1', 'addressLine2', 'city', 'state', 'postalCode', 'country', 'market', 'contactName', 'contactEmail', 'contactPhone', 'accessNotes', 'active'],
+    equipment: ['externalId', 'manufacturer', 'model', 'serial', 'configuration', 'pool', 'purpose', 'endpointId', 'volume', 'recoveryTargetHours']
+};
 export function previewImport(s: State, orgId: string, kind: string, csv: string, mapping: Record<string, string> = {}) {
     assert(kind === 'endpoints' || kind === 'equipment', 'Choose endpoints or equipment.');
     assert(csv.length <= 8000000, 'CSV limit is 8 MB.');
@@ -226,11 +241,14 @@ export function previewImport(s: State, orgId: string, kind: string, csv: string
             r[field] = row.record[mapping[field] || field] || '';
         try {
             if (kind === 'endpoints') {
-                str(r.code, 'Endpoint code', 100);
+                str(r.externalId, 'Endpoint ID', 100);
                 str(r.name, 'Endpoint name', 200);
-                str(r.address, 'Address');
-                num(r.rtoHours, 'Recovery target', 0.1, 8760);
-                assert(!s.endpoints.some(x => x.orgId === orgId && x.code === r.code), 'Endpoint code already exists.');
+                str(r.addressLine1, 'Street / address line 1');
+                assert(!s.endpoints.some(x => x.orgId === orgId && x.externalId === r.externalId), 'Endpoint ID already exists.');
+                if (r.active) {
+                    const active = r.active.trim().toLowerCase();
+                    assert(['yes', 'true', '1', 'no', 'false', '0'].includes(active), 'Active must be yes/no, true/false, or 1/0.');
+                }
             }
             else {
                 str(r.externalId, 'Client equipment ID', 100);
@@ -242,16 +260,18 @@ export function previewImport(s: State, orgId: string, kind: string, csv: string
                 assert(['SUPPORTED', 'SPARE'].includes(r.purpose), 'Purpose must be SUPPORTED or SPARE.');
                 if (r.volume)
                     num(r.volume, 'Volume', 0, 1e6);
+                if (r.recoveryTargetHours)
+                    num(r.recoveryTargetHours, 'Recovery target', 0.1, 8760);
                 assert(!s.equipment.some(x => x.orgId === orgId && x.externalId === r.externalId), 'Client equipment ID already exists.');
                 const key = `${r.manufacturer.toLowerCase()}|${r.serial.toLowerCase()}`;
                 assert(!serials.has(key) && !s.equipment.some(x => x.orgId === orgId && `${x.manufacturer.toLowerCase()}|${x.serial.toLowerCase()}` === key), 'Duplicate manufacturer/serial in this account.');
                 serials.add(key);
-                if (r.purpose === 'SUPPORTED' || r.endpointCode)
-                    assert(s.endpoints.some(x => x.orgId === orgId && x.code === r.endpointCode), 'Endpoint code must refer to an onboarded endpoint.');
+                if (r.purpose === 'SUPPORTED' || r.endpointId)
+                    assert(s.endpoints.some(x => x.orgId === orgId && x.externalId === r.endpointId), 'Endpoint ID must refer to an onboarded endpoint.');
                 if (r.purpose === 'SPARE')
                     assert(s.equipment.some(x => x.orgId === orgId && x.purpose === 'SUPPORTED' && x.pool === r.pool && x.configuration === r.configuration) || rows.some(v => (v.record[mapping.purpose || 'purpose'] === 'SUPPORTED') && (v.record[mapping.pool || 'pool'] === r.pool) && (v.record[mapping.configuration || 'configuration'] === r.configuration)), 'Spare must support an onboarded compatibility pool/configuration.');
             }
-            const key = kind === 'endpoints' ? r.code : r.externalId;
+            const key = r.externalId;
             assert(!seen.has(key), 'Duplicate client identifier in CSV.');
             seen.add(key);
             records.push(r);
@@ -282,9 +302,27 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
         }
         case 'endpoint': {
             requireCap(u, orgId, 'onboard');
-            const code = str(p.code, 'Code', 100);
-            assert(!s.endpoints.some(x => x.orgId === orgId && x.code === code), 'Endpoint code already exists.');
-            const e = { id: id(), orgId, code, name: str(p.name, 'Name', 200), address: str(p.address, 'Address'), rtoHours: num(p.rtoHours, 'Recovery target', .1, 8760) };
+            const externalId = str(p.externalId, 'Endpoint ID', 100);
+            assert(!s.endpoints.some(x => x.orgId === orgId && x.externalId === externalId), 'Endpoint ID already exists.');
+            const e: Endpoint = {
+                id: id(),
+                orgId,
+                externalId,
+                name: str(p.name, 'Name', 200),
+                siteType: String(p.siteType || '').trim(),
+                addressLine1: str(p.addressLine1, 'Street / address line 1'),
+                addressLine2: String(p.addressLine2 || '').trim(),
+                city: String(p.city || '').trim(),
+                state: String(p.state || '').trim(),
+                postalCode: String(p.postalCode || '').trim(),
+                country: String(p.country || '').trim(),
+                market: String(p.market || '').trim(),
+                contactName: String(p.contactName || '').trim(),
+                contactEmail: String(p.contactEmail || '').trim(),
+                contactPhone: String(p.contactPhone || '').trim(),
+                accessNotes: String(p.accessNotes || '').trim(),
+                active: true
+            };
             s.endpoints.push(e);
             entityId = e.id;
             break;
@@ -308,9 +346,18 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             assert(result.errors.length === 0, result.errors.slice(0, 4).join(' '));
             for (const r of result.records) {
                 if (job.kind === 'endpoints')
-                    s.endpoints.push({ id: id(), orgId, code: r.code, name: r.name, address: r.address, rtoHours: Number(r.rtoHours) });
+                    s.endpoints.push({
+                        id: id(), orgId, externalId: r.externalId, name: r.name,
+                        siteType: r.siteType || '', addressLine1: r.addressLine1,
+                        addressLine2: r.addressLine2 || '', city: r.city || '',
+                        state: r.state || '', postalCode: r.postalCode || '',
+                        country: r.country || '', market: r.market || '',
+                        contactName: r.contactName || '', contactEmail: r.contactEmail || '',
+                        contactPhone: r.contactPhone || '', accessNotes: r.accessNotes || '',
+                        active: !r.active || ['yes', 'true', '1'].includes(r.active.trim().toLowerCase())
+                    });
                 else
-                    s.equipment.push({ id: id(), orgId, externalId: r.externalId, manufacturer: r.manufacturer, model: r.model, serial: r.serial, configuration: r.configuration, pool: r.pool, purpose: r.purpose as Equipment['purpose'], endpointId: s.endpoints.find(x => x.orgId === orgId && x.code === r.endpointCode)?.id || null, status: r.purpose === 'SUPPORTED' ? 'INSTALLED' : 'CLIENT_HELD', condition: 'UNKNOWN', location: r.purpose === 'SUPPORTED' ? s.endpoints.find(x => x.orgId === orgId && x.code === r.endpointCode)?.name || 'Client' : 'Client', position: '', custodian: 'Client', testedAt: null, testDue: null, intakeId: null, requestId: null, volume: Number(r.volume || 0) });
+                    s.equipment.push({ id: id(), orgId, externalId: r.externalId, manufacturer: r.manufacturer, model: r.model, serial: r.serial, configuration: r.configuration, pool: r.pool, purpose: r.purpose as Equipment['purpose'], endpointId: s.endpoints.find(x => x.orgId === orgId && x.externalId === r.endpointId)?.id || null, status: r.purpose === 'SUPPORTED' ? 'INSTALLED' : 'CLIENT_HELD', condition: 'UNKNOWN', location: r.purpose === 'SUPPORTED' ? s.endpoints.find(x => x.orgId === orgId && x.externalId === r.endpointId)?.name || 'Client' : 'Client', position: '', custodian: 'Client', testedAt: null, testDue: null, intakeId: null, requestId: null, volume: Number(r.volume || 0), recoveryTargetHours: r.recoveryTargetHours ? Number(r.recoveryTargetHours) : null });
             }
             job.status = 'COMMITTED';
             job.errors = [];
