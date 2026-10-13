@@ -4,7 +4,7 @@ import { mkdir, writeFile, readFile, unlink } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { authenticate, hash, passwordHash, passwordValid, session, throttle } from '@/lib/security';
 import { read, transact, query } from '@/lib/store';
-import { assert, id, now, str, num, mutate, scoped, requireCap, isInternal, get, log, fields, type Role } from '@/lib/domain';
+import { assert, id, now, str, num, mutate, scoped, requireCap, isInternal, get, log, fields, validateCorrectionEvidenceLink, type Role } from '@/lib/domain';
 import { csvEscape } from '@/lib/csv';
 import { validateEvidenceCategory } from '@/lib/evidence-categories';
 export const runtime = 'nodejs';
@@ -146,6 +146,12 @@ export async function POST(req: NextRequest, { params }: {
             const entityId = str(form.get('entityId'), 'Linked record');
             const s = await read();
             assert([...s.equipment, ...s.intakes, ...s.requests].some(x => x.id === entityId && x.orgId === orgId), 'Evidence must link to an account asset, intake, or request.');
+            const correctionRaw = form.get('receiptCorrectionIndex');
+            const receiptCorrectionIndex = correctionRaw === null || correctionRaw === '' ? undefined : Number(correctionRaw);
+            if (receiptCorrectionIndex !== undefined) {
+                requireCap(u, orgId, 'operate');
+                validateCorrectionEvidenceLink(s, orgId, entityId, receiptCorrectionIndex);
+            }
             const category = str(form.get('category') || 'OTHER', 'Evidence category', 50);
             const file = form.get('file');
             assert(file instanceof File && file.size > 0 && file.size <= 25 * 1024 * 1024, 'Upload a file of 1 byte–25 MB.');
@@ -156,7 +162,7 @@ export async function POST(req: NextRequest, { params }: {
             await mkdir(root, { recursive: true, mode: 0o700 });
             await writeFile(join(/*turbopackIgnore: true*/ root, key), bytes, { mode: 0o600 });
             try {
-                await transact(st => { const e = { id: key, orgId, entityId, name: file.name, sha256: createHash('sha256').update(bytes).digest('hex'), key, size: file.size, mime: file.type, actor: u.email, at: now(), description: str(form.get('description'), 'Evidence description'), category }; st.evidence.push(e); log(st, u, orgId, 'EVIDENCE_UPLOADED', entityId, `${e.name}; category ${category}; SHA256 ${e.sha256}`); });
+                await transact(st => { if (receiptCorrectionIndex !== undefined) validateCorrectionEvidenceLink(st, orgId, entityId, receiptCorrectionIndex); const e = { id: key, orgId, entityId, receiptCorrectionIndex, name: file.name, sha256: createHash('sha256').update(bytes).digest('hex'), key, size: file.size, mime: file.type, actor: u.email, at: now(), description: str(form.get('description'), 'Evidence description'), category }; st.evidence.push(e); log(st, u, orgId, 'EVIDENCE_UPLOADED', entityId, `${e.name}; category ${category}; correction ${receiptCorrectionIndex ?? 'none'}; SHA256 ${e.sha256}`); });
             }
             catch (e) {
                 await unlink(join(/*turbopackIgnore: true*/ root, key));
