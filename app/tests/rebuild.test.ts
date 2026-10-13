@@ -343,3 +343,30 @@ test('post-correction photographic evidence can link to a completed observation 
     assert.equal(a.status, 'RECEIVED');
     assert.equal(a.testedAt, null);
 });
+
+test('corrected receiving exception requires independent readiness test before stocking relocation', () => {
+    const f = basic();
+    const a = f.s.equipment[1];
+    const iid = mutate(f.s, f.client, 'acme', 'intake', { assetIds: [a.id], notes: 'Demo spare' });
+    mutate(f.s, f.admin, 'acme', 'acceptIntake', { id: iid, tracking: 'SIM-TRACK' });
+    mutate(f.s, f.admin, 'acme', 'receive', { id: a.id, serial: 'TRANSCRIPTION-ERROR', condition: 'GOOD', packageCondition: 'INTACT', handoffReference: 'SIM-RECEIPT', location: 'Initial hub', position: 'Receiving A' });
+    assert.throws(() => mutate(f.s, f.admin, 'acme', 'verify', { id: a.id, configuration: a.configuration, validDays: 30, notes: 'Not yet inspected' }), /Receive or repair/);
+    mutate(f.s, f.admin, 'acme', 'correctReceiptObservation', { id: a.id, serial: a.serial, reason: 'Serial label rechecked' });
+    assert.equal(a.status, 'RECEIVED');
+    assert.equal(a.testedAt, null);
+    const receipt = JSON.stringify(a.receipt);
+    mutate(f.s, f.admin, 'acme', 'move', { id: a.id, location: 'Strategic stock B', position: 'Shelf 3', notes: 'Controlled internal relocation' });
+    assert.equal(a.status, 'RECEIVED');
+    assert.equal(a.location, 'Strategic stock B');
+    assert.equal(a.position, 'Shelf 3');
+    assert.equal(a.testDue, null);
+    mutate(f.s, f.admin, 'acme', 'verify', { id: a.id, configuration: a.configuration, validDays: 30, notes: 'Simulated independent functional readiness test' });
+    assert.equal(a.status, 'READY');
+    assert.equal(a.custodian, 'CESCo');
+    assert.ok(a.testedAt);
+    assert.ok(a.testDue);
+    assert.equal(JSON.stringify(a.receipt), receipt);
+    assert.equal(a.receiptCorrections?.length, 1);
+    assert.ok(f.s.audit.some(x => x.action === 'STOCK_REPOSITIONED'));
+    assert.ok(f.s.audit.some(x => x.action === 'READINESS_VERIFIED'));
+});
