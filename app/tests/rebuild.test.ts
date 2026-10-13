@@ -271,3 +271,45 @@ test('physical receiving retains separate package, equipment and handoff observa
     assert.equal(a.testDue, null);
     assert.ok(f.s.audit.some(x => x.action === 'RECEIPT' && x.detail.includes('TEST-RECEIPT')));
 });
+
+test('receiving typo correction preserves the original observation and resolves only matching identity', () => {
+    const f = basic();
+    const a = f.s.equipment[1];
+    const iid = mutate(f.s, f.client, 'acme', 'intake', { assetIds: [a.id], notes: 'Simulated spare receipt' });
+    mutate(f.s, f.admin, 'acme', 'acceptIntake', { id: iid, tracking: 'SIM-CARRIER-REF' });
+    mutate(f.s, f.admin, 'acme', 'receive', { id: a.id, serial: 'TYPED-WRONG', condition: 'GOOD', packageCondition: 'INTACT', handoffReference: 'SIM-DELIVERY', location: 'Lab', position: 'A1', notes: 'Simulation' });
+    assert.equal(a.status, 'EXCEPTION');
+    const original = a.receipt?.observedSerial;
+    assert.throws(() => mutate(f.s, f.client, 'acme', 'correctReceiptObservation', { id: a.id, serial: a.serial, reason: 'Typo' }), /permission/);
+    assert.throws(() => mutate(f.s, f.admin, 'acme', 'correctReceiptObservation', { id: a.id, serial: a.serial, reason: '' }), /Correction reason is required/);
+    assert.throws(() => mutate(f.s, f.admin, 'acme', 'correctReceiptObservation', { id: a.id, serial: a.serial, reason: 'Typo', evidenceId: 'other-account-file' }), /Record not found/);
+    mutate(f.s, f.admin, 'acme', 'correctReceiptObservation', { id: a.id, serial: 'STILL-WRONG', reason: 'Corrected first transposition' });
+    assert.equal(a.status, 'EXCEPTION');
+    assert.equal(f.s.intakes[0].status, 'EXCEPTION');
+    mutate(f.s, f.admin, 'acme', 'correctReceiptObservation', { id: a.id, serial: a.serial, reason: 'Second inspection of printed serial label confirms initial transcription error' });
+    assert.equal(a.status, 'RECEIVED');
+    assert.equal(f.s.intakes[0].status, 'RECEIVED');
+    assert.equal(a.receipt?.observedSerial, original);
+    assert.equal(a.receiptCorrections?.length, 2);
+    assert.equal(a.receiptCorrections?.[0].previousSerial, 'TYPED-WRONG');
+    assert.equal(a.receiptCorrections?.[1].previousSerial, 'STILL-WRONG');
+    assert.equal(a.receiptCorrections?.[1].correctedSerial, a.serial);
+    assert.equal(a.receiptCorrections?.[1].actor, f.admin.email);
+    assert.equal(a.testedAt, null);
+    assert.equal(a.testDue, null);
+    assert.ok(f.s.audit.filter(x => x.action === 'RECEIPT_OBSERVATION_CORRECTED').length === 2);
+    assert.throws(() => mutate(f.s, f.admin, 'acme', 'correctReceiptObservation', { id: a.id, serial: 'BAD', reason: 'Retry' }), /Only a received exception/);
+});
+
+test('receipt correction can reference only evidence from the matching intake or equipment', () => {
+    const f = basic();
+    const a = f.s.equipment[1];
+    const iid = mutate(f.s, f.client, 'acme', 'intake', { assetIds: [a.id], notes: 'Test intake' });
+    mutate(f.s, f.admin, 'acme', 'acceptIntake', { id: iid, tracking: 'TEST' });
+    mutate(f.s, f.admin, 'acme', 'receive', { id: a.id, serial: 'WRONG', condition: 'GOOD', location: 'Hub', position: 'B2' });
+    f.s.evidence.push({ id: 'linked-photo', orgId: 'acme', entityId: a.id, name: 'serial.jpg', sha256: 'test-hash', key: 'test-key', size: 1, mime: 'image/jpeg', actor: f.admin.email, at: new Date().toISOString(), description: 'Serial label', category: 'SERIAL_PHOTO' });
+    f.s.evidence.push({ id: 'unrelated-photo', orgId: 'acme', entityId: f.s.equipment[0].id, name: 'other.jpg', sha256: 'test-hash', key: 'other', size: 1, mime: 'image/jpeg', actor: f.admin.email, at: new Date().toISOString(), description: 'Other item', category: 'SERIAL_PHOTO' });
+    assert.throws(() => mutate(f.s, f.admin, 'acme', 'correctReceiptObservation', { id: a.id, serial: a.serial, reason: 'Label checked', evidenceId: 'unrelated-photo' }), /Evidence must be linked/);
+    mutate(f.s, f.admin, 'acme', 'correctReceiptObservation', { id: a.id, serial: a.serial, reason: 'Label rechecked', evidenceId: 'linked-photo' });
+    assert.equal(a.receiptCorrections?.[0].evidenceId, 'linked-photo');
+});
