@@ -3,4 +3,30 @@
 @media(min-width:1600px){main{padding-top:48px}.metric{padding:30px}.overview-grid{grid-template-columns:1.5fr 1fr}.pool{padding:24px 0}}
 @media(max-width:1100px){.sidebar{width:195px;padding:25px 15px}.main{margin-left:195px;width:calc(100% - 195px)}main{padding:28px 24px}.topbar{padding:0 24px}.top-date{display:none}.metrics{gap:10px}.metric{padding:18px 14px}.metric>strong{font-size:26px}.overview-grid{grid-template-columns:1fr}.page-heading h1{font-size:25px}.auth-story{padding:40px}.auth-story h1{font-size:35px}.request-facts{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:760px){.shell{display:block}.sidebar{position:relative;width:100%;padding:16px}.sidebar .brand{margin-bottom:15px}.workspace-label,.sidebar-bottom{display:none}.sidebar nav{display:flex;overflow:auto;gap:3px}.sidebar nav button{white-space:nowrap;padding:9px;font-size:11px}.nav-icon{display:none}.main{margin-left:0;width:100%}.topbar{height:55px;padding:0 16px;gap:12px}.topbar select{max-width:180px}.topbar>span:first-child{display:none}main{padding:26px 16px}.page-heading{align-items:flex-start;flex-direction:column;margin-bottom:22px}.page-heading h1{font-size:26px}.metrics{grid-template-columns:repeat(2,1fr)}.metric{padding:18px}.metric>strong{font-size:26px}.panel{padding:18px}.panel-title{align-items:flex-start;flex-wrap:wrap}.steps{grid-template-columns:1fr;gap:9px}.steps>div{padding:13px}.asset-picker label{flex-wrap:wrap}.asset-picker label span{width:100%}.request-facts{gap:18px}.auth{grid-template-columns:1fr}.auth-story{padding:25px}.auth-story>div,.auth-story>small{display:none}.auth-form{padding:45px 25px}.auth-form-inner{max-width:420px}.modal{padding:22px}.invoice{gap:12px}footer span{display:none}}
+
+/* Receiving exception review: short, repeatable scan pattern for high-volume operations. */
+.correction-history{margin:12px 0;border:1px solid var(--line,#dce3df);border-radius:10px;background:#fbfcfa;padding:0}
+.correction-history>summary{cursor:pointer;padding:12px 14px;font-weight:650;line-height:1.5;min-height:44px}
+.correction-history>summary:focus-visible,.correction-attachments button:focus-visible{outline:3px solid #24766c;outline-offset:2px}
+.correction-history-hint{font-weight:400;color:#586960;font-size:12px;margin-left:10px}
+.correction-list{list-style:none;padding:0 12px 12px;margin:0;display:grid;gap:10px}
+.correction-entry{padding:14px;border:1px solid #dce5df;background:#fff;border-radius:9px;line-height:1.5}
+.correction-entry-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.correction-state{display:inline-block;border-radius:5px;padding:3px 8px;font-size:12px;font-weight:650}
+.correction-state.resolved{background:#e6f3ec;color:#205b3d}
+.correction-state.unresolved{background:#fff0e3;color:#854018}
+.correction-serials{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.correction-serials>div{padding:9px 11px;border:1px solid #e4e9e4;border-radius:6px;background:#f7f9f7;min-width:0}
+.correction-label{display:block;font-size:12px;color:#586960;line-height:1.6}
+.correction-serials code{display:block;word-break:break-word;font-size:13px;font-weight:650;margin-top:4px}
+.correction-reason{padding:12px 0 8px}
+.correction-reason p{margin:3px 0 0;overflow-wrap:anywhere;line-height:1.6}
+.correction-provenance{color:#586960;font-size:12px;padding-bottom:12px;border-bottom:1px solid #e7ece7}
+.correction-attachments{display:grid;gap:8px;padding-top:12px}
+.correction-attachments>strong{font-size:13px}
+.correction-attachment{padding:8px 10px;border-radius:6px;background:#f7f9f7;overflow-wrap:anywhere}
+.correction-attachment a{display:block;font-weight:600}
+.correction-attachments button{justify-self:start;min-height:40px}
+@media(max-width:760px){.correction-serials{grid-template-columns:1fr}.correction-history-hint{display:block;margin-left:0}.correction-entry{padding:12px}}
+
 @media print{.sidebar,.topbar,.toolbar,.page-heading>button,.actions,footer{display:none}.main{margin:0;width:100%}.panel{break-inside:avoid}.modal-backdrop{position:static;background:none}.modal{max-width:100%;box-shadow:none}.modal button{display:none}}
