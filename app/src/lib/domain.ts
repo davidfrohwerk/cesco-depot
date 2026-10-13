@@ -65,6 +65,7 @@ export type Equipment = Base & {
     requestId: string | null;
     volume: number;
     recoveryTargetHours: number | null;
+    receipt?: { at: string; actor: string; observedSerial: string; packageCondition: string; condition: string; handoffReference: string; notes: string; sourceIntakeId: string };
 };
 export type Intake = Base & {
     number: string;
@@ -562,6 +563,12 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             const matches = observed === a.serial;
             const condition = str(p.condition, 'Condition');
             assert(['GOOD', 'DAMAGED', 'FAILED'].includes(condition), 'Invalid condition.');
+            const packageCondition = p.packageCondition === undefined ? 'NOT_RECORDED_LEGACY' : str(p.packageCondition, 'Package condition', 40);
+            assert(['INTACT', 'DAMAGED', 'OPENED', 'NOT_RECORDED_LEGACY'].includes(packageCondition), 'Invalid package condition.');
+            const handoffReference = p.handoffReference === undefined ? 'NOT_RECORDED_LEGACY' : str(p.handoffReference, 'Physical handoff reference', 200);
+            const receiptNotes = String(p.notes || '').trim();
+            assert(receiptNotes.length <= 2000, 'Receipt notes cannot exceed 2000 characters.');
+            a.receipt = { at: now(), actor: u.email, observedSerial: observed, packageCondition, condition, handoffReference, notes: receiptNotes, sourceIntakeId: t.id };
             a.condition = condition;
             a.status = matches ? 'RECEIVED' : 'EXCEPTION';
             a.location = str(p.location, 'Depot / stocking location');
@@ -570,7 +577,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             if (t.assetIds.every(x => !['INBOUND'].includes(get(s.equipment, x, orgId).status)))
                 t.status = t.assetIds.some(x => get(s.equipment, x, orgId).status === 'EXCEPTION') ? 'EXCEPTION' : 'RECEIVED';
             entityId = a.id;
-            log(s, u, orgId, 'RECEIPT', a.id, `Observed ${observed}; expected ${a.serial}; ${condition}; ${a.location}; ${a.position}; ${String(p.notes || '')}`);
+            log(s, u, orgId, 'RECEIPT', a.id, `Observed ${observed}; expected ${a.serial}; equipment ${condition}; package ${packageCondition}; handoff ${handoffReference}; ${a.location}; ${a.position}; ${receiptNotes}`);
             break;
         }
         case 'verify': {
