@@ -248,3 +248,24 @@ test('bulk classification rejects missing support, duplicate selection and stale
     assert.equal(first.purpose, 'UNCLASSIFIED');
     assert.equal(f.s.imports.find(x => x.id === job)?.status, 'PREVIEW');
 });
+
+test('physical receiving retains separate package, equipment and handoff observations', () => {
+    const f = basic();
+    const a = f.s.equipment[1];
+    const iid = mutate(f.s, f.client, 'acme', 'intake', { assetIds: [a.id], notes: 'Demo cold spare' });
+    mutate(f.s, f.admin, 'acme', 'acceptIntake', { id: iid, tracking: 'TEST-CARRIER-REF' });
+    assert.equal(a.status, 'INBOUND');
+    assert.equal(a.receipt, undefined);
+    assert.throws(() => mutate(f.s, f.admin, 'acme', 'receive', { id: a.id, serial: a.serial, condition: 'GOOD', packageCondition: 'INVALID', handoffReference: 'TEST-RECEIPT', location: 'Demo hub', position: 'A1' }), /Invalid package condition/);
+    assert.equal(a.status, 'INBOUND');
+    mutate(f.s, f.admin, 'acme', 'receive', { id: a.id, serial: a.serial, condition: 'GOOD', packageCondition: 'INTACT', handoffReference: 'TEST-RECEIPT', location: 'Demo hub', position: 'A1', notes: 'Simulated receipt test' });
+    assert.equal(a.status, 'RECEIVED');
+    assert.equal(a.receipt?.actor, f.admin.email);
+    assert.equal(a.receipt?.packageCondition, 'INTACT');
+    assert.equal(a.receipt?.observedSerial, a.serial);
+    assert.equal(a.receipt?.handoffReference, 'TEST-RECEIPT');
+    assert.equal(a.custodian, 'CESCo');
+    assert.equal(a.testedAt, null);
+    assert.equal(a.testDue, null);
+    assert.ok(f.s.audit.some(x => x.action === 'RECEIPT' && x.detail.includes('TEST-RECEIPT')));
+});
