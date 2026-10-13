@@ -6,6 +6,7 @@ import { authenticate, hash, passwordHash, passwordValid, session, throttle } fr
 import { read, transact, query } from '@/lib/store';
 import { assert, id, now, str, num, mutate, scoped, requireCap, isInternal, get, log, fields, type Role } from '@/lib/domain';
 import { csvEscape } from '@/lib/csv';
+import { validateEvidenceCategory } from '@/lib/evidence-categories';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 const COOKIE = 'cesco_depot_v2';
@@ -146,12 +147,9 @@ export async function POST(req: NextRequest, { params }: {
             const s = await read();
             assert([...s.equipment, ...s.intakes, ...s.requests].some(x => x.id === entityId && x.orgId === orgId), 'Evidence must link to an account asset, intake, or request.');
             const category = str(form.get('category') || 'OTHER', 'Evidence category', 50);
-            const categories = ['OTHER', 'SERIAL_PHOTO', 'PACKAGE_BEFORE', 'PACKAGE_AFTER', 'EQUIPMENT_CONDITION', 'RECEIPT', 'TEST_RESULT', 'DISPATCH', 'INSTALLATION_BEFORE', 'INSTALLATION_AFTER'];
-            assert(categories.includes(category), 'Choose a supported evidence category.');
             const file = form.get('file');
             assert(file instanceof File && file.size > 0 && file.size <= 25 * 1024 * 1024, 'Upload a file of 1 byte–25 MB.');
-            const photographic = ['SERIAL_PHOTO', 'PACKAGE_BEFORE', 'PACKAGE_AFTER', 'EQUIPMENT_CONDITION', 'INSTALLATION_BEFORE', 'INSTALLATION_AFTER'].includes(category);
-            if (photographic) assert(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'].includes(file.type), 'Photographic evidence must be JPG, PNG, WebP or HEIC.');
+            validateEvidenceCategory(category, file.type);
             const bytes = Buffer.from(await file.arrayBuffer());
             const key = id();
             const root = resolve(/*turbopackIgnore: true*/ process.env.DEPOT_EVIDENCE_PATH || 'data/evidence');
