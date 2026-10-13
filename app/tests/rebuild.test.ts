@@ -1,5 +1,6 @@
 import test from 'node:test';
 import { inferMapping } from '../src/lib/import-mapping.ts';
+import { validateEvidenceCategory } from '../src/lib/evidence-categories.ts';
 import assert from 'node:assert/strict';
 import { emptyState, id, mutate, previewImport, previewEnrichment, balance, creditBalance, scoped, type State, type User } from '../src/lib/domain.ts';
 function fixture() { const s = emptyState(); s.organizations.push({ id: 'acme', name: 'Acme', termsDays: 30, currency: 'USD' }, { id: 'other', name: 'Other', termsDays: 0, currency: 'USD' }); const admin: User = { id: 'ops', orgId: 'internal', name: 'Ops', email: 'ops@example.com', password: '', role: 'SYSTEM_ADMIN' }; const client: User = { id: 'client', orgId: 'acme', name: 'Client', email: 'client@example.com', password: '', role: 'CLIENT_ADMIN' }; s.users.push(admin, client); return { s, admin, client }; }
@@ -312,4 +313,14 @@ test('receipt correction can reference only evidence from the matching intake or
     assert.throws(() => mutate(f.s, f.admin, 'acme', 'correctReceiptObservation', { id: a.id, serial: a.serial, reason: 'Label checked', evidenceId: 'unrelated-photo' }), /Evidence must be linked/);
     mutate(f.s, f.admin, 'acme', 'correctReceiptObservation', { id: a.id, serial: a.serial, reason: 'Label rechecked', evidenceId: 'linked-photo' });
     assert.equal(a.receiptCorrections?.[0].evidenceId, 'linked-photo');
+});
+
+test('optional evidence categories accept photographs and reject category/content-type mismatches', () => {
+    assert.equal(validateEvidenceCategory('SERIAL_PHOTO', 'image/jpeg'), 'SERIAL_PHOTO');
+    assert.equal(validateEvidenceCategory('PACKAGE_BEFORE', 'image/png'), 'PACKAGE_BEFORE');
+    assert.equal(validateEvidenceCategory('EQUIPMENT_CONDITION', 'image/webp'), 'EQUIPMENT_CONDITION');
+    assert.equal(validateEvidenceCategory('RECEIPT', 'application/pdf'), 'RECEIPT');
+    assert.equal(validateEvidenceCategory('OTHER', 'application/octet-stream'), 'OTHER');
+    assert.throws(() => validateEvidenceCategory('SERIAL_PHOTO', 'text/plain'), /Photographic evidence/);
+    assert.throws(() => validateEvidenceCategory('UNRECOGNIZED', 'image/jpeg'), /supported evidence category/);
 });
