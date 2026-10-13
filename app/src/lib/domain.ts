@@ -171,6 +171,7 @@ export type Evidence = Base & {
     at: string;
     description: string;
     category?: string;
+    receiptCorrectionIndex?: number;
 };
 export type Invite = Base & {
     email: string;
@@ -366,6 +367,13 @@ export function reviewBulkClassification(s: State, orgId: string, equipmentIds: 
     }
     return { rows: rows.map(a => ({ id: a.id, externalId: a.externalId, model: a.model, pool: a.pool, configuration: a.configuration, endpointId: a.endpointId })),
         purpose: target, recoveryTargetHours: hours };
+}
+export function validateCorrectionEvidenceLink(s: State, orgId: string, equipmentId: string, correctionIndex: number) {
+    assert(Number.isSafeInteger(correctionIndex) && correctionIndex >= 0, 'Invalid receiving correction reference.');
+    const equipment = get(s.equipment, equipmentId, orgId);
+    assert(equipment.receipt && equipment.intakeId, 'Equipment has no recorded physical receipt.');
+    assert(equipment.receiptCorrections?.[correctionIndex], 'Receiving correction does not exist for this equipment.');
+    return equipment;
 }
 export function mutate(s: State, u: User, orgId: string, action: string, p: Record<string, unknown>) {
     const org = s.organizations.find(x => x.id === orgId);
