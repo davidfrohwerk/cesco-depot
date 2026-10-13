@@ -66,6 +66,7 @@ export type Equipment = Base & {
     volume: number;
     recoveryTargetHours: number | null;
     receipt?: { at: string; actor: string; observedSerial: string; packageCondition: string; condition: string; handoffReference: string; notes: string; sourceIntakeId: string };
+    receiptCorrections?: Array<{ at: string; actor: string; previousSerial: string; correctedSerial: string; reason: string; evidenceId: string | null; resolved: boolean }>;
 };
 export type Intake = Base & {
     number: string;
@@ -169,6 +170,7 @@ export type Evidence = Base & {
     actor: string;
     at: string;
     description: string;
+    category?: string;
 };
 export type Invite = Base & {
     email: string;
@@ -578,6 +580,34 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
                 t.status = t.assetIds.some(x => get(s.equipment, x, orgId).status === 'EXCEPTION') ? 'EXCEPTION' : 'RECEIVED';
             entityId = a.id;
             log(s, u, orgId, 'RECEIPT', a.id, `Observed ${observed}; expected ${a.serial}; equipment ${condition}; package ${packageCondition}; handoff ${handoffReference}; ${a.location}; ${a.position}; ${receiptNotes}`);
+            break;
+        }
+        case 'correctReceiptObservation': {
+            requireCap(u, orgId, 'operate');
+            const a = get(s.equipment, p.id, orgId);
+            assert(a.status === 'EXCEPTION' && a.intakeId && a.receipt, 'Only a received exception with an original observation can be corrected.');
+            const t = get(s.intakes, a.intakeId, orgId);
+            assert(t.assetIds.includes(a.id), 'Equipment does not belong to the intake.');
+            const observed = str(p.serial, 'Corrected observed serial', 200);
+            const reason = str(p.reason, 'Correction reason', 1000);
+            const current = a.receiptCorrections?.at(-1)?.correctedSerial || a.receipt.observedSerial;
+            assert(observed !== current, 'The corrected serial must differ from the latest observation.');
+            const evidenceId = p.evidenceId ? str(p.evidenceId, 'Supporting evidence identifier') : null;
+            if (evidenceId) {
+                const evidence = get(s.evidence, evidenceId, orgId);
+                assert(evidence.entityId === a.id || evidence.entityId === t.id, 'Evidence must be linked to this equipment or its intake.');
+            }
+            const resolved = observed === a.serial;
+            const correction = { at: now(), actor: u.email, previousSerial: current, correctedSerial: observed, reason, evidenceId, resolved };
+            a.receiptCorrections = [...(a.receiptCorrections || []), correction];
+            if (resolved) {
+                a.status = 'RECEIVED';
+                t.status = t.assetIds.every(x => get(s.equipment, x, orgId).status === 'RECEIVED') ? 'RECEIVED' :
+                    t.assetIds.some(x => get(s.equipment, x, orgId).status === 'EXCEPTION') ? 'EXCEPTION' : 'IN_TRANSIT';
+            }
+            entityId = a.id;
+            log(s, u, orgId, 'RECEIPT_OBSERVATION_CORRECTED', a.id,
+                `Intake ${t.number}; prior ${current}; corrected ${observed}; resolved ${resolved}; reason ${reason}; evidence ${evidenceId || 'none'}`);
             break;
         }
         case 'verify': {
