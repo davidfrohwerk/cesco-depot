@@ -2,7 +2,7 @@ import test from 'node:test';
 import { inferMapping } from '../src/lib/import-mapping.ts';
 import { validateEvidenceCategory } from '../src/lib/evidence-categories.ts';
 import assert from 'node:assert/strict';
-import { emptyState, id, mutate, previewImport, previewEnrichment, balance, creditBalance, scoped, type State, type User } from '../src/lib/domain.ts';
+import { emptyState, id, mutate, previewImport, previewEnrichment, validateCorrectionEvidenceLink, balance, creditBalance, scoped, type State, type User } from '../src/lib/domain.ts';
 function fixture() { const s = emptyState(); s.organizations.push({ id: 'acme', name: 'Acme', termsDays: 30, currency: 'USD' }, { id: 'other', name: 'Other', termsDays: 0, currency: 'USD' }); const admin: User = { id: 'ops', orgId: 'internal', name: 'Ops', email: 'ops@example.com', password: '', role: 'SYSTEM_ADMIN' }; const client: User = { id: 'client', orgId: 'acme', name: 'Client', email: 'client@example.com', password: '', role: 'CLIENT_ADMIN' }; s.users.push(admin, client); return { s, admin, client }; }
 function importCsv(s: State, u: User, kind: string, csv: string) { const job = mutate(s, u, 'acme', 'importPreview', { kind, csv }); mutate(s, u, 'acme', 'importCommit', { id: job }); }
 function basic() { const f = fixture(); importCsv(f.s, f.client, 'endpoints', 'externalId,name,addressLine1\nIND,Indy,Indianapolis IN'); importCsv(f.s, f.client, 'equipment', 'externalId,manufacturer,model,serial,configuration,pool,purpose,endpointId,volume,recoveryTargetHours\nR1,OEM,X,001,v1,routers,SUPPORTED,IND,0,4\nS1,OEM,X,002,v1,routers,SPARE,,1,'); return f; }
@@ -323,4 +323,23 @@ test('optional evidence categories accept photographs and reject category/conten
     assert.equal(validateEvidenceCategory('OTHER', 'application/octet-stream'), 'OTHER');
     assert.throws(() => validateEvidenceCategory('SERIAL_PHOTO', 'text/plain'), /Photographic evidence/);
     assert.throws(() => validateEvidenceCategory('UNRECOGNIZED', 'image/jpeg'), /supported evidence category/);
+});
+
+test('post-correction photographic evidence can link to a completed observation without changing receipt', () => {
+    const f = basic();
+    const a = f.s.equipment[1];
+    const iid = mutate(f.s, f.client, 'acme', 'intake', { assetIds: [a.id], notes: 'Simulated receipt' });
+    mutate(f.s, f.admin, 'acme', 'acceptIntake', { id: iid, tracking: 'TEST-CARRIER' });
+    mutate(f.s, f.admin, 'acme', 'receive', { id: a.id, serial: 'TYPO', condition: 'GOOD', location: 'Hub', position: 'A' });
+    mutate(f.s, f.admin, 'acme', 'correctReceiptObservation', { id: a.id, serial: a.serial, reason: 'Transcription error after serial label recheck' });
+    const original = JSON.stringify(a.receiptCorrections);
+    assert.equal(validateCorrectionEvidenceLink(f.s, 'acme', a.id, 0).id, a.id);
+    assert.throws(() => validateCorrectionEvidenceLink(f.s, 'acme', a.id, 1), /does not exist/);
+    assert.throws(() => validateCorrectionEvidenceLink(f.s, 'acme', a.id, -1), /Invalid receiving correction/);
+    assert.throws(() => validateCorrectionEvidenceLink(f.s, 'other-account', a.id, 0), /Record not found/);
+    f.s.evidence.push({ id: 'subsequent-photo', orgId: 'acme', entityId: a.id, receiptCorrectionIndex: 0, name: 'serial-after.jpg', sha256: 'abc', key: 'photo', size: 10, mime: 'image/jpeg', actor: f.admin.email, at: new Date().toISOString(), description: 'New photo taken during correction review', category: 'SERIAL_PHOTO' });
+    assert.equal(f.s.evidence.filter(e => e.entityId === a.id && e.receiptCorrectionIndex === 0).length, 1);
+    assert.equal(JSON.stringify(a.receiptCorrections), original);
+    assert.equal(a.status, 'RECEIVED');
+    assert.equal(a.testedAt, null);
 });
