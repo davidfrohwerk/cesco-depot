@@ -1,3 +1,4 @@
+import { normalizeRateUnit } from './rate-units.ts';
 import { randomUUID } from 'node:crypto';
 import { sparePlan } from './planning.ts';
 import { parseCsv, rowsToObjects } from './csv.ts';
@@ -923,7 +924,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
         }
         case 'rate': {
             requireCap(u, orgId, 'rates');
-            const r: Rate = { id: id(), orgId, name: str(p.name, 'Service name', 200), category: str(p.category, 'Category', 100), unit: str(p.unit, 'Pricing unit', 100), cents: cents(p.cents, 'Unit price'), version: str(p.version, 'Agreement version', 200), active: true, approvedBy: null, approvedAt: null };
+            const r: Rate = { id: id(), orgId, name: str(p.name, 'Service name', 200), category: str(p.category, 'Category', 100), unit: normalizeRateUnit(str(p.unit, 'Pricing unit', 100)), cents: cents(p.cents, 'Unit price'), version: str(p.version, 'Agreement version', 200), active: true, approvedBy: null, approvedAt: null };
             assert(['RECEIVING', 'LABOR', 'PART', 'DISPATCH', 'SHIPPING', 'TESTING', 'STORAGE', 'SLA', 'DISPOSITION'].includes(r.category), 'Unknown rate category.');
             s.rates.push(r);
             entityId = r.id;
@@ -938,7 +939,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             assert(['RECEIVING', 'LABOR', 'PART', 'DISPATCH', 'SHIPPING', 'TESTING', 'STORAGE', 'SLA', 'DISPOSITION'].includes(category), 'Unknown rate category.');
             rate.name = str(p.name, 'Service name', 200);
             rate.category = category;
-            rate.unit = str(p.unit, 'Pricing unit', 100);
+            rate.unit = normalizeRateUnit(str(p.unit, 'Pricing unit', 100));
             rate.cents = cents(p.cents, 'Unit price');
             rate.version = str(p.version, 'Agreement version', 200);
             entityId = rate.id;
