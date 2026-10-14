@@ -20,7 +20,7 @@ export const metricDefinitions = {
     replenishmentHours: { unit: 'hours', basis: 'Requires linked spare dispatch and return-to-ready stock events', owner: 'CESCo operations' }
 } as const;
 
-export function operationsMetrics(s: State, orgId: string, asOf = new Date().toISOString(), periodStart?: string) {
+export function operationsMetrics(s: Pick<State, 'equipment' | 'requests' | 'activities'>, orgId: string, asOf = new Date().toISOString(), periodStart?: string) {
     const time = Date.parse(asOf);
     if (!Number.isFinite(time)) throw Error('Invalid metrics as-of timestamp.');
     const start = periodStart === undefined ? null : Date.parse(periodStart);
