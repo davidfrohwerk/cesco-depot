@@ -1,3 +1,4 @@
+import { normalizeRateUnit, rateUnitOptions } from '../src/lib/rate-units.ts';
 import { operationsMetrics, metricContractVersion } from '../src/lib/operations-metrics.ts';
 import test from 'node:test';
 import { inferMapping } from '../src/lib/import-mapping.ts';
@@ -485,4 +486,19 @@ test('draft rates can be corrected and withdrawn with audit history; approved ra
     assert.equal(f.s.rates.find(r => r.id === approvedId)?.active, false);
     assert.ok(f.s.audit.some(x => x.action === 'APPROVED_RATE_RETIRED' && x.entityId === approvedId));
     assert.equal(f.s.rates.length, 2);
+});
+
+test('billing unit dropdown values are canonical and legacy casing is normalized', () => {
+    assert.equal(normalizeRateUnit('Each'), 'each');
+    assert.equal(normalizeRateUnit(' per item '), 'each');
+    assert.equal(normalizeRateUnit('hour'), 'hour');
+    assert.equal(normalizeRateUnit('fulfillment'), 'fulfillment');
+    assert.throws(() => normalizeRateUnit('mystery'), /supported pricing unit/);
+    assert.ok(rateUnitOptions.some(u => u.value === 'each'));
+    const f = basic();
+    const id = mutate(f.s, f.admin, 'acme', 'rate', { name: 'Handling', category: 'DISPATCH', unit: 'Each', cents: 2500, version: 'DEMO' });
+    assert.equal(f.s.rates.find(r => r.id === id)?.unit, 'each');
+    mutate(f.s, f.admin, 'acme', 'editDraftRate', { id, name: 'Handling', category: 'DISPATCH', unit: 'FULFILLMENT', cents: 2500, version: 'DEMO' });
+    assert.equal(f.s.rates.find(r => r.id === id)?.unit, 'fulfillment');
+    assert.throws(() => mutate(f.s, f.admin, 'acme', 'rate', { name: 'Bad unit', category: 'DISPATCH', unit: 'arbitrary', cents: 100, version: 'DEMO' }), /supported pricing unit/);
 });
