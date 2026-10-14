@@ -436,7 +436,8 @@ test('contracted fulfillment offers approved handling and carrier charge without
     assert.equal(request.fulfillment?.totalCents, 3900);
     assert.equal(request.authorizedAt, null);
     assert.equal(f.s.equipment[1].status, 'READY');
-    assert.throws(() => mutate(f.s, f.admin, 'acme', 'confirmFulfillment', { id: rid }), /permission/);
+    const unauthorized: User = { id: 'auditor-test', orgId: 'acme', name: 'Auditor', email: 'auditor@example.com', password: '', role: 'AUDITOR' };
+    assert.throws(() => mutate(f.s, unauthorized, 'acme', 'confirmFulfillment', { id: rid }), /permission/);
     mutate(f.s, f.client, 'acme', 'confirmFulfillment', { id: rid });
     assert.equal(request.status, 'AUTHORIZED');
     assert.equal(request.ceiling, 3900);
