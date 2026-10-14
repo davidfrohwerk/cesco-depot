@@ -406,3 +406,19 @@ test('reported service charge totals use performed timestamp and never conflate 
     assert.equal(m.recordedServiceCount, 1);
     assert.throws(() => operationsMetrics(f.s, 'acme', '2026-10-07T00:00:00.000Z', '2026-10-13T00:00:00.000Z'), /Invalid metrics reporting period/);
 });
+
+test('fulfillment event counters are tenant-scoped and period filtered', () => {
+    const f = basic();
+    const make = (id: string, orgId: string, type: 'SPARE_RESERVED' | 'SPARE_DISPATCHED' | 'DELIVERY_RECORDED' | 'FAILED_RETURN_RECEIVED' | 'SPARE_REPLENISHED', at: string) => ({ id, orgId, type, at, requestId: 'req', equipmentId: 'eq', actor: 'ops@example.com', reference: 'simulation', relatedEquipmentId: null, version: 1 as const });
+    f.s.operationalEvents = [
+        make('e1','acme','SPARE_RESERVED','2026-10-10T00:00:00.000Z'),
+        make('e2','acme','SPARE_DISPATCHED','2026-10-11T00:00:00.000Z'),
+        make('e3','acme','DELIVERY_RECORDED','2026-10-12T00:00:00.000Z'),
+        make('e4','acme','FAILED_RETURN_RECEIVED','2026-10-13T00:00:00.000Z'),
+        make('e5','other','SPARE_REPLENISHED','2026-10-13T00:00:00.000Z')
+    ];
+    const report = operationsMetrics(f.s,'acme','2026-10-12T23:59:59.000Z','2026-10-11T00:00:00.000Z');
+    assert.deepEqual(report.fulfillmentMilestones, {reserved:0,dispatched:1,delivered:1,failedReturnsReceived:0,replenished:0});
+    assert.equal(operationsMetrics(f.s,'acme','2026-10-14T00:00:00.000Z').fulfillmentMilestones.failedReturnsReceived,1);
+    assert.equal(operationsMetrics(f.s,'other','2026-10-14T00:00:00.000Z').fulfillmentMilestones.replenished,1);
+});
