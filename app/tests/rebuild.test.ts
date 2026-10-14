@@ -490,6 +490,8 @@ test('draft rates can be corrected and withdrawn with audit history; approved ra
 
 test('billing unit dropdown values are canonical and legacy casing is normalized', () => {
     assert.equal(normalizeRateUnit('Each'), 'each');
+    assert.equal(normalizeRateUnit('cubic foot-day'), 'cubic-foot-day');
+    assert.equal(normalizeRateUnit('job'), 'job');
     assert.equal(normalizeRateUnit(' per item '), 'each');
     assert.equal(normalizeRateUnit('hour'), 'hour');
     assert.equal(normalizeRateUnit('fulfillment'), 'fulfillment');
