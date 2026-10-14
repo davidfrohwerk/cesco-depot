@@ -106,6 +106,7 @@ export type Request = Base & {
     workOrder: string | null;
     pendingCeiling: number | null;
     resumeStatus: string | null;
+    fulfillment?: { spareId: string; handlingRateId: string; handlingCents: number; shippingCents: number; shippingSource: string; serviceLevel: string; destination: string; termsVersion: string; totalCents: number; preparedAt: string; confirmedAt: string | null; confirmedBy: string | null };
 };
 export type Activity = Base & {
     requestId: string | null;
@@ -708,6 +709,56 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             log(s, u, orgId, 'SERVICE_RECEIPT', a.id, `Observed ${serial}; expected ${a.serial}; ${a.condition}`);
             break;
         }
+        case 'prepareFulfillment': {
+            requireCap(u, orgId, 'operate');
+            const r = get(s.requests, p.id, orgId);
+            assert(r.type === 'RECOVERY' && ['REQUESTED', 'QUOTED'].includes(r.status), 'Only an unexecuted recovery request can receive a fulfillment offer.');
+            const affected = get(s.equipment, r.equipmentId, orgId);
+            const spare = get(s.equipment, p.spareId, orgId);
+            assert(compatible(affected, spare) && ready(spare) && spare.custodian === 'CESCo' && !spare.requestId, 'Choose an unallocated, compatible CESCo-held verified spare.');
+            const rate = get(s.rates, p.handlingRateId, orgId);
+            assert(rate.category === 'DISPATCH' && rate.active && rate.approvedAt, 'An active, client-approved dispatch handling rate is required.');
+            assert(rate.unit === 'each' || rate.unit === 'fulfillment', 'Handling rate must use each or fulfillment units.');
+            const shippingCents = cents(p.shippingCents, 'Shipping charge');
+            const shippingSource = str(p.shippingSource, 'Carrier rate source / reference', 300);
+            const serviceLevel = str(p.serviceLevel, 'Delivery service level', 200);
+            const endpoint = get(s.endpoints, r.endpointId, orgId);
+            assert(endpoint.active, 'Endpoint must be active.');
+            const destination = [endpoint.name, endpoint.addressLine1, endpoint.addressLine2, endpoint.city, endpoint.state, endpoint.postalCode, endpoint.country].filter(Boolean).join(', ');
+            const totalCents = rate.cents + shippingCents;
+            assert(Number.isSafeInteger(totalCents), 'Fulfillment charge exceeds supported range.');
+            r.fulfillment = { spareId: spare.id, handlingRateId: rate.id, handlingCents: rate.cents, shippingCents, shippingSource, serviceLevel, destination, termsVersion: rate.version, totalCents, preparedAt: now(), confirmedAt: null, confirmedBy: null };
+            r.status = 'FULFILLMENT_OFFER';
+            r.authorizedAt = null;
+            r.authorizedBy = null;
+            entityId = r.id;
+            log(s, u, orgId, 'FULFILLMENT_OFFER_PREPARED', r.id, JSON.stringify(r.fulfillment));
+            break;
+        }
+        case 'confirmFulfillment': {
+            requireCap(u, orgId, 'authorize');
+            const r = get(s.requests, p.id, orgId);
+            assert(r.type === 'RECOVERY' && r.status === 'FULFILLMENT_OFFER' && r.fulfillment, 'An active fulfillment offer is required.');
+            const offer = r.fulfillment;
+            const spare = get(s.equipment, offer.spareId, orgId);
+            const source = get(s.equipment, r.equipmentId, orgId);
+            const rate = get(s.rates, offer.handlingRateId, orgId);
+            assert(compatible(source, spare) && ready(spare) && spare.custodian === 'CESCo' && !spare.requestId, 'Offered spare is no longer available; refresh the fulfillment offer.');
+            assert(rate.active && !!rate.approvedAt && rate.version === offer.termsVersion && rate.cents === offer.handlingCents, 'Standing handling agreement changed; refresh the offer.');
+            const destinationEndpoint = get(s.endpoints, r.endpointId, orgId);
+            const destination = [destinationEndpoint.name, destinationEndpoint.addressLine1, destinationEndpoint.addressLine2, destinationEndpoint.city, destinationEndpoint.state, destinationEndpoint.postalCode, destinationEndpoint.country].filter(Boolean).join(', ');
+            assert(destinationEndpoint.active && destination === offer.destination, 'Delivery destination changed; refresh the offer.');
+            offer.confirmedAt = now();
+            offer.confirmedBy = u.id;
+            r.authorizedAt = offer.confirmedAt;
+            r.authorizedBy = u.id;
+            r.ceiling = offer.totalCents;
+            r.termsVersion = offer.termsVersion;
+            r.status = 'AUTHORIZED';
+            entityId = r.id;
+            log(s, u, orgId, 'FULFILLMENT_CONFIRMED', r.id, JSON.stringify({ spareId: offer.spareId, totalCents: offer.totalCents, serviceLevel: offer.serviceLevel, destination, shippingSource: offer.shippingSource }));
+            break;
+        }
         case 'quote': {
             requireCap(u, orgId, 'operate');
             const r = get(s.requests, p.id, orgId);
@@ -737,7 +788,8 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             assert(r.type === 'RECOVERY' && r.status === 'AUTHORIZED', 'Authorize a recovery request first.');
             const source = get(s.equipment, r.equipmentId, orgId);
             const a = get(s.equipment, p.spareId, orgId);
-            assert(compatible(source, a) && ready(a), 'Spare must be compatible, verified, current, and available.');
+            if (r.fulfillment) assert(r.fulfillment.confirmedAt && r.fulfillment.spareId === a.id, 'Reserve only the client-confirmed spare.');
+            assert(compatible(source, a) && ready(a) && a.custodian === 'CESCo' && !a.requestId, 'Spare must be compatible, verified, current, and available.');
             a.status = 'RESERVED';
             a.requestId = r.id;
             source.requestId = r.id;
