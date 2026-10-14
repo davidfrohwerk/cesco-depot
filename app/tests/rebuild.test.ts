@@ -1,3 +1,4 @@
+import { operationsMetrics, metricContractVersion } from '../src/lib/operations-metrics.ts';
 import test from 'node:test';
 import { inferMapping } from '../src/lib/import-mapping.ts';
 import { validateEvidenceCategory } from '../src/lib/evidence-categories.ts';
@@ -369,4 +370,39 @@ test('corrected receiving exception requires independent readiness test before s
     assert.equal(a.receiptCorrections?.length, 1);
     assert.ok(f.s.audit.some(x => x.action === 'STOCK_REPOSITIONED'));
     assert.ok(f.s.audit.some(x => x.action === 'READINESS_VERIFIED'));
+});
+
+test('operations metrics are tenant-scoped, date-bound, and never fabricate capacity or turnaround', () => {
+    const f = basic();
+    const before = operationsMetrics(f.s, 'acme', '2026-10-13T12:00:00.000Z');
+    assert.equal(before.contract, metricContractVersion);
+    assert.equal(before.readyByRegion, null);
+    assert.equal(before.warehouseUtilization, null);
+    assert.equal(before.replenishmentHours, null);
+    assert.ok(before.limitations.length > 0);
+    const spare = f.s.equipment.find(x => x.purpose === 'SPARE');
+    assert.ok(spare);
+    spare.status = 'READY';
+    spare.custodian = 'CESCo';
+    spare.condition = 'GOOD';
+    spare.testedAt = '2026-10-13T10:00:00.000Z';
+    spare.testDue = '2026-11-12T10:00:00.000Z';
+    spare.requestId = null;
+    const current = operationsMetrics(f.s, 'acme', '2026-10-13T12:00:00.000Z');
+    assert.equal(current.readySpareCount, 1);
+    assert.equal(current.readyByCompatibility.find(x => x.pool === spare.pool)?.ready, 1);
+    assert.equal(operationsMetrics(f.s, 'acme', '2026-11-13T12:00:00.000Z').readySpareCount, 0);
+    assert.equal(operationsMetrics(f.s, 'another-tenant', '2026-10-13T12:00:00.000Z').readySpareCount, 0);
+    spare.requestId = 'reserved';
+    assert.equal(operationsMetrics(f.s, 'acme', '2026-10-13T12:00:00.000Z').readySpareCount, 0);
+    assert.throws(() => operationsMetrics(f.s, 'acme', 'not-a-date'), /Invalid metrics as-of/);
+});
+test('reported service charge totals use performed timestamp and never conflate invoices and payments', () => {
+    const f = basic();
+    f.s.activities.push({ id: 'm1', orgId: 'acme', requestId: null, intakeId: null, assetId: null, rateId: 'r1', rateVersion: 'v1', description: 'handling', quantity: 1, unit: 'job', unitCents: 2300, amount: 2300, status: 'ACCEPTED', performedAt: '2026-10-10T12:00:00.000Z', performedBy: 'staff', periodStart: null, periodEnd: null, costCents: 1000, invoiceId: null });
+    f.s.activities.push({ ...f.s.activities[f.s.activities.length-1], id: 'm2', performedAt: '2026-10-02T12:00:00.000Z', amount: 900 });
+    const m = operationsMetrics(f.s, 'acme', '2026-10-13T12:00:00.000Z', '2026-10-07T00:00:00.000Z');
+    assert.equal(m.recordedServiceCostCents, 2300);
+    assert.equal(m.recordedServiceCount, 1);
+    assert.throws(() => operationsMetrics(f.s, 'acme', '2026-10-07T00:00:00.000Z', '2026-10-13T00:00:00.000Z'), /Invalid metrics reporting period/);
 });
