@@ -929,10 +929,46 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             entityId = r.id;
             break;
         }
+        case 'editDraftRate': {
+            requireCap(u, orgId, 'rates');
+            const rate = get(s.rates, p.id, orgId);
+            assert(rate.active && !rate.approvedAt, 'Only active, unapproved draft rates may be edited.');
+            const old = { name: rate.name, category: rate.category, unit: rate.unit, cents: rate.cents, version: rate.version };
+            const category = str(p.category, 'Category', 100);
+            assert(['RECEIVING', 'LABOR', 'PART', 'DISPATCH', 'SHIPPING', 'TESTING', 'STORAGE', 'SLA', 'DISPOSITION'].includes(category), 'Unknown rate category.');
+            rate.name = str(p.name, 'Service name', 200);
+            rate.category = category;
+            rate.unit = str(p.unit, 'Pricing unit', 100);
+            rate.cents = cents(p.cents, 'Unit price');
+            rate.version = str(p.version, 'Agreement version', 200);
+            entityId = rate.id;
+            log(s, u, orgId, 'DRAFT_RATE_REVISED', rate.id, JSON.stringify({ before: old, after: { name: rate.name, category: rate.category, unit: rate.unit, cents: rate.cents, version: rate.version } }));
+            break;
+        }
+        case 'withdrawRate': {
+            requireCap(u, orgId, 'rates');
+            const rate = get(s.rates, p.id, orgId);
+            assert(rate.active && !rate.approvedAt, 'Only active, unapproved draft rates can be withdrawn.');
+            const reason = str(p.reason, 'Withdrawal reason', 500);
+            rate.active = false;
+            entityId = rate.id;
+            log(s, u, orgId, 'DRAFT_RATE_WITHDRAWN', rate.id, reason);
+            break;
+        }
+        case 'retireRate': {
+            requireCap(u, orgId, 'rates');
+            const rate = get(s.rates, p.id, orgId);
+            assert(rate.active && !!rate.approvedAt, 'Only an active approved rate can be retired.');
+            const reason = str(p.reason, 'Retirement reason', 500);
+            rate.active = false;
+            entityId = rate.id;
+            log(s, u, orgId, 'APPROVED_RATE_RETIRED', rate.id, reason);
+            break;
+        }
         case 'approveRate': {
             requireCap(u, orgId, 'authorize');
             const rate = get(s.rates, p.id, orgId);
-            assert(!rate.approvedAt, 'Agreement already approved.');
+            assert(rate.active && !rate.approvedAt, 'Only an active draft rate can be approved.');
             rate.approvedBy = u.id;
             rate.approvedAt = now();
             entityId = rate.id;
