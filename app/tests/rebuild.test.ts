@@ -422,3 +422,44 @@ test('fulfillment event counters are tenant-scoped and period filtered', () => {
     assert.equal(operationsMetrics(f.s,'acme','2026-10-14T00:00:00.000Z').fulfillmentMilestones.failedReturnsReceived,1);
     assert.equal(operationsMetrics(f.s,'other','2026-10-14T00:00:00.000Z').fulfillmentMilestones.replenished,1);
 });
+
+test('contracted fulfillment offers approved handling and carrier charge without negotiated quote', () => {
+    const f = basic(); receive(f);
+    const rid = mutate(f.s, f.client, 'acme', 'request', { equipmentId: f.s.equipment[0].id, type: 'RECOVERY', scope: 'Replace failed router' });
+    assert.throws(() => mutate(f.s, f.admin, 'acme', 'prepareFulfillment', { id: rid, spareId: f.s.equipment[1].id, handlingRateId: 'missing', shippingCents: 1400, shippingSource: 'Manual carrier quote', serviceLevel: 'Overnight' }), /Record not found/);
+    const rateId = mutate(f.s, f.admin, 'acme', 'rate', { name: 'Depot pick-pack', category: 'DISPATCH', unit: 'each', cents: 2500, version: 'Signed terms 1' });
+    assert.throws(() => mutate(f.s, f.admin, 'acme', 'prepareFulfillment', { id: rid, spareId: f.s.equipment[1].id, handlingRateId: rateId, shippingCents: 1400, shippingSource: 'Manual carrier quote', serviceLevel: 'Overnight' }), /client-approved dispatch/);
+    mutate(f.s, f.client, 'acme', 'approveRate', { id: rateId });
+    mutate(f.s, f.admin, 'acme', 'prepareFulfillment', { id: rid, spareId: f.s.equipment[1].id, handlingRateId: rateId, shippingCents: 1400, shippingSource: 'TEST carrier estimate #A', serviceLevel: 'Overnight' });
+    const request = f.s.requests.find(r => r.id === rid)!;
+    assert.equal(request.status, 'FULFILLMENT_OFFER');
+    assert.equal(request.fulfillment?.totalCents, 3900);
+    assert.equal(request.authorizedAt, null);
+    assert.equal(f.s.equipment[1].status, 'READY');
+    assert.throws(() => mutate(f.s, f.admin, 'acme', 'confirmFulfillment', { id: rid }), /permission/);
+    mutate(f.s, f.client, 'acme', 'confirmFulfillment', { id: rid });
+    assert.equal(request.status, 'AUTHORIZED');
+    assert.equal(request.ceiling, 3900);
+    assert.ok(request.fulfillment?.confirmedAt);
+    assert.throws(() => mutate(f.s, f.admin, 'acme', 'reserve', { id: rid, spareId: f.s.equipment[0].id }), /client-confirmed spare/);
+    mutate(f.s, f.admin, 'acme', 'reserve', { id: rid, spareId: f.s.equipment[1].id });
+    assert.equal(request.status, 'RESERVED');
+    assert.equal(f.s.equipment[1].status, 'RESERVED');
+});
+test('fulfillment cannot confirm stale stock, changed tariff, or endpoint destination', () => {
+    const f = basic(); receive(f);
+    const rid = mutate(f.s, f.client, 'acme', 'request', { equipmentId: f.s.equipment[0].id, type: 'RECOVERY', scope: 'Endpoint recovery' });
+    const rateId = mutate(f.s, f.admin, 'acme', 'rate', { name: 'Handling', category: 'DISPATCH', unit: 'each', cents: 2500, version: 'Contract A' });
+    mutate(f.s, f.client, 'acme', 'approveRate', { id: rateId });
+    const prepare = () => mutate(f.s, f.admin, 'acme', 'prepareFulfillment', { id: rid, spareId: f.s.equipment[1].id, handlingRateId: rateId, shippingCents: 0, shippingSource: 'TEST no-charge customer collection', serviceLevel: 'Collection' });
+    prepare();
+    f.s.rates.find(r => r.id === rateId)!.cents = 3000;
+    assert.throws(() => mutate(f.s, f.client, 'acme', 'confirmFulfillment', { id: rid }), /agreement changed/);
+    f.s.rates.find(r => r.id === rateId)!.cents = 2500;
+    f.s.equipment[1].status = 'REPAIR';
+    assert.throws(() => mutate(f.s, f.client, 'acme', 'confirmFulfillment', { id: rid }), /no longer available/);
+    f.s.equipment[1].status = 'READY';
+    f.s.endpoints[0].addressLine1 = 'Changed address';
+    assert.throws(() => mutate(f.s, f.client, 'acme', 'confirmFulfillment', { id: rid }), /destination changed/);
+    assert.equal(f.s.requests[0].authorizedAt, null);
+});
