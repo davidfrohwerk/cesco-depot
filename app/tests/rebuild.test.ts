@@ -504,3 +504,18 @@ test('billing unit dropdown values are canonical and legacy casing is normalized
     assert.equal(f.s.rates.find(r => r.id === id)?.unit, 'fulfillment');
     assert.throws(() => mutate(f.s, f.admin, 'acme', 'rate', { name: 'Bad unit', category: 'DISPATCH', unit: 'arbitrary', cents: 100, version: 'DEMO' }), /supported pricing unit/);
 });
+
+test('simulated fulfillment is visibly distinguished and cannot be confirmed or shipped', () => {
+ const f = basic(); receive(f);
+ const rid = mutate(f.s, f.client, 'acme', 'request', { equipmentId: f.s.equipment[0].id, type: 'RECOVERY', scope: 'Simulation only' });
+ const rateId = mutate(f.s, f.admin, 'acme', 'rate', { name: 'Handling', category: 'DISPATCH', unit: 'each', cents: 2500, version: 'DEMO' });
+ mutate(f.s, f.client, 'acme', 'approveRate', { id: rateId });
+ mutate(f.s, f.admin, 'acme', 'prepareFulfillment', { id: rid, spareId: f.s.equipment[1].id, handlingRateId: rateId, shippingCents: 5000, shippingSource: 'SIMULATED — no carrier quote', serviceLevel: 'Overnight', offerMode: 'SIMULATED' });
+ const request = f.s.requests.find(r => r.id === rid)!;
+ assert.equal(request.fulfillment?.offerMode, 'SIMULATED');
+ assert.equal(request.fulfillment?.totalCents, 7500);
+ assert.throws(() => mutate(f.s, f.client, 'acme', 'confirmFulfillment', { id: rid }), /Simulated offers cannot authorize/);
+ assert.equal(request.status, 'FULFILLMENT_OFFER');
+ assert.equal(request.authorizedAt, null);
+ assert.equal(f.s.equipment[1].status, 'READY');
+});
