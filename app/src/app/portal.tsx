@@ -1,5 +1,5 @@
-import { rateUnitOptions, normalizeRateUnit } from '@/lib/rate-units';
 'use client';
+import { rateUnitOptions, normalizeRateUnit } from '@/lib/rate-units';
 import { useEffect, useState, type FormEvent } from 'react';
 import { parseCsv } from '@/lib/csv';
 import { inferMapping } from '@/lib/import-mapping';
