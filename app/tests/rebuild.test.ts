@@ -464,3 +464,25 @@ test('fulfillment cannot confirm stale stock, changed tariff, or endpoint destin
     assert.throws(() => mutate(f.s, f.client, 'acme', 'confirmFulfillment', { id: rid }), /destination changed/);
     assert.equal(f.s.requests[0].authorizedAt, null);
 });
+
+test('draft rates can be corrected and withdrawn with audit history; approved rates can only be retired', () => {
+    const f = basic();
+    const rateId = mutate(f.s, f.admin, 'acme', 'rate', { name: 'Incorrect draft', category: 'DISPATCH', unit: 'each', cents: 2500, version: 'DEMO' });
+    const rate = f.s.rates.find(r => r.id === rateId)!;
+    mutate(f.s, f.admin, 'acme', 'editDraftRate', { id: rateId, name: 'Corrected draft', category: 'DISPATCH', unit: 'each', cents: 2700, version: 'DEMO-2' });
+    assert.equal(rate.cents, 2700);
+    assert.ok(f.s.audit.some(x => x.action === 'DRAFT_RATE_REVISED' && x.entityId === rateId));
+    assert.throws(() => mutate(f.s, f.admin, 'other', 'withdrawRate', { id: rateId, reason: 'Wrong tenant' }), /Record not found/);
+    mutate(f.s, f.admin, 'acme', 'withdrawRate', { id: rateId, reason: 'Created under incorrect account' });
+    assert.equal(rate.active, false);
+    assert.throws(() => mutate(f.s, f.client, 'acme', 'approveRate', { id: rateId }), /active draft/);
+    assert.throws(() => mutate(f.s, f.admin, 'acme', 'editDraftRate', { id: rateId, name: 'Again', category: 'DISPATCH', unit: 'each', cents: 2800, version: 'DEMO-3' }), /active, unapproved/);
+    const approvedId = mutate(f.s, f.admin, 'acme', 'rate', { name: 'Approved', category: 'DISPATCH', unit: 'each', cents: 2500, version: 'SIGNED' });
+    mutate(f.s, f.client, 'acme', 'approveRate', { id: approvedId });
+    assert.throws(() => mutate(f.s, f.admin, 'acme', 'editDraftRate', { id: approvedId, name: 'Tampered', category: 'DISPATCH', unit: 'each', cents: 0, version: 'BAD' }), /active, unapproved/);
+    assert.throws(() => mutate(f.s, f.admin, 'acme', 'withdrawRate', { id: approvedId, reason: 'Wrong process' }), /unapproved/);
+    mutate(f.s, f.admin, 'acme', 'retireRate', { id: approvedId, reason: 'Superseded pricing schedule' });
+    assert.equal(f.s.rates.find(r => r.id === approvedId)?.active, false);
+    assert.ok(f.s.audit.some(x => x.action === 'APPROVED_RATE_RETIRED' && x.entityId === approvedId));
+    assert.equal(f.s.rates.length, 2);
+});
