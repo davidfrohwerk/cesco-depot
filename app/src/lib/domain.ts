@@ -142,6 +142,7 @@ export type Settlement = Base & {
     reference: string;
     createdAt: string;
 };
+export type OperationalEvent = Base & { requestId: string; equipmentId: string; type: 'SPARE_RESERVED' | 'SPARE_DISPATCHED' | 'DELIVERY_RECORDED' | 'FAILED_RETURN_RECEIVED' | 'SPARE_REPLENISHED'; at: string; actor: string; reference: string; relatedEquipmentId: string | null; version: 1; };
 export type Audit = Base & {
     at: string;
     actor: string;
@@ -206,11 +207,12 @@ export type State = {
     invoices: Invoice[];
     settlements: Settlement[];
     audit: Audit[];
+    operationalEvents?: OperationalEvent[];
     imports: ImportJob[];
     evidence: Evidence[];
     invites: Invite[];
 };
-export const emptyState = (): State => ({ plans: [], organizations: [], users: [], endpoints: [], equipment: [], intakes: [], rates: [], requests: [], activities: [], invoices: [], settlements: [], audit: [], imports: [], evidence: [], invites: [] });
+export const emptyState = (): State => ({ plans: [], organizations: [], users: [], endpoints: [], equipment: [], intakes: [], rates: [], requests: [], activities: [], invoices: [], settlements: [], audit: [], operationalEvents: [], imports: [], evidence: [], invites: [] });
 export const id = () => randomUUID();
 export const now = () => new Date().toISOString();
 export function assert(value: unknown, message: string): asserts value { if (!value)
@@ -219,6 +221,9 @@ export function str(value: unknown, label: string, max = 1000) { assert(typeof v
 export function num(value: unknown, label: string, min = 0, max = 1e9) { const n = Number(value); assert(value !== '' && value !== null && value !== undefined && Number.isFinite(n) && n >= min && n <= max, `${label} must be between ${min} and ${max}.`); return n; }
 export function cents(value: unknown, label = 'Amount') { const n = num(value, label); assert(Number.isSafeInteger(n), `${label} must be whole cents.`); return n; }
 export function log(s: State, u: User, orgId: string, action: string, entityId: string, detail: string) { s.audit.push({ id: id(), orgId, at: now(), actor: u.email, action, entityId, detail }); }
+export function operationalEvent(s: State, u: User, orgId: string, requestId: string, equipmentId: string, type: OperationalEvent['type'], reference = '', relatedEquipmentId: string | null = null) {
+    (s.operationalEvents ||= []).push({ id: id(), orgId, requestId, equipmentId, type, at: now(), actor: u.email, reference, relatedEquipmentId, version: 1 });
+}
 export function isInternal(u: User) { return ['SYSTEM_ADMIN', 'OPERATIONS', 'FINANCE'].includes(u.role); }
 export function allowed(u: User, orgId: string, cap: string) {
     if (u.role === 'SYSTEM_ADMIN')
@@ -738,6 +743,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             source.requestId = r.id;
             r.spareId = a.id;
             r.status = 'RESERVED';
+            operationalEvent(s, u, orgId, r.id, a.id, 'SPARE_RESERVED', '', source.id);
             entityId = r.id;
             break;
         }
@@ -754,6 +760,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             a.status = 'OUTBOUND';
             a.custodian = str(p.custodian, 'Carrier / technician');
             a.location = 'In transit to endpoint';
+            operationalEvent(s, u, orgId, r.id, a.id, 'SPARE_DISPATCHED', r.tracking, r.equipmentId);
             entityId = r.id;
             break;
         }
@@ -775,6 +782,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             a.custodian = 'Client';
             a.endpointId = e.id;
             r.status = 'DELIVERED';
+            operationalEvent(s, u, orgId, r.id, a.id, 'DELIVERY_RECORDED', String(p.notes), failed.id);
             entityId = r.id;
             break;
         }
@@ -789,6 +797,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             a.location = str(p.location, 'Return depot');
             a.position = str(p.position, 'Internal position');
             r.status = 'RETURNED';
+            operationalEvent(s, u, orgId, r.id, a.id, 'FAILED_RETURN_RECEIVED', a.location, r.spareId);
             entityId = a.id;
             break;
         }
@@ -812,6 +821,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             assert(a.status === 'READY' && a.purpose === 'SUPPORTED', 'Repair and test returned equipment first.');
             a.purpose = 'SPARE';
             a.endpointId = null;
+            if (a.requestId) operationalEvent(s, u, orgId, a.requestId, a.id, 'SPARE_REPLENISHED', a.location);
             entityId = a.id;
             break;
         }
