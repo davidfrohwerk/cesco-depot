@@ -20,7 +20,7 @@ export const metricDefinitions = {
     replenishmentHours: { unit: 'hours', basis: 'Requires linked spare dispatch and return-to-ready stock events', owner: 'CESCo operations' }
 } as const;
 
-export function operationsMetrics(s: Pick<State, 'equipment' | 'requests' | 'activities'>, orgId: string, asOf = new Date().toISOString(), periodStart?: string) {
+export function operationsMetrics(s: Pick<State, 'equipment' | 'requests' | 'activities'> & Partial<Pick<State, 'operationalEvents'>>, orgId: string, asOf = new Date().toISOString(), periodStart?: string) {
     const time = Date.parse(asOf);
     if (!Number.isFinite(time)) throw Error('Invalid metrics as-of timestamp.');
     const start = periodStart === undefined ? null : Date.parse(periodStart);
@@ -45,7 +45,16 @@ export function operationsMetrics(s: Pick<State, 'equipment' | 'requests' | 'act
         const t = Date.parse(a.performedAt);
         return Number.isFinite(t) && t <= time && (start === null || t >= start);
     });
+    const events = (s.operationalEvents || []).filter(e => e.orgId === orgId && Number.isFinite(Date.parse(e.at)) && Date.parse(e.at) <= time && (start === null || Date.parse(e.at) >= start));
+    const eventCount = (type: string) => events.filter(e => e.type === type).length;
     return {
+        fulfillmentMilestones: {
+            reserved: eventCount('SPARE_RESERVED'),
+            dispatched: eventCount('SPARE_DISPATCHED'),
+            delivered: eventCount('DELIVERY_RECORDED'),
+            failedReturnsReceived: eventCount('FAILED_RETURN_RECEIVED'),
+            replenished: eventCount('SPARE_REPLENISHED')
+        },
         contract: metricContractVersion,
         asOf,
         periodStart: periodStart ?? null,
