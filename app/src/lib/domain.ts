@@ -107,7 +107,7 @@ export type Request = Base & {
     workOrder: string | null;
     pendingCeiling: number | null;
     resumeStatus: string | null;
-    fulfillment?: { spareId: string; handlingRateId: string; handlingCents: number; shippingCents: number; shippingSource: string; serviceLevel: string; destination: string; termsVersion: string; totalCents: number; preparedAt: string; confirmedAt: string | null; confirmedBy: string | null };
+    fulfillment?: { offerMode?: 'SIMULATED' | 'LIVE'; spareId: string; handlingRateId: string; handlingCents: number; shippingCents: number; shippingSource: string; serviceLevel: string; destination: string; termsVersion: string; totalCents: number; preparedAt: string; confirmedAt: string | null; confirmedBy: string | null };
 };
 export type Activity = Base & {
     requestId: string | null;
@@ -720,6 +720,8 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             const rate = get(s.rates, p.handlingRateId, orgId);
             assert(rate.category === 'DISPATCH' && rate.active && rate.approvedAt, 'An active, client-approved dispatch handling rate is required.');
             assert(rate.unit === 'each' || rate.unit === 'fulfillment', 'Handling rate must use each or fulfillment units.');
+            const offerMode = p.offerMode === undefined ? 'LIVE' : str(p.offerMode, 'Offer type');
+            assert(offerMode === 'SIMULATED' || offerMode === 'LIVE', 'Choose a valid fulfillment offer type.');
             const shippingCents = cents(p.shippingCents, 'Shipping charge');
             const shippingSource = str(p.shippingSource, 'Carrier rate source / reference', 300);
             const serviceLevel = str(p.serviceLevel, 'Delivery service level', 200);
@@ -728,7 +730,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             const destination = [endpoint.name, endpoint.addressLine1, endpoint.addressLine2, endpoint.city, endpoint.state, endpoint.postalCode, endpoint.country].filter(Boolean).join(', ');
             const totalCents = rate.cents + shippingCents;
             assert(Number.isSafeInteger(totalCents), 'Fulfillment charge exceeds supported range.');
-            r.fulfillment = { spareId: spare.id, handlingRateId: rate.id, handlingCents: rate.cents, shippingCents, shippingSource, serviceLevel, destination, termsVersion: rate.version, totalCents, preparedAt: now(), confirmedAt: null, confirmedBy: null };
+            r.fulfillment = { offerMode, spareId: spare.id, handlingRateId: rate.id, handlingCents: rate.cents, shippingCents, shippingSource, serviceLevel, destination, termsVersion: rate.version, totalCents, preparedAt: now(), confirmedAt: null, confirmedBy: null };
             r.status = 'FULFILLMENT_OFFER';
             r.authorizedAt = null;
             r.authorizedBy = null;
@@ -741,6 +743,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             const r = get(s.requests, p.id, orgId);
             assert(r.type === 'RECOVERY' && r.status === 'FULFILLMENT_OFFER' && r.fulfillment, 'An active fulfillment offer is required.');
             const offer = r.fulfillment;
+            assert(offer.offerMode !== 'SIMULATED', 'Simulated offers cannot authorize shipment.');
             const spare = get(s.equipment, offer.spareId, orgId);
             const source = get(s.equipment, r.equipmentId, orgId);
             const rate = get(s.rates, offer.handlingRateId, orgId);
