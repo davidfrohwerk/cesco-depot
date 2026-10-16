@@ -603,3 +603,25 @@ test('US package inputs convert to canonical metric and provenance is audited', 
  const entry=f.s.audit.find(e=>e.action==='PACKAGE_PROFILE_RECORDED'&&e.entityId===item.id);
  assert.equal(JSON.parse(entry!.detail).current.measurementStatus,'SIMULATED');
 });
+
+test('unit display round trip does not change canonical package measurements', () => {
+ const f = basic(); receive(f);
+ const item = f.s.equipment[1];
+ const base = { id:item.id, packageId:'DEMO-CARTON-001', packaging:'SIMULATED foam carton', measurementStatus:'SIMULATED', enteredUnit:'METRIC', enteredMeasurements:{length:45,width:30,height:20,weight:5.25}, lengthCm:45,widthCm:30,heightCm:20,weightKg:5.25 };
+ mutate(f.s,f.admin,'acme','setPackageProfile',base);
+ const profile = f.s.equipment.find(e=>e.id===item.id)?.packageProfile;
+ assert.ok(profile);
+ const displayed = {
+  length:Number(toDisplayLength(profile.lengthCm,'US').toFixed(4)),
+  width:Number(toDisplayLength(profile.widthCm,'US').toFixed(4)),
+  height:Number(toDisplayLength(profile.heightCm,'US').toFixed(4)),
+  weight:Number(toDisplayWeight(profile.weightKg,'US').toFixed(4))
+ };
+ mutate(f.s,f.admin,'acme','setPackageProfile',{...base,enteredUnit:'US',enteredMeasurements:displayed,lengthCm:profile.lengthCm,widthCm:profile.widthCm,heightCm:profile.heightCm,weightKg:profile.weightKg});
+ const saved=f.s.equipment.find(e=>e.id===item.id)?.packageProfile;
+ assert.ok(saved);
+ assert.deepEqual([saved.lengthCm,saved.widthCm,saved.heightCm,saved.weightKg],[45,30,20,5.25]);
+ assert.equal(saved.enteredUnit,'US');
+ assert.deepEqual(saved.enteredMeasurements,displayed);
+ assert.equal(item.status,'READY');
+});
