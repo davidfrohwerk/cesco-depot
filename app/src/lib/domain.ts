@@ -66,6 +66,7 @@ export type Equipment = Base & {
     requestId: string | null;
     volume: number;
     recoveryTargetHours: number | null;
+    packageProfile?: { packageId: string; packaging: string; lengthCm: number; widthCm: number; heightCm: number; weightKg: number; updatedAt: string; updatedBy: string };
     receipt?: { at: string; actor: string; observedSerial: string; packageCondition: string; condition: string; handoffReference: string; notes: string; sourceIntakeId: string };
     receiptCorrections?: Array<{ at: string; actor: string; previousSerial: string; correctedSerial: string; reason: string; evidenceId: string | null; resolved: boolean }>;
 };
@@ -990,6 +991,23 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             rate.approvedAt = now();
             entityId = rate.id;
             log(s, u, orgId, 'RATE_AUTHORIZATION', rate.id, `${rate.name}; ${rate.cents} cents / ${rate.unit}; ${rate.version}`);
+            break;
+        }
+        case 'setPackageProfile': {
+            requireCap(u, orgId, 'operate');
+            const a = get(s.equipment, p.id, orgId);
+            assert(a.purpose === 'SPARE' && a.custodian === 'CESCo' && ['READY', 'RECEIVED'].includes(a.status) && !a.requestId, 'Package profiles require unallocated CESCo-held spares.');
+            const previous = a.packageProfile ? structuredClone(a.packageProfile) : null;
+            const packageId = str(p.packageId, 'Package identifier', 100);
+            const packaging = str(p.packaging, 'Packaging description', 200);
+            const lengthCm = num(p.lengthCm, 'Package length (cm)', 0.1, 300);
+            const widthCm = num(p.widthCm, 'Package width (cm)', 0.1, 300);
+            const heightCm = num(p.heightCm, 'Package height (cm)', 0.1, 300);
+            const weightKg = num(p.weightKg, 'Packed weight (kg)', 0.01, 1000);
+            assert(!s.equipment.some(e => e.orgId === orgId && e.id !== a.id && e.packageProfile?.packageId === packageId), 'Package identifier already belongs to another equipment record.');
+            a.packageProfile = { packageId, packaging, lengthCm, widthCm, heightCm, weightKg, updatedAt: now(), updatedBy: u.email };
+            entityId = a.id;
+            log(s, u, orgId, 'PACKAGE_PROFILE_RECORDED', a.id, JSON.stringify({ previous, current: a.packageProfile }));
             break;
         }
         case 'move': {
