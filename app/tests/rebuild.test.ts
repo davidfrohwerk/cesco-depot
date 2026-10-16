@@ -825,7 +825,7 @@ test('training-only live fixture isolates fictional shipment and exercises pick-
  assert.throws(()=>mutate(f.s,f.admin,demoId,'activity',{requestId:request.id}),/TRAINING ONLY/);
  assert.equal(request.pickPack,undefined);
  mutate(f.s,f.admin,demoId,'pickPack',{id:request.id,observedSerial:spare.serial,packageId:'TRAINING-CARTON-001',stagingLocation:'TRAINING staging shelf',condition:'Fictional sealed carton',evidenceReference:'TRAINING-PHOTO-001'});
- assert.equal(request.pickPack?.evidenceReference,'TRAINING-PHOTO-001');
+ assert.equal(f.s.requests.find(x=>x.id===request.id)?.pickPack?.evidenceReference,'TRAINING-PHOTO-001');
  assert.equal(request.status,'RESERVED');
  assert.equal(spare.custodian,'CESCo');
  assert.equal(f.s.activities.length,existing.activities);
