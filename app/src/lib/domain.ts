@@ -738,6 +738,19 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             log(s, u, orgId, 'FULFILLMENT_OFFER_PREPARED', r.id, JSON.stringify(r.fulfillment));
             break;
         }
+        case 'withdrawFulfillment': {
+            requireCap(u, orgId, 'operate');
+            const r = get(s.requests, p.id, orgId);
+            assert(r.type === 'RECOVERY' && r.status === 'FULFILLMENT_OFFER' && r.fulfillment, 'Only an unconfirmed fulfillment offer can be withdrawn.');
+            assert(!r.fulfillment.confirmedAt && !r.authorizedAt && !r.spareId, 'Cannot withdraw an authorized or allocated fulfillment.');
+            const reason = str(p.reason, 'Withdrawal reason', 500);
+            const previous = structuredClone(r.fulfillment);
+            log(s, u, orgId, 'FULFILLMENT_OFFER_WITHDRAWN', r.id, JSON.stringify({ reason, offer: previous }));
+            r.fulfillment = undefined;
+            r.status = 'REQUESTED';
+            entityId = r.id;
+            break;
+        }
         case 'confirmFulfillment': {
             requireCap(u, orgId, 'authorize');
             const r = get(s.requests, p.id, orgId);
