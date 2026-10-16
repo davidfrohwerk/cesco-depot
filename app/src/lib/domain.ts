@@ -796,6 +796,8 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             assert(a.position === draft.sourcePosition && a.packageProfile?.updatedAt === draft.packageRevisionAt && a.packageProfile?.packageId === draft.packageId, 'Stock position or package profile changed; prepare a new shipment.');
             assert(endpoint.active && destination === draft.destination && r.fulfillment.destination === draft.destination, 'Endpoint destination changed; refresh the fulfillment offer.');
             assert(r.fulfillment.spareId === draft.spareId && r.fulfillment.serviceLevel === draft.serviceLevel && r.fulfillment.offerMode === draft.offerMode, 'Fulfillment terms changed.');
+            const agreement = get(s.rates, r.fulfillment.handlingRateId, orgId);
+            assert(agreement.active && !!agreement.approvedAt && agreement.version === r.fulfillment.termsVersion && agreement.cents === r.fulfillment.handlingCents, 'Standing handling agreement changed; refresh the fulfillment offer.');
             draft.reviewNotes = str(p.notes, 'Review notes', 1000);
             draft.reviewedAt = now();
             draft.reviewedBy = u.email;
@@ -814,8 +816,11 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             const a = get(s.equipment, draft.spareId, orgId);
             const endpoint = get(s.endpoints, r.endpointId, orgId);
             const destination = [endpoint.name, endpoint.addressLine1, endpoint.addressLine2, endpoint.city, endpoint.state, endpoint.postalCode, endpoint.country].filter(Boolean).join(', ');
-            assert(a.packageProfile?.measurementStatus === 'CESCO_VERIFIED' && a.packageProfile.updatedAt === draft.packageRevisionAt && a.position === draft.sourcePosition && destination === draft.destination && endpoint.active, 'Shipment source, verified packaging or destination changed.');
+            assert(a.packageProfile?.measurementStatus === 'CESCO_VERIFIED' && a.packageProfile.updatedAt === draft.packageRevisionAt && a.packageProfile.packageId === draft.packageId && a.packageProfile.lengthCm === draft.dimensionsCm[0] && a.packageProfile.widthCm === draft.dimensionsCm[1] && a.packageProfile.heightCm === draft.dimensionsCm[2] && a.packageProfile.weightKg === draft.weightKg && a.custodian === draft.sourceCustodian && a.position === draft.sourcePosition && destination === draft.destination && endpoint.active, 'Shipment source, verified packaging or destination changed.');
             assert(compatible(get(s.equipment, r.equipmentId, orgId), a) && ready(a) && a.custodian === 'CESCo' && !a.requestId, 'Spare availability changed.');
+            assert(r.fulfillment.spareId === draft.spareId && r.fulfillment.serviceLevel === draft.serviceLevel && r.fulfillment.destination === draft.destination && r.fulfillment.totalCents === r.fulfillment.handlingCents + r.fulfillment.shippingCents, 'Fulfillment terms changed; prepare a fresh offer.');
+            const agreement = get(s.rates, r.fulfillment.handlingRateId, orgId);
+            assert(agreement.active && !!agreement.approvedAt && agreement.version === r.fulfillment.termsVersion && agreement.cents === r.fulfillment.handlingCents, 'Standing handling agreement changed; refresh the fulfillment offer.');
             assert(draft.reviewedBy !== u.email, 'Release authorization requires an independent operator.');
             draft.state = 'RELEASE_AUTHORIZED';
             draft.releaseAuthorizedAt = now();
