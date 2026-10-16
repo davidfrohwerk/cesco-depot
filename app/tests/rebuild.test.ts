@@ -1,3 +1,4 @@
+import { toCanonicalLength, toCanonicalWeight, toDisplayLength, toDisplayWeight } from '../src/lib/package-measurements.ts';
 import { parseUsdCents } from '../src/lib/currency.ts';
 import { normalizeRateUnit, rateUnitOptions } from '../src/lib/rate-units.ts';
 import { operationsMetrics, metricContractVersion } from '../src/lib/operations-metrics.ts';
@@ -580,4 +581,25 @@ test('package profiles require measured values, preserve revisions and never mov
  assert.equal(spare.requestId, null);
  assert.equal(f.s.activities.length, 0);
  assert.throws(() => mutate(f.s, f.admin, 'acme', 'setPackageProfile', { ...input, id: f.s.equipment[0].id }), /CESCo-held spares/);
+});
+
+test('US package inputs convert to canonical metric and provenance is audited', () => {
+ const f = basic(); receive(f);
+ const item = f.s.equipment[1];
+ const input = { id:item.id, packageId:'DEMO-US-001', packaging:'SIMULATED — foam carton', enteredUnit:'US', measurementStatus:'SIMULATED', enteredMeasurements:{ length:18, width:12, height:8, weight:12 }, lengthCm:toCanonicalLength(18,'US'), widthCm:toCanonicalLength(12,'US'), heightCm:toCanonicalLength(8,'US'), weightKg:toCanonicalWeight(12,'US') };
+ mutate(f.s, f.admin, 'acme', 'setPackageProfile', input);
+ const saved = f.s.equipment.find(e => e.id === item.id)?.packageProfile;
+ assert.ok(saved);
+ assert.equal(saved.enteredUnit,'US');
+ assert.equal(saved.measurementStatus,'SIMULATED');
+ assert.equal(saved.enteredMeasurements?.length,18);
+ assert.ok(Math.abs(saved.lengthCm - 45.72) < 1e-9);
+ assert.ok(Math.abs(saved.weightKg - 5.44310844) < 1e-8);
+ assert.ok(Math.abs(toDisplayLength(saved.lengthCm,'US') - 18) < 1e-9);
+ assert.ok(Math.abs(toDisplayWeight(saved.weightKg,'US') - 12) < 1e-9);
+ assert.equal(item.status,'READY');
+ assert.throws(() => mutate(f.s,f.admin,'acme','setPackageProfile',{...input,measurementStatus:'UNSUPPORTED'}),/measurement status/);
+ assert.throws(() => mutate(f.s,f.admin,'acme','setPackageProfile',{...input,enteredUnit:'UNKNOWN'}),/measurement unit/);
+ const entry=f.s.audit.find(e=>e.action==='PACKAGE_PROFILE_RECORDED'&&e.entityId===item.id);
+ assert.equal(JSON.parse(entry!.detail).current.measurementStatus,'SIMULATED');
 });
