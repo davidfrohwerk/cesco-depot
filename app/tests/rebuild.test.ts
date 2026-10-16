@@ -569,8 +569,9 @@ test('package profiles require measured values, preserve revisions and never mov
  assert.equal(spare.packageProfile, undefined);
  assert.throws(() => mutate(f.s, f.admin, 'acme', 'setPackageProfile', { ...input, lengthCm: -1 }), /Package length/);
  mutate(f.s, f.admin, 'acme', 'setPackageProfile', input);
- assert.equal(spare.packageProfile?.packageId, 'CARTON-001');
- assert.equal(spare.packageProfile?.weightKg, 5.25);
+ const recordedProfile = f.s.equipment.find(item => item.id === spare.id)?.packageProfile;
+ assert.equal(recordedProfile?.packageId, 'CARTON-001');
+ assert.equal(recordedProfile?.weightKg, 5.25);
  mutate(f.s, f.admin, 'acme', 'setPackageProfile', { ...input, weightKg: 5.5 });
  const changes = f.s.audit.filter(e => e.action === 'PACKAGE_PROFILE_RECORDED' && e.entityId === spare.id);
  assert.equal(changes.length, 2);
