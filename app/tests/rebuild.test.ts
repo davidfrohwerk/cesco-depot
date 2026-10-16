@@ -559,3 +559,24 @@ test('USD entry accepts whole dollars and two decimal places without confusing c
    assert.throws(() => parseUsdCents(invalid), /nonnegative USD/);
  }
 });
+
+test('package profiles require measured values, preserve revisions and never move stock or create charges', () => {
+ const f = basic(); receive(f);
+ const spare = f.s.equipment[1];
+ const originalStatus = spare.status;
+ const input = { id: spare.id, packageId: 'CARTON-001', packaging: 'Protective shipping carton', lengthCm: 45, widthCm: 30, heightCm: 20, weightKg: 5.25 };
+ assert.throws(() => mutate(f.s, f.admin, 'acme', 'setPackageProfile', { ...input, weightKg: 0 }), /Packed weight/);
+ assert.equal(spare.packageProfile, undefined);
+ assert.throws(() => mutate(f.s, f.admin, 'acme', 'setPackageProfile', { ...input, lengthCm: -1 }), /Package length/);
+ mutate(f.s, f.admin, 'acme', 'setPackageProfile', input);
+ assert.equal(spare.packageProfile?.packageId, 'CARTON-001');
+ assert.equal(spare.packageProfile?.weightKg, 5.25);
+ mutate(f.s, f.admin, 'acme', 'setPackageProfile', { ...input, weightKg: 5.5 });
+ const changes = f.s.audit.filter(e => e.action === 'PACKAGE_PROFILE_RECORDED' && e.entityId === spare.id);
+ assert.equal(changes.length, 2);
+ assert.equal(JSON.parse(changes[1].detail).previous.weightKg, 5.25);
+ assert.equal(spare.status, originalStatus);
+ assert.equal(spare.requestId, null);
+ assert.equal(f.s.activities.length, 0);
+ assert.throws(() => mutate(f.s, f.admin, 'acme', 'setPackageProfile', { ...input, id: f.s.equipment[0].id }), /CESCo-held spares/);
+});
