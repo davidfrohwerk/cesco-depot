@@ -754,6 +754,11 @@ function liveShipmentFixture() {
  mutate(f.s,f.admin,'acme','reserve',{id:rid,spareId:spare.id});
  return {...f,rid,rateId,spare,reviewer};
 }
+function addCarrierProof(f: ReturnType<typeof liveShipmentFixture>) {
+ const eid=id();
+ f.s.evidence.push({id:eid,orgId:'acme',entityId:f.rid,name:'carrier-acceptance.pdf',sha256:'test-sha256',key:'test-key',size:100,mime:'application/pdf',actor:f.admin.email,at:new Date().toISOString(),description:'Test carrier acceptance receipt',category:'DISPATCH'});
+ return eid;
+}
 function labelAndTender(f: ReturnType<typeof liveShipmentFixture>) {
  mutate(f.s,f.admin,'acme','recordShippingLabel',{id:f.rid,carrier:'Test carrier',service:'Overnight',tracking:'TEST-TRACKING',labelReference:'TEST-LABEL',rateReference:'TEST-RATE'});
  mutate(f.s,f.admin,'acme','markTenderReady',{id:f.rid,observedTracking:'TEST-TRACKING',evidenceReference:'TEST-LABEL-PHOTO'});
@@ -765,7 +770,7 @@ test('live fulfillment requires independent release authorization and permits va
  assert.equal(f.spare.status,'RESERVED');
  mutate(f.s,f.admin,'acme','pickPack',{id:f.rid,observedSerial:f.spare.serial,packageId:'LIVE-CARTON',stagingLocation:'Outbound bench A',condition:'Carton sealed, equipment checked',evidenceReference:'TEST-PHOTO-001'});
  labelAndTender(f);
- mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'TEST-TRACKING',etaHours:24,custodian:'Test carrier',acceptedBy:'Test courier agent',proofReference:'TEST-ACCEPTANCE'});
+ mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'TEST-TRACKING',etaHours:24,custodian:'Test carrier',acceptedBy:'Test courier agent',evidenceId:addCarrierProof(f)});
  assert.equal(r.status,'DISPATCHED');
  assert.equal(f.spare.status,'OUTBOUND');
  assert.equal(f.spare.custodian,'Test carrier');
@@ -782,7 +787,7 @@ for(const changed of ['destination','package','agreement','position']) {
   if(changed==='package') f.spare.packageProfile!.weightKg=8;
   if(changed==='agreement') mutate(f.s,f.admin,'acme','retireRate',{id:f.rateId,reason:'Agreement superseded'});
   if(changed==='position') f.spare.position='B-2';
-  assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'TEST-TRACKING',etaHours:24,custodian:'Test carrier',acceptedBy:'Test courier agent',proofReference:'ACCEPTANCE'}),/changed|reauthorize|Verified pick and pack is required/);
+  assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'TEST-TRACKING',etaHours:24,custodian:'Test carrier',acceptedBy:'Test courier agent',evidenceId:addCarrierProof(f)}),/changed|reauthorize|Verified pick and pack is required/);
   assert.deepEqual({status:f.spare.status,custodian:f.spare.custodian,requestStatus:request.status,tracking:request.tracking},before);
  });
 }
@@ -852,7 +857,7 @@ test('label and tender are separate auditable events that cannot transfer custod
  assert.equal(f.s.activities.length,0);
  assert.throws(()=>mutate(f.s,f.admin,'acme','recordShippingLabel',{id:f.rid}),/already recorded/);
  assert.throws(()=>mutate(f.s,f.admin,'acme','markTenderReady',{id:f.rid}),/already recorded/);
- assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'WRONG',etaHours:24,custodian:'Test carrier',acceptedBy:'Agent',proofReference:'ACCEPTANCE'}),/tracking does not match/);
+ assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'WRONG',etaHours:24,custodian:'Test carrier',acceptedBy:'Agent',evidenceId:addCarrierProof(f)}),/tracking does not match/);
  assert.equal(r.status,'RESERVED');
 });
 test('training account may rehearse label and tender but never carrier handoff',()=>{
@@ -864,5 +869,23 @@ test('training account may rehearse label and tender but never carrier handoff',
  mutate(f.s,f.admin,demoId,'markTenderReady',{id:r.id,observedTracking:'TRAINING-TRACK',evidenceReference:'TRAINING-TENDER'});
  assert.equal(r.status,'RESERVED');
  assert.equal(spare.custodian,'CESCo');
- assert.throws(()=>mutate(f.s,f.admin,demoId,'dispatch',{id:r.id,tracking:'TRAINING-TRACK',etaHours:24,custodian:'Carrier',acceptedBy:'Agent',proofReference:'Proof'}),/TRAINING ONLY/);
+ assert.throws(()=>mutate(f.s,f.admin,demoId,'dispatch',{id:r.id,tracking:'TRAINING-TRACK',etaHours:24,custodian:'Carrier',acceptedBy:'Agent',evidenceId:'TRAINING-FAKE-PROOF'}),/TRAINING ONLY/);
+});
+
+test('live carrier acceptance needs uploaded request-linked dispatch evidence and matching carrier',()=>{
+ const f=liveShipmentFixture();
+ mutate(f.s,f.admin,'acme','pickPack',{id:f.rid,observedSerial:f.spare.serial,packageId:'LIVE-CARTON',stagingLocation:'Outbound',condition:'Verified',evidenceReference:'PICK-PROOF'});
+ labelAndTender(f);
+ const request=f.s.requests.find(x=>x.id===f.rid)!;
+ const original={status:request.status,custodian:f.spare.custodian};
+ const args={id:f.rid,tracking:'TEST-TRACKING',etaHours:24,custodian:'Test carrier',acceptedBy:'Test courier agent'};
+ assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{...args,evidenceId:'NONEXISTENT'}),/Record not found/);
+ const eid=addCarrierProof(f);
+ assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{...args,custodian:'Wrong carrier',evidenceId:eid}),/must match recorded shipping label/);
+ f.s.evidence.find(x=>x.id===eid)!.category='OTHER';
+ assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{...args,evidenceId:eid}),/uploaded dispatch or receipt evidence/);
+ f.s.evidence.find(x=>x.id===eid)!.category='DISPATCH';
+ f.s.evidence.find(x=>x.id===eid)!.entityId=f.s.equipment[0].id;
+ assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{...args,evidenceId:eid}),/uploaded dispatch or receipt evidence/);
+ assert.deepEqual({status:request.status,custodian:f.spare.custodian},original);
 });
