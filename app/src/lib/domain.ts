@@ -914,7 +914,18 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             assert(r.status === 'RESERVED' && r.spareId, 'Reserve a spare first.');
             const a = get(s.equipment, r.spareId, orgId);
             assert(a.testDue && new Date(a.testDue) > new Date(), 'Readiness test expired; retest before dispatch.');
-            if (r.fulfillment) assert(r.shipmentPreparation?.state === 'RELEASE_AUTHORIZED', 'Shipment release authorization is required before dispatch.');
+            if (r.fulfillment) {
+                const draft = r.shipmentPreparation;
+                assert(draft?.state === 'RELEASE_AUTHORIZED' && draft.offerMode === 'LIVE' && r.fulfillment.offerMode === 'LIVE', 'Shipment release authorization is required before dispatch.');
+                const profile = a.packageProfile;
+                const endpoint = get(s.endpoints, r.endpointId, orgId);
+                const destination = [endpoint.name, endpoint.addressLine1, endpoint.addressLine2, endpoint.city, endpoint.state, endpoint.postalCode, endpoint.country].filter(Boolean).join(', ');
+                const rate = get(s.rates, r.fulfillment.handlingRateId, orgId);
+                assert(endpoint.active && destination === draft.destination && r.fulfillment.destination === draft.destination && draft.destinationEndpointId === endpoint.id, 'Shipment destination changed; reauthorize release.');
+                assert(profile?.measurementStatus === 'CESCO_VERIFIED' && profile.updatedAt === draft.packageRevisionAt && profile.packageId === draft.packageId && profile.lengthCm === draft.dimensionsCm[0] && profile.widthCm === draft.dimensionsCm[1] && profile.heightCm === draft.dimensionsCm[2] && profile.weightKg === draft.weightKg, 'Shipment packaging changed; reauthorize release.');
+                assert(a.position === draft.sourcePosition && draft.sourceCustodian === 'CESCo' && r.fulfillment.spareId === a.id && r.fulfillment.serviceLevel === draft.serviceLevel, 'Shipment stock or fulfillment terms changed; reauthorize release.');
+                assert(rate.active && !!rate.approvedAt && rate.version === r.fulfillment.termsVersion && rate.cents === r.fulfillment.handlingCents && r.fulfillment.totalCents === r.fulfillment.handlingCents + r.fulfillment.shippingCents, 'Standing handling agreement or fulfillment price changed; reauthorize release.');
+            }
             r.tracking = str(p.tracking, 'Shipment / handoff reference');
             r.etaHours = num(p.etaHours, 'Delivery and installation estimate', .1, 8760);
             r.status = 'DISPATCHED';
