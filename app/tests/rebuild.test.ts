@@ -759,6 +759,7 @@ test('live fulfillment requires independent release authorization and permits va
  const r=f.s.requests.find(x=>x.id===f.rid)!;
  assert.equal(r.shipmentPreparation?.state,'RELEASE_AUTHORIZED');
  assert.equal(f.spare.status,'RESERVED');
+ mutate(f.s,f.admin,'acme','pickPack',{id:f.rid,observedSerial:f.spare.serial,packageId:'LIVE-CARTON',stagingLocation:'Outbound bench A',condition:'Carton sealed, equipment checked',evidenceReference:'TEST-PHOTO-001'});
  mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'TEST-TRACKING',etaHours:24,custodian:'Test carrier'});
  assert.equal(r.status,'DISPATCHED');
  assert.equal(f.spare.status,'OUTBOUND');
@@ -772,9 +773,32 @@ for(const changed of ['destination','package','agreement','position']) {
   if(changed==='destination') f.s.endpoints[0].addressLine1='Alternate destination';
   if(changed==='package') f.spare.packageProfile!.weightKg=8;
   if(changed==='agreement') mutate(f.s,f.admin,'acme','retireRate',{id:f.rateId,reason:'Agreement superseded'});
-  if(changed==='position') f.spare.position='B-2';
   const before={status:f.spare.status,custodian:f.spare.custodian,requestStatus:request.status,tracking:request.tracking};
+  mutate(f.s,f.admin,'acme','pickPack',{id:f.rid,observedSerial:f.spare.serial,packageId:'LIVE-CARTON',stagingLocation:'Outbound bench A',condition:'Carton sealed',evidenceReference:'TEST-PHOTO-002'});
+  if(changed==='position') f.spare.position='B-2';
   assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'SHOULD-NOT-DISPATCH',etaHours:24,custodian:'Test carrier'}),/changed|reauthorize/);
   assert.deepEqual({status:f.spare.status,custodian:f.spare.custodian,requestStatus:request.status,tracking:request.tracking},before);
  });
 }
+
+test('live dispatch rejects missing pick and pack record without custody transfer',()=>{
+ const f=liveShipmentFixture();
+ const request=f.s.requests.find(x=>x.id===f.rid)!;
+ assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'NO-HANDOFF',etaHours:24,custodian:'Carrier'}),/pick and pack/);
+ assert.equal(request.status,'RESERVED');
+ assert.equal(f.spare.custodian,'CESCo');
+ assert.equal(request.tracking,'');
+});
+test('pick and pack validates physical identity, evidence, and is idempotency-protected',()=>{
+ const f=liveShipmentFixture();
+ const details={id:f.rid,observedSerial:f.spare.serial,packageId:'LIVE-CARTON',stagingLocation:'Outbound A',condition:'Sealed carton intact',evidenceReference:'PHOTO-100'};
+ assert.throws(()=>mutate(f.s,f.admin,'acme','pickPack',{...details,observedSerial:'WRONG'}),/serial does not match/);
+ assert.throws(()=>mutate(f.s,f.admin,'acme','pickPack',{...details,packageId:'WRONG'}),/package does not match/);
+ assert.equal(f.s.requests.find(x=>x.id===f.rid)?.pickPack,undefined);
+ mutate(f.s,f.admin,'acme','pickPack',details);
+ const r=f.s.requests.find(x=>x.id===f.rid)!;
+ assert.equal(r.pickPack?.evidenceReference,'PHOTO-100');
+ assert.equal(f.spare.custodian,'CESCo');
+ assert.equal(r.status,'RESERVED');
+ assert.throws(()=>mutate(f.s,f.admin,'acme','pickPack',details),/already recorded/);
+});
