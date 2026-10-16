@@ -699,6 +699,8 @@ test('reviewed simulated shipment revision preserves audit, resets review and ha
  const prior=request.shipmentPreparation!;
  const before={custodian:spare.custodian,status:spare.status,requestId:spare.requestId,activities:f.s.activities.length};
  mutate(f.s,f.admin,'acme','setPackageProfile',{id:spare.id,packageId:'CARTON-B',packaging:'Replacement carton',lengthCm:50,widthCm:35,heightCm:25,weightKg:6,measurementStatus:'SIMULATED'});
+ assert.equal(request.shipmentPreparation?.state,'STALE');
+ assert.ok(f.s.audit.some(x=>x.action==='SHIPMENT_PREPARATION_STALE'&&x.entityId===rid));
  assert.throws(()=>mutate(f.s,f.admin,'acme','reviewShipment',{id:rid,notes:'Invalid repeat'}),/draft shipment/);
  mutate(f.s,f.admin,'acme','reviseShipment',{id:rid,reason:'Damaged carton replaced'});
  assert.equal(request.shipmentPreparation?.state,'DRAFT');
