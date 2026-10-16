@@ -664,3 +664,23 @@ test('live shipment preparation rejects unverified packaging and changed destina
  assert.throws(()=>mutate(f.s,f.admin,'acme','prepareShipment',{id:rid}),/destination changed/);
  assert.equal(f.s.requests[0].shipmentPreparation,undefined);
 });
+
+test('simulated preparation can be reviewed but not release-authorized or dispatched', () => {
+ const f=basic(); receive(f);
+ const spare=f.s.equipment[1];
+ const rid=mutate(f.s,f.client,'acme','request',{equipmentId:f.s.equipment[0].id,type:'RECOVERY',scope:'Simulated shipment review'});
+ const rateId=mutate(f.s,f.admin,'acme','rate',{name:'Handling',category:'DISPATCH',unit:'each',cents:2500,version:'DEMO'});
+ mutate(f.s,f.client,'acme','approveRate',{id:rateId});
+ mutate(f.s,f.admin,'acme','setPackageProfile',{id:spare.id,packageId:'SIM-PKG',packaging:'Simulated carton',lengthCm:45,widthCm:30,heightCm:20,weightKg:5.25,measurementStatus:'SIMULATED'});
+ mutate(f.s,f.admin,'acme','prepareFulfillment',{id:rid,spareId:spare.id,handlingRateId:rateId,shippingCents:5000,shippingSource:'Simulated rate',serviceLevel:'Overnight',offerMode:'SIMULATED'});
+ mutate(f.s,f.admin,'acme','prepareShipment',{id:rid});
+ mutate(f.s,f.admin,'acme','reviewShipment',{id:rid,notes:'Simulation: package and endpoint observed in demo'});
+ const r=f.s.requests.find(x=>x.id===rid)!;
+ assert.equal(r.shipmentPreparation?.state,'REVIEWED');
+ assert.throws(()=>mutate(f.s,f.admin,'acme','authorizeShipmentRelease',{id:rid}),/Simulated or legacy/);
+ assert.throws(()=>mutate(f.s,f.admin,'acme','reviewShipment',{id:rid,notes:'review again'}),/draft shipment/);
+ assert.equal(spare.status,'READY');
+ assert.equal(spare.custodian,'CESCo');
+ assert.equal(r.authorizedAt,null);
+ assert.ok(f.s.audit.some(x=>x.action==='SHIPMENT_PREPARATION_REVIEWED'&&x.entityId===rid));
+});
