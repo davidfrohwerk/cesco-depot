@@ -21,6 +21,7 @@ export type Organization = {
     name: string;
     termsDays: number;
     currency: string;
+    demo?: boolean;
 };
 export type Endpoint = Base & {
     externalId: string;
@@ -389,6 +390,26 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
     const org = s.organizations.find(x => x.id === orgId);
     assert(org, 'Account not found.');
     let entityId = orgId;
+    if (action === 'seedLiveDemo') {
+        assert(u.role === 'SYSTEM_ADMIN', 'Only a system administrator can create the isolated demo.');
+        const demoId = 'cesco-live-fulfillment-demo';
+        assert(!s.organizations.some(x => x.id === demoId), 'Demo account already exists. Select it from the account dropdown.');
+        const stamp = now(), endpointId = id(), targetId = id(), spareId = id(), requestId = id(), rateId = id(), preparationId = id();
+        const demoName = 'TRAINING ONLY - Live Fulfillment Lab';
+        s.organizations.push({id:demoId,name:demoName,termsDays:30,currency:'USD',demo:true});
+        const address='Training Lab, 100 Fictional Way, Indianapolis, IN, 46201, US';
+        s.endpoints.push({id:endpointId,orgId:demoId,externalId:'TRAINING-ENDPOINT',name:'Training Lab',siteType:'DEMO',addressLine1:'100 Fictional Way',addressLine2:'',city:'Indianapolis',state:'IN',postalCode:'46201',country:'US',market:'TRAINING',contactName:'Demo only',contactEmail:'',contactPhone:'',accessNotes:'Fictional destination - do not tender to a carrier',active:true});
+        const common = {orgId:demoId,manufacturer:'DEMO OEM',model:'Training Router',configuration:'training-v1',pool:'TRAINING-ROUTERS',condition:'GOOD',testedAt:stamp,testDue:new Date(Date.now()+30*86400000).toISOString(),intakeId:null,volume:1,recoveryTargetHours:null};
+        s.equipment.push({...common,id:targetId,externalId:'TRAINING-SUPPORTED',serial:'TRAINING-TARGET-0001',purpose:'SUPPORTED',endpointId,status:'FAILED',location:'Fictional endpoint',position:'',custodian:'Client',requestId,description:'Fictional customer equipment'});
+        s.equipment.push({...common,id:spareId,externalId:'TRAINING-SPARE',serial:'TRAINING-SPARE-0001',purpose:'SPARE',endpointId:null,status:'RESERVED',location:'Training depot',position:'DEMO-BIN-A1',custodian:'CESCo',requestId,description:'Fictional spare - no physical inventory',packageProfile:{packageId:'TRAINING-CARTON-001',packaging:'Training carton (fictional)',lengthCm:45,widthCm:30,heightCm:20,weightKg:5.25,measurementStatus:'CESCO_VERIFIED',updatedAt:stamp,updatedBy:'Training fixture'}});
+        s.rates.push({id:rateId,orgId:demoId,name:'TRAINING - handling (not billable)',category:'DISPATCH',unit:'each',cents:2500,version:'TRAINING-ONLY',active:true,approvedBy:'training-client-fixture',approvedAt:stamp});
+        s.requests.push({id:requestId,orgId:demoId,number:'TRAINING-SR-1',endpointId,equipmentId:targetId,type:'RECOVERY',scope:'TRAINING ONLY: Exercise physical pick and pack with fictitious inventory',status:'RESERVED',ceiling:7500,authorizedBy:'training-client-fixture',authorizedAt:stamp,termsVersion:'TRAINING-ONLY',spareId,tracking:'',etaHours:null,createdAt:stamp,completedAt:null,workOrder:null,pendingCeiling:null,resumeStatus:null,shipmentPreparation:{id:preparationId,requestId,spareId,packageId:'TRAINING-CARTON-001',packageRevisionAt:stamp,packageStatus:'CESCO_VERIFIED',dimensionsCm:[45,30,20],weightKg:5.25,sourcePosition:'DEMO-BIN-A1',sourceCustodian:'CESCo',destinationEndpointId:endpointId,destination:address,serviceLevel:'TRAINING-OVERNIGHT',offerMode:'LIVE',state:'RELEASE_AUTHORIZED',recordedAt:stamp,recordedBy:'training-preparer',reviewedAt:stamp,reviewedBy:'training-reviewer',reviewNotes:'Synthetic independent review. No physical inspection performed.',releaseAuthorizedAt:stamp,releaseAuthorizedBy:'training-authorizer'},fulfillment:{offerMode:'LIVE',spareId,handlingRateId:rateId,handlingCents:2500,shippingCents:5000,shippingSource:'TRAINING estimate - no carrier',serviceLevel:'TRAINING-OVERNIGHT',destination:address,termsVersion:'TRAINING-ONLY',totalCents:7500,preparedAt:stamp,confirmedAt:stamp,confirmedBy:'training-client-fixture'}});
+        log(s,u,demoId,'TRAINING_FIXTURE_CREATED',requestId,'All assets, approval identities, customer agreements and charges are synthetic. No external obligations exist.');
+        return demoId;
+    }
+    if (org.demo) {
+        assert(!['dispatch','deliver','external','activity','review','invoice','settle','return','repair','restock','disposition','complete','recordStorage'].includes(action), 'TRAINING ONLY: physical custody, fulfillment, and financial execution are disabled for this demo account.');
+    }
     switch (action) {
         case 'plan': {
             requireCap(u, orgId, 'onboard');
