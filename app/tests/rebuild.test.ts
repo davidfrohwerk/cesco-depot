@@ -625,3 +625,42 @@ test('unit display round trip does not change canonical package measurements', (
  assert.deepEqual(saved.enteredMeasurements,displayed);
  assert.equal(item.status,'READY');
 });
+
+test('shipment preparation snapshots a simulated spare without reserve, label, custody or charge', () => {
+ const f=basic(); receive(f);
+ const spare=f.s.equipment[1];
+ const rid=mutate(f.s,f.client,'acme','request',{equipmentId:f.s.equipment[0].id,type:'RECOVERY',scope:'Simulated shipment preparation'});
+ const rateId=mutate(f.s,f.admin,'acme','rate',{name:'Handling',category:'DISPATCH',unit:'each',cents:2500,version:'DEMO'});
+ mutate(f.s,f.client,'acme','approveRate',{id:rateId});
+ mutate(f.s,f.admin,'acme','setPackageProfile',{id:spare.id,packageId:'DEMO-PKG',packaging:'Demo carton',lengthCm:45,widthCm:30,heightCm:20,weightKg:5.25,measurementStatus:'SIMULATED'});
+ mutate(f.s,f.admin,'acme','prepareFulfillment',{id:rid,spareId:spare.id,handlingRateId:rateId,shippingCents:5000,shippingSource:'SIMULATED — carrier estimate',serviceLevel:'Overnight',offerMode:'SIMULATED'});
+ const before={status:spare.status,custodian:spare.custodian,requestId:spare.requestId,activities:f.s.activities.length,events:f.s.operationalEvents?.length||0};
+ mutate(f.s,f.admin,'acme','prepareShipment',{id:rid});
+ const record=f.s.requests.find(x=>x.id===rid)!;
+ assert.equal(record.shipmentPreparation?.packageId,'DEMO-PKG');
+ assert.deepEqual(record.shipmentPreparation?.dimensionsCm,[45,30,20]);
+ assert.equal(record.shipmentPreparation?.state,'DRAFT');
+ assert.equal(record.shipmentPreparation?.offerMode,'SIMULATED');
+ assert.deepEqual({status:spare.status,custodian:spare.custodian,requestId:spare.requestId,activities:f.s.activities.length,events:f.s.operationalEvents?.length||0},before);
+ assert.throws(()=>mutate(f.s,f.admin,'acme','prepareShipment',{id:rid}),/already exists/);
+ assert.throws(()=>mutate(f.s,f.client,'acme','confirmFulfillment',{id:rid}),/Simulated offers/);
+ mutate(f.s,f.admin,'acme','withdrawFulfillment',{id:rid,reason:'End simulation'});
+ assert.equal(record.shipmentPreparation,undefined);
+ assert.ok(f.s.audit.some(e=>e.action==='SHIPMENT_PREPARATION_DRAFTED'&&e.entityId===rid));
+});
+
+test('live shipment preparation rejects unverified packaging and changed destinations',()=>{
+ const f=basic(); receive(f);
+ const spare=f.s.equipment[1];
+ const rid=mutate(f.s,f.client,'acme','request',{equipmentId:f.s.equipment[0].id,type:'RECOVERY',scope:'Live preparation controls'});
+ const rateId=mutate(f.s,f.admin,'acme','rate',{name:'Handling',category:'DISPATCH',unit:'each',cents:2500,version:'TEST'});
+ mutate(f.s,f.client,'acme','approveRate',{id:rateId});
+ mutate(f.s,f.admin,'acme','prepareFulfillment',{id:rid,spareId:spare.id,handlingRateId:rateId,shippingCents:1000,shippingSource:'TEST rate',serviceLevel:'Ground',offerMode:'LIVE'});
+ assert.throws(()=>mutate(f.s,f.admin,'acme','prepareShipment',{id:rid}),/complete package profile/);
+ mutate(f.s,f.admin,'acme','setPackageProfile',{id:spare.id,packageId:'CARTON-LIVE',packaging:'Test',lengthCm:40,widthCm:25,heightCm:15,weightKg:4,measurementStatus:'CUSTOMER_DECLARED'});
+ assert.throws(()=>mutate(f.s,f.admin,'acme','prepareShipment',{id:rid}),/CESCo-verified/);
+ mutate(f.s,f.admin,'acme','setPackageProfile',{id:spare.id,packageId:'CARTON-LIVE',packaging:'Measured',lengthCm:40,widthCm:25,heightCm:15,weightKg:4,measurementStatus:'CESCO_VERIFIED'});
+ f.s.endpoints[0].addressLine1='Changed address';
+ assert.throws(()=>mutate(f.s,f.admin,'acme','prepareShipment',{id:rid}),/destination changed/);
+ assert.equal(f.s.requests[0].shipmentPreparation,undefined);
+});
