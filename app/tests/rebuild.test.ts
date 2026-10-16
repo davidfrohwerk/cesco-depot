@@ -716,3 +716,22 @@ test('reviewed simulated shipment revision preserves audit, resets review and ha
  assert.equal(request.shipmentPreparation?.state,'REVIEWED');
  assert.throws(()=>mutate(f.s,f.admin,'acme','authorizeShipmentRelease',{id:rid}),/Simulated or legacy/);
 });
+
+test('retiring handling agreement blocks shipment review without changing draft or inventory',()=>{
+ const f=basic(); receive(f);
+ const spare=f.s.equipment[1];
+ const rid=mutate(f.s,f.client,'acme','request',{equipmentId:f.s.equipment[0].id,type:'RECOVERY',scope:'Agreement retirement validation'});
+ const rateId=mutate(f.s,f.admin,'acme','rate',{name:'Depot handling',category:'DISPATCH',unit:'each',cents:2500,version:'DEMO-REVIEW'});
+ mutate(f.s,f.client,'acme','approveRate',{id:rateId});
+ mutate(f.s,f.admin,'acme','setPackageProfile',{id:spare.id,packageId:'TEST-CARTON',packaging:'Simulated carton',lengthCm:45,widthCm:30,heightCm:20,weightKg:5.25,measurementStatus:'SIMULATED'});
+ mutate(f.s,f.admin,'acme','prepareFulfillment',{id:rid,spareId:spare.id,handlingRateId:rateId,shippingCents:5000,shippingSource:'Simulated estimate',serviceLevel:'Overnight',offerMode:'SIMULATED'});
+ mutate(f.s,f.admin,'acme','prepareShipment',{id:rid});
+ const request=f.s.requests.find(x=>x.id===rid)!;
+ const originalPreparation=structuredClone(request.shipmentPreparation);
+ const originalEquipment={status:spare.status,custodian:spare.custodian,requestId:spare.requestId};
+ mutate(f.s,f.admin,'acme','retireRate',{id:rateId,reason:'Superseded standing agreement'});
+ assert.throws(()=>mutate(f.s,f.admin,'acme','reviewShipment',{id:rid,notes:'Should not be accepted'}),/Standing handling agreement changed/);
+ assert.deepEqual(request.shipmentPreparation,originalPreparation);
+ assert.deepEqual({status:spare.status,custodian:spare.custodian,requestId:spare.requestId},originalEquipment);
+ assert.equal(f.s.activities.length,0);
+});
