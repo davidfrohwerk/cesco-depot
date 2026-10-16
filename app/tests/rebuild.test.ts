@@ -754,13 +754,18 @@ function liveShipmentFixture() {
  mutate(f.s,f.admin,'acme','reserve',{id:rid,spareId:spare.id});
  return {...f,rid,rateId,spare,reviewer};
 }
+function labelAndTender(f: ReturnType<typeof liveShipmentFixture>) {
+ mutate(f.s,f.admin,'acme','recordShippingLabel',{id:f.rid,carrier:'Test carrier',service:'Overnight',tracking:'TEST-TRACKING',labelReference:'TEST-LABEL',rateReference:'TEST-RATE'});
+ mutate(f.s,f.admin,'acme','markTenderReady',{id:f.rid,observedTracking:'TEST-TRACKING',evidenceReference:'TEST-LABEL-PHOTO'});
+}
 test('live fulfillment requires independent release authorization and permits validated dispatch',()=>{
  const f=liveShipmentFixture();
  const r=f.s.requests.find(x=>x.id===f.rid)!;
  assert.equal(r.shipmentPreparation?.state,'RELEASE_AUTHORIZED');
  assert.equal(f.spare.status,'RESERVED');
  mutate(f.s,f.admin,'acme','pickPack',{id:f.rid,observedSerial:f.spare.serial,packageId:'LIVE-CARTON',stagingLocation:'Outbound bench A',condition:'Carton sealed, equipment checked',evidenceReference:'TEST-PHOTO-001'});
- mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'TEST-TRACKING',etaHours:24,custodian:'Test carrier'});
+ labelAndTender(f);
+ mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'TEST-TRACKING',etaHours:24,custodian:'Test carrier',acceptedBy:'Test courier agent',proofReference:'TEST-ACCEPTANCE'});
  assert.equal(r.status,'DISPATCHED');
  assert.equal(f.spare.status,'OUTBOUND');
  assert.equal(f.spare.custodian,'Test carrier');
@@ -770,13 +775,14 @@ for(const changed of ['destination','package','agreement','position']) {
  test('dispatch refuses changed '+changed+' after release authorization without custody change',()=>{
   const f=liveShipmentFixture();
   const request=f.s.requests.find(x=>x.id===f.rid)!;
+  const before={status:f.spare.status,custodian:f.spare.custodian,requestStatus:request.status,tracking:request.tracking};
+  mutate(f.s,f.admin,'acme','pickPack',{id:f.rid,observedSerial:f.spare.serial,packageId:'LIVE-CARTON',stagingLocation:'Outbound bench A',condition:'Carton sealed',evidenceReference:'TEST-PHOTO-002'});
+  labelAndTender(f);
   if(changed==='destination') f.s.endpoints[0].addressLine1='Alternate destination';
   if(changed==='package') f.spare.packageProfile!.weightKg=8;
   if(changed==='agreement') mutate(f.s,f.admin,'acme','retireRate',{id:f.rateId,reason:'Agreement superseded'});
-  const before={status:f.spare.status,custodian:f.spare.custodian,requestStatus:request.status,tracking:request.tracking};
-  mutate(f.s,f.admin,'acme','pickPack',{id:f.rid,observedSerial:f.spare.serial,packageId:'LIVE-CARTON',stagingLocation:'Outbound bench A',condition:'Carton sealed',evidenceReference:'TEST-PHOTO-002'});
   if(changed==='position') f.spare.position='B-2';
-  assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'SHOULD-NOT-DISPATCH',etaHours:24,custodian:'Test carrier'}),/changed|reauthorize|Verified pick and pack is required/);
+  assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'TEST-TRACKING',etaHours:24,custodian:'Test carrier',acceptedBy:'Test courier agent',proofReference:'ACCEPTANCE'}),/changed|reauthorize|Verified pick and pack is required/);
   assert.deepEqual({status:f.spare.status,custodian:f.spare.custodian,requestStatus:request.status,tracking:request.tracking},before);
  });
 }
@@ -830,4 +836,33 @@ test('training-only live fixture isolates fictional shipment and exercises pick-
  assert.equal(spare.custodian,'CESCo');
  assert.equal(f.s.activities.length,existing.activities);
  assert.throws(()=>mutate(f.s,f.admin,demoId,'dispatch',{id:request.id,tracking:'NO',etaHours:12,custodian:'Carrier'}),/TRAINING ONLY/);
+});
+
+test('label and tender are separate auditable events that cannot transfer custody',()=>{
+ const f=liveShipmentFixture(), r=f.s.requests.find(x=>x.id===f.rid)!;
+ mutate(f.s,f.admin,'acme','pickPack',{id:f.rid,observedSerial:f.spare.serial,packageId:'LIVE-CARTON',stagingLocation:'Outbound A',condition:'Intact',evidenceReference:'PACK-EVIDENCE'});
+ assert.throws(()=>mutate(f.s,f.admin,'acme','markTenderReady',{id:f.rid,observedTracking:'TEST-TRACKING',evidenceReference:'READY-EVIDENCE'}),/label/);
+ assert.throws(()=>mutate(f.s,f.admin,'acme','recordShippingLabel',{id:f.rid,carrier:'Carrier',service:'Incorrect',tracking:'TEST-TRACKING',labelReference:'LABEL',rateReference:'RATE'}),/service differs/);
+ labelAndTender(f);
+ assert.equal(r.shippingLabel?.tracking,'TEST-TRACKING');
+ assert.equal(r.tenderReady?.tracking,'TEST-TRACKING');
+ assert.equal(r.carrierHandoff,undefined);
+ assert.equal(r.status,'RESERVED');
+ assert.equal(f.spare.custodian,'CESCo');
+ assert.equal(f.s.activities.length,0);
+ assert.throws(()=>mutate(f.s,f.admin,'acme','recordShippingLabel',{id:f.rid}),/already recorded/);
+ assert.throws(()=>mutate(f.s,f.admin,'acme','markTenderReady',{id:f.rid}),/already recorded/);
+ assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'WRONG',etaHours:24,custodian:'Test carrier',acceptedBy:'Agent',proofReference:'ACCEPTANCE'}),/tracking does not match/);
+ assert.equal(r.status,'RESERVED');
+});
+test('training account may rehearse label and tender but never carrier handoff',()=>{
+ const f=basic(), demoId=mutate(f.s,f.admin,'acme','seedLiveDemo',{});
+ const r=f.s.requests.find(x=>x.orgId===demoId)!;
+ const spare=f.s.equipment.find(x=>x.id===r.spareId)!;
+ mutate(f.s,f.admin,demoId,'pickPack',{id:r.id,observedSerial:spare.serial,packageId:'TRAINING-CARTON-001',stagingLocation:'Training shelf',condition:'Simulated',evidenceReference:'TRAIN-PHOTO'});
+ mutate(f.s,f.admin,demoId,'recordShippingLabel',{id:r.id,carrier:'TRAINING COURIER',service:'TRAINING-OVERNIGHT',tracking:'TRAINING-TRACK',labelReference:'TRAINING-LABEL',rateReference:'NO-CHARGE'});
+ mutate(f.s,f.admin,demoId,'markTenderReady',{id:r.id,observedTracking:'TRAINING-TRACK',evidenceReference:'TRAINING-TENDER'});
+ assert.equal(r.status,'RESERVED');
+ assert.equal(spare.custodian,'CESCo');
+ assert.throws(()=>mutate(f.s,f.admin,demoId,'dispatch',{id:r.id,tracking:'TRAINING-TRACK',etaHours:24,custodian:'Carrier',acceptedBy:'Agent',proofReference:'Proof'}),/TRAINING ONLY/);
 });
