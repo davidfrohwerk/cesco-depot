@@ -684,3 +684,33 @@ test('simulated preparation can be reviewed but not release-authorized or dispat
  assert.equal(r.authorizedAt,null);
  assert.ok(f.s.audit.some(x=>x.action==='SHIPMENT_PREPARATION_REVIEWED'&&x.entityId===rid));
 });
+
+test('reviewed simulated shipment revision preserves audit, resets review and has no physical or financial effects',()=>{
+ const f=basic(); receive(f);
+ const spare=f.s.equipment[1];
+ const rid=mutate(f.s,f.client,'acme','request',{equipmentId:f.s.equipment[0].id,type:'RECOVERY',scope:'Revision scenario'});
+ const rateId=mutate(f.s,f.admin,'acme','rate',{name:'Handling',category:'DISPATCH',unit:'each',cents:2500,version:'DEMO'});
+ mutate(f.s,f.client,'acme','approveRate',{id:rateId});
+ mutate(f.s,f.admin,'acme','setPackageProfile',{id:spare.id,packageId:'CARTON-A',packaging:'Simulated first carton',lengthCm:45,widthCm:30,heightCm:20,weightKg:5.25,measurementStatus:'SIMULATED'});
+ mutate(f.s,f.admin,'acme','prepareFulfillment',{id:rid,spareId:spare.id,handlingRateId:rateId,shippingCents:5000,shippingSource:'Simulated rate',serviceLevel:'Overnight',offerMode:'SIMULATED'});
+ mutate(f.s,f.admin,'acme','prepareShipment',{id:rid});
+ mutate(f.s,f.admin,'acme','reviewShipment',{id:rid,notes:'First carton reviewed'});
+ const request=f.s.requests.find(x=>x.id===rid)!;
+ const prior=request.shipmentPreparation!;
+ const before={custodian:spare.custodian,status:spare.status,requestId:spare.requestId,activities:f.s.activities.length};
+ mutate(f.s,f.admin,'acme','setPackageProfile',{id:spare.id,packageId:'CARTON-B',packaging:'Replacement carton',lengthCm:50,widthCm:35,heightCm:25,weightKg:6,measurementStatus:'SIMULATED'});
+ assert.throws(()=>mutate(f.s,f.admin,'acme','reviewShipment',{id:rid,notes:'Invalid repeat'}),/draft shipment/);
+ mutate(f.s,f.admin,'acme','reviseShipment',{id:rid,reason:'Damaged carton replaced'});
+ assert.equal(request.shipmentPreparation?.state,'DRAFT');
+ assert.equal(request.shipmentPreparation?.packageId,'CARTON-B');
+ assert.equal(request.shipmentPreparation?.reviewedAt,undefined);
+ assert.notEqual(request.shipmentPreparation?.id,prior.id);
+ const revision=f.s.audit.find(x=>x.action==='SHIPMENT_PREPARATION_SUPERSEDED'&&x.entityId===rid);
+ assert.ok(revision);
+ assert.equal(JSON.parse(revision.detail).previous.reviewNotes,'First carton reviewed');
+ assert.equal(JSON.parse(revision.detail).previous.packageId,'CARTON-A');
+ assert.deepEqual({custodian:spare.custodian,status:spare.status,requestId:spare.requestId,activities:f.s.activities.length},before);
+ mutate(f.s,f.admin,'acme','reviewShipment',{id:rid,notes:'Second carton reviewed'});
+ assert.equal(request.shipmentPreparation?.state,'REVIEWED');
+ assert.throws(()=>mutate(f.s,f.admin,'acme','authorizeShipmentRelease',{id:rid}),/Simulated or legacy/);
+});
