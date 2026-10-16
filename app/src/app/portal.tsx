@@ -1,4 +1,6 @@
 'use client';
+import { parseUsdCents } from '@/lib/currency';
+
 import { rateUnitOptions, normalizeRateUnit } from '@/lib/rate-units';
 import { useEffect, useState, type FormEvent } from 'react';
 import { parseCsv } from '@/lib/csv';
@@ -25,7 +27,6 @@ type Modal = {
     submit: (p: Record<string, unknown>) => Promise<void>;
     button?: string;
 };
-const parseUsdCents = (value: unknown) => { const raw = String(value ?? '').trim(); if (!/^(?:0|[1-9]\\d*)(?:\\.\\d{1,2})?$/.test(raw)) throw Error('Enter a nonnegative USD amount with up to two decimal places.'); const [whole, fraction = ''] = raw.split('.'); const cents = Number(whole) * 100 + Number(fraction.padEnd(2, '0')); if (!Number.isSafeInteger(cents)) throw Error('Amount exceeds supported range.'); return cents; };
 const money = (n: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n / 100);
 const date = (s: string | null | undefined) => s ? new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 const nice = (s: string) => s.toLowerCase().replaceAll('_', ' ');
