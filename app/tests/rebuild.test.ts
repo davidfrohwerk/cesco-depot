@@ -776,7 +776,7 @@ for(const changed of ['destination','package','agreement','position']) {
   const before={status:f.spare.status,custodian:f.spare.custodian,requestStatus:request.status,tracking:request.tracking};
   mutate(f.s,f.admin,'acme','pickPack',{id:f.rid,observedSerial:f.spare.serial,packageId:'LIVE-CARTON',stagingLocation:'Outbound bench A',condition:'Carton sealed',evidenceReference:'TEST-PHOTO-002'});
   if(changed==='position') f.spare.position='B-2';
-  assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'SHOULD-NOT-DISPATCH',etaHours:24,custodian:'Test carrier'}),/changed|reauthorize/);
+  assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'SHOULD-NOT-DISPATCH',etaHours:24,custodian:'Test carrier'}),/changed|reauthorize|Verified pick and pack is required/);
   assert.deepEqual({status:f.spare.status,custodian:f.spare.custodian,requestStatus:request.status,tracking:request.tracking},before);
  });
 }
