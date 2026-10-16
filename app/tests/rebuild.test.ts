@@ -519,3 +519,30 @@ test('simulated fulfillment is visibly distinguished and cannot be confirmed or 
  assert.equal(request.authorizedAt, null);
  assert.equal(f.s.equipment[1].status, 'READY');
 });
+
+test('unconfirmed legacy fulfillment offer can be withdrawn and reoffered without allocation', () => {
+ const f = basic(); receive(f);
+ const rid = mutate(f.s, f.client, 'acme', 'request', { equipmentId: f.s.equipment[0].id, type:'RECOVERY', scope:'Demo recovery' });
+ const rateId = mutate(f.s, f.admin, 'acme', 'rate', { name:'Handling', category:'DISPATCH', unit:'each', cents:2500, version:'DEMO' });
+ mutate(f.s, f.client, 'acme', 'approveRate', { id:rateId });
+ const offer = { id:rid, spareId:f.s.equipment[1].id, handlingRateId:rateId, shippingCents:5000, shippingSource:'Simulation', serviceLevel:'Overnight' };
+ mutate(f.s, f.admin, 'acme', 'prepareFulfillment', offer);
+ const r = f.s.requests.find(r => r.id === rid)!;
+ assert.equal(r.status, 'FULFILLMENT_OFFER');
+ delete r.fulfillment!.offerMode; // Pre-upgrade legacy record
+ assert.throws(() => mutate(f.s, f.admin, 'acme', 'withdrawFulfillment', { id:rid, reason:'' }), /required/);
+ assert.throws(() => mutate(f.s, f.admin, 'other', 'withdrawFulfillment', { id:rid, reason:'wrong tenant' }), /Record not found/);
+ mutate(f.s, f.admin, 'acme', 'withdrawFulfillment', { id:rid, reason:'Legacy simulated offer' });
+ assert.equal(r.status, 'REQUESTED');
+ assert.equal(r.fulfillment, undefined);
+ assert.equal(r.authorizedAt, null);
+ assert.equal(f.s.equipment[1].status, 'READY');
+ const entry = f.s.audit.find(a => a.entityId === rid && a.action === 'FULFILLMENT_OFFER_WITHDRAWN');
+ assert.ok(entry);
+ assert.equal(JSON.parse(entry.detail).offer.totalCents, 7500);
+ assert.equal(JSON.parse(entry.detail).reason, 'Legacy simulated offer');
+ mutate(f.s, f.admin, 'acme', 'prepareFulfillment', { ...offer, offerMode:'SIMULATED' });
+ assert.equal(r.fulfillment?.offerMode, 'SIMULATED');
+ assert.throws(() => mutate(f.s, f.client, 'acme', 'confirmFulfillment', { id:rid }), /Simulated offers cannot authorize/);
+ assert.equal(f.s.activities.length, 0);
+});
