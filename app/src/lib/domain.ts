@@ -66,7 +66,7 @@ export type Equipment = Base & {
     requestId: string | null;
     volume: number;
     recoveryTargetHours: number | null;
-    packageProfile?: { packageId: string; packaging: string; lengthCm: number; widthCm: number; heightCm: number; weightKg: number; updatedAt: string; updatedBy: string };
+    packageProfile?: { packageId: string; packaging: string; lengthCm: number; widthCm: number; heightCm: number; weightKg: number; measurementStatus?: 'SIMULATED' | 'CUSTOMER_DECLARED' | 'CESCO_VERIFIED' | 'LEGACY_UNVERIFIED'; enteredUnit?: 'METRIC' | 'US'; enteredMeasurements?: { length: number; width: number; height: number; weight: number }; updatedAt: string; updatedBy: string };
     receipt?: { at: string; actor: string; observedSerial: string; packageCondition: string; condition: string; handoffReference: string; notes: string; sourceIntakeId: string };
     receiptCorrections?: Array<{ at: string; actor: string; previousSerial: string; correctedSerial: string; reason: string; evidenceId: string | null; resolved: boolean }>;
 };
@@ -1004,8 +1004,15 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             const widthCm = num(p.widthCm, 'Package width (cm)', 0.1, 300);
             const heightCm = num(p.heightCm, 'Package height (cm)', 0.1, 300);
             const weightKg = num(p.weightKg, 'Packed weight (kg)', 0.01, 1000);
+            const measurementStatus = String(p.measurementStatus || 'LEGACY_UNVERIFIED');
+            assert(['SIMULATED', 'CUSTOMER_DECLARED', 'CESCO_VERIFIED', 'LEGACY_UNVERIFIED'].includes(measurementStatus), 'Choose a supported measurement status.');
+            const enteredUnit = String(p.enteredUnit || 'METRIC');
+            assert(['METRIC', 'US'].includes(enteredUnit), 'Choose a supported measurement unit.');
+            const enteredMeasurements = p.enteredMeasurements && typeof p.enteredMeasurements === 'object' ? p.enteredMeasurements as Record<string, unknown> : { length: lengthCm, width: widthCm, height: heightCm, weight: weightKg };
+            const original = { length: Number(enteredMeasurements.length), width: Number(enteredMeasurements.width), height: Number(enteredMeasurements.height), weight: Number(enteredMeasurements.weight) };
+            assert(Object.values(original).every(v => Number.isFinite(v) && v > 0), 'Original measurements must be positive finite numbers.');
             assert(!s.equipment.some(e => e.orgId === orgId && e.id !== a.id && e.packageProfile?.packageId === packageId), 'Package identifier already belongs to another equipment record.');
-            a.packageProfile = { packageId, packaging, lengthCm, widthCm, heightCm, weightKg, updatedAt: now(), updatedBy: u.email };
+            a.packageProfile = { packageId, packaging, lengthCm, widthCm, heightCm, weightKg, measurementStatus: measurementStatus as NonNullable<typeof a.packageProfile>['measurementStatus'], enteredUnit: enteredUnit as 'METRIC' | 'US', enteredMeasurements: original, updatedAt: now(), updatedBy: u.email };
             entityId = a.id;
             log(s, u, orgId, 'PACKAGE_PROFILE_RECORDED', a.id, JSON.stringify({ previous, current: a.packageProfile }));
             break;
