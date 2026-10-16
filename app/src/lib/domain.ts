@@ -780,9 +780,6 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             assert(r.type === 'RECOVERY' && r.status === 'FULFILLMENT_OFFER' && r.fulfillment, 'An active fulfillment offer is required.');
             const offer = r.fulfillment;
             assert(offer.offerMode !== 'SIMULATED', 'Simulated offers cannot authorize shipment.');
-            assert(r.shipmentPreparation && r.shipmentPreparation.offerMode === 'LIVE', 'A live shipment preparation draft is required.');
-            const preparedSpare = get(s.equipment, offer.spareId, orgId);
-            assert(preparedSpare.packageProfile?.measurementStatus === 'CESCO_VERIFIED' && preparedSpare.packageProfile.updatedAt === r.shipmentPreparation.packageRevisionAt && preparedSpare.position === r.shipmentPreparation.sourcePosition, 'Package or stocking position changed; prepare shipment again.');
             const spare = get(s.equipment, offer.spareId, orgId);
             const source = get(s.equipment, r.equipmentId, orgId);
             const rate = get(s.rates, offer.handlingRateId, orgId);
