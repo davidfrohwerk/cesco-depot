@@ -108,6 +108,7 @@ export type Request = Base & {
     workOrder: string | null;
     pendingCeiling: number | null;
     resumeStatus: string | null;
+    pickPack?: { at: string; actor: string; observedSerial: string; packageId: string; packageRevisionAt: string; sourcePosition: string; stagingLocation: string; condition: string; evidenceReference: string }; 
     shipmentPreparation?: { id: string; requestId: string; spareId: string; packageId: string; packageRevisionAt: string; packageStatus: string; dimensionsCm: [number, number, number]; weightKg: number; sourcePosition: string; sourceCustodian: string; destinationEndpointId: string; destination: string; serviceLevel: string; offerMode: string; state: 'DRAFT' | 'REVIEWED' | 'STALE' | 'RELEASE_AUTHORIZED'; recordedAt: string; recordedBy: string; reviewedAt?: string; reviewedBy?: string; reviewNotes?: string; releaseAuthorizedAt?: string; releaseAuthorizedBy?: string }; 
     fulfillment?: { offerMode?: 'SIMULATED' | 'LIVE'; spareId: string; handlingRateId: string; handlingCents: number; shippingCents: number; shippingSource: string; serviceLevel: string; destination: string; termsVersion: string; totalCents: number; preparedAt: string; confirmedAt: string | null; confirmedBy: string | null };
 };
@@ -908,6 +909,28 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             entityId = r.id;
             break;
         }
+        case 'pickPack': {
+            requireCap(u, orgId, 'operate');
+            const r = get(s.requests, p.id, orgId);
+            assert(r.fulfillment?.offerMode === 'LIVE' && r.status === 'RESERVED' && r.spareId, 'Pick and pack requires a reserved live fulfillment.');
+            assert(!r.pickPack, 'Pick and pack already recorded. Correct through a controlled revision.');
+            const draft = r.shipmentPreparation;
+            assert(draft?.state === 'RELEASE_AUTHORIZED' && draft.spareId === r.spareId, 'Shipment release must be authorized before picking.');
+            const a = get(s.equipment, r.spareId, orgId);
+            assert(a.status === 'RESERVED' && a.requestId === r.id && a.custodian === 'CESCo', 'Reserved spare is no longer in CESCo custody.');
+            assert(a.position === draft.sourcePosition && a.packageProfile?.updatedAt === draft.packageRevisionAt && a.packageProfile?.packageId === draft.packageId && a.packageProfile?.measurementStatus === 'CESCO_VERIFIED', 'Package or stocking position changed; review shipment again.');
+            const observedSerial = str(p.observedSerial, 'Observed equipment serial', 200);
+            assert(observedSerial === a.serial, 'Observed equipment serial does not match reserved spare.');
+            const packageId = str(p.packageId, 'Observed package identifier', 200);
+            assert(packageId === draft.packageId, 'Observed package does not match the reviewed shipment.');
+            const stagingLocation = str(p.stagingLocation, 'Physical staging location', 200);
+            const condition = str(p.condition, 'Package and equipment condition', 500);
+            const evidenceReference = str(p.evidenceReference, 'Pick and pack evidence reference', 500);
+            r.pickPack = { at: now(), actor: u.email, observedSerial, packageId, packageRevisionAt: draft.packageRevisionAt, sourcePosition: a.position, stagingLocation, condition, evidenceReference };
+            entityId = r.id;
+            log(s, u, orgId, 'SHIPMENT_PICK_PACK_RECORDED', r.id, JSON.stringify(r.pickPack));
+            break;
+        }
         case 'dispatch': {
             requireCap(u, orgId, 'operate');
             const r = get(s.requests, p.id, orgId);
@@ -917,6 +940,8 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             if (r.fulfillment) {
                 const draft = r.shipmentPreparation;
                 assert(draft?.state === 'RELEASE_AUTHORIZED' && draft.offerMode === 'LIVE' && r.fulfillment.offerMode === 'LIVE', 'Shipment release authorization is required before dispatch.');
+                const pick = r.pickPack;
+                assert(pick && pick.observedSerial === a.serial && pick.packageId === draft.packageId && pick.packageRevisionAt === draft.packageRevisionAt && pick.sourcePosition === a.position && a.status === 'RESERVED' && a.custodian === 'CESCo', 'Verified pick and pack is required before carrier handoff.');
                 const profile = a.packageProfile;
                 const endpoint = get(s.endpoints, r.endpointId, orgId);
                 const destination = [endpoint.name, endpoint.addressLine1, endpoint.addressLine2, endpoint.city, endpoint.state, endpoint.postalCode, endpoint.country].filter(Boolean).join(', ');
