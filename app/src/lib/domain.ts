@@ -108,7 +108,7 @@ export type Request = Base & {
     workOrder: string | null;
     pendingCeiling: number | null;
     resumeStatus: string | null;
-    shipmentPreparation?: { id: string; requestId: string; spareId: string; packageId: string; packageRevisionAt: string; packageStatus: string; dimensionsCm: [number, number, number]; weightKg: number; sourcePosition: string; sourceCustodian: string; destinationEndpointId: string; destination: string; serviceLevel: string; offerMode: string; state: 'DRAFT' | 'REVIEWED' | 'RELEASE_AUTHORIZED'; recordedAt: string; recordedBy: string; reviewedAt?: string; reviewedBy?: string; reviewNotes?: string; releaseAuthorizedAt?: string; releaseAuthorizedBy?: string }; 
+    shipmentPreparation?: { id: string; requestId: string; spareId: string; packageId: string; packageRevisionAt: string; packageStatus: string; dimensionsCm: [number, number, number]; weightKg: number; sourcePosition: string; sourceCustodian: string; destinationEndpointId: string; destination: string; serviceLevel: string; offerMode: string; state: 'DRAFT' | 'REVIEWED' | 'STALE' | 'RELEASE_AUTHORIZED'; recordedAt: string; recordedBy: string; reviewedAt?: string; reviewedBy?: string; reviewNotes?: string; releaseAuthorizedAt?: string; releaseAuthorizedBy?: string }; 
     fulfillment?: { offerMode?: 'SIMULATED' | 'LIVE'; spareId: string; handlingRateId: string; handlingCents: number; shippingCents: number; shippingSource: string; serviceLevel: string; destination: string; termsVersion: string; totalCents: number; preparedAt: string; confirmedAt: string | null; confirmedBy: string | null };
 };
 export type Activity = Base & {
@@ -1083,6 +1083,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
         case 'setPackageProfile': {
             requireCap(u, orgId, 'operate');
             const a = get(s.equipment, p.id, orgId);
+            assert(!s.requests.some(r => r.orgId === orgId && r.shipmentPreparation?.spareId === a.id && r.shipmentPreparation.state === 'RELEASE_AUTHORIZED'), 'Cannot alter package after shipment release authorization.');
             assert(a.purpose === 'SPARE' && a.custodian === 'CESCo' && ['READY', 'RECEIVED'].includes(a.status) && !a.requestId, 'Package profiles require unallocated CESCo-held spares.');
             const previous = a.packageProfile ? structuredClone(a.packageProfile) : null;
             const packageId = str(p.packageId, 'Package identifier', 100);
@@ -1100,6 +1101,12 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             assert(Object.values(original).every(v => Number.isFinite(v) && v > 0), 'Original measurements must be positive finite numbers.');
             assert(!s.equipment.some(e => e.orgId === orgId && e.id !== a.id && e.packageProfile?.packageId === packageId), 'Package identifier already belongs to another equipment record.');
             a.packageProfile = { packageId, packaging, lengthCm, widthCm, heightCm, weightKg, measurementStatus: measurementStatus as NonNullable<typeof a.packageProfile>['measurementStatus'], enteredUnit: enteredUnit as 'METRIC' | 'US', enteredMeasurements: original, updatedAt: now(), updatedBy: u.email };
+            for (const request of s.requests.filter(r => r.orgId === orgId && r.shipmentPreparation?.spareId === a.id && ['DRAFT', 'REVIEWED'].includes(r.shipmentPreparation.state))) {
+                const preparation = request.shipmentPreparation!;
+                const originalState = preparation.state;
+                preparation.state = 'STALE';
+                log(s, u, orgId, 'SHIPMENT_PREPARATION_STALE', request.id, JSON.stringify({ preparationId: preparation.id, originalState, reason: 'Spare package or stocking position updated', equipmentId: a.id }));
+            }
             entityId = a.id;
             log(s, u, orgId, 'PACKAGE_PROFILE_RECORDED', a.id, JSON.stringify({ previous, current: a.packageProfile }));
             break;
@@ -1108,9 +1115,16 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             requireCap(u, orgId, 'operate');
             const a = get(s.equipment, p.id, orgId);
             assert(['READY', 'RECEIVED', 'REPAIR'].includes(a.status) && a.custodian === 'CESCo', 'Only unreserved CESCo-held inventory can be repositioned.');
+            assert(!s.requests.some(r => r.orgId === orgId && r.shipmentPreparation?.spareId === a.id && r.shipmentPreparation.state === 'RELEASE_AUTHORIZED'), 'Cannot reposition stock after shipment release authorization.');
             const before = a.location;
             a.location = str(p.location, 'New hub / stocking location');
             a.position = str(p.position, 'Internal position');
+            for (const request of s.requests.filter(r => r.orgId === orgId && r.shipmentPreparation?.spareId === a.id && ['DRAFT', 'REVIEWED'].includes(r.shipmentPreparation.state))) {
+                const preparation = request.shipmentPreparation!;
+                const originalState = preparation.state;
+                preparation.state = 'STALE';
+                log(s, u, orgId, 'SHIPMENT_PREPARATION_STALE', request.id, JSON.stringify({ preparationId: preparation.id, originalState, reason: 'Spare package or stocking position updated', equipmentId: a.id }));
+            }
             entityId = a.id;
             log(s, u, orgId, 'STOCK_REPOSITIONED', a.id, `${before} → ${a.location}; ${str(p.notes, 'Custody handoff / placement evidence')}`);
             break;
