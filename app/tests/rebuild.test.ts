@@ -1,3 +1,4 @@
+import { parseUsdCents } from '../src/lib/currency.ts';
 import { normalizeRateUnit, rateUnitOptions } from '../src/lib/rate-units.ts';
 import { operationsMetrics, metricContractVersion } from '../src/lib/operations-metrics.ts';
 import test from 'node:test';
@@ -546,4 +547,15 @@ test('unconfirmed legacy fulfillment offer can be withdrawn and reoffered withou
  assert.equal(reoffered?.offerMode, 'SIMULATED');
  assert.throws(() => mutate(f.s, f.client, 'acme', 'confirmFulfillment', { id:rid }), /Simulated offers cannot authorize/);
  assert.equal(f.s.activities.length, 0);
+});
+
+test('USD entry accepts whole dollars and two decimal places without confusing cents', () => {
+ assert.equal(parseUsdCents('50'), 5000);
+ assert.equal(parseUsdCents('50.00'), 5000);
+ assert.equal(parseUsdCents('25.50'), 2550);
+ assert.equal(parseUsdCents('0.05'), 5);
+ assert.equal(parseUsdCents('0.00'), 0);
+ for (const invalid of ['50.000', '-1', '1e2', '1,000', 'NaN', '', '1.2.3']) {
+   assert.throws(() => parseUsdCents(invalid), /nonnegative USD/);
+ }
 });
