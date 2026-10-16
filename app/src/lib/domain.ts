@@ -760,6 +760,29 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             log(s, u, orgId, 'SHIPMENT_PREPARATION_DRAFTED', r.id, JSON.stringify(r.shipmentPreparation));
             break;
         }
+        case 'reviseShipment': {
+            requireCap(u, orgId, 'operate');
+            const r = get(s.requests, p.id, orgId);
+            assert(r.status === 'FULFILLMENT_OFFER' && r.fulfillment && r.shipmentPreparation, 'An unconfirmed prepared fulfillment offer is required.');
+            assert(r.shipmentPreparation.state !== 'RELEASE_AUTHORIZED', 'Release-authorized shipment cannot be revised through the draft workflow.');
+            const reason = str(p.reason, 'Revision reason', 500);
+            const previous = structuredClone(r.shipmentPreparation);
+            const offer = r.fulfillment;
+            const spare = get(s.equipment, offer.spareId, orgId);
+            const target = get(s.equipment, r.equipmentId, orgId);
+            assert(compatible(target, spare) && ready(spare) && spare.custodian === 'CESCo' && !spare.requestId, 'Spare is no longer available.');
+            const profile = spare.packageProfile;
+            assert(profile && profile.lengthCm > 0 && profile.widthCm > 0 && profile.heightCm > 0 && profile.weightKg > 0, 'Complete package measurements are required.');
+            assert(offer.offerMode === 'SIMULATED' || profile.measurementStatus === 'CESCO_VERIFIED', 'Live shipment requires verified measurements.');
+            const endpoint = get(s.endpoints, r.endpointId, orgId);
+            const destination = [endpoint.name, endpoint.addressLine1, endpoint.addressLine2, endpoint.city, endpoint.state, endpoint.postalCode, endpoint.country].filter(Boolean).join(', ');
+            assert(endpoint.active && offer.destination === destination, 'Destination differs from agreed fulfillment; refresh the offer.');
+            assert(previous.offerMode === offer.offerMode && previous.spareId === offer.spareId && previous.serviceLevel === offer.serviceLevel, 'Fulfillment terms have changed; refresh the offer.');
+            r.shipmentPreparation = { id: id(), requestId: r.id, spareId: spare.id, packageId: profile.packageId, packageRevisionAt: profile.updatedAt, packageStatus: profile.measurementStatus || 'LEGACY_UNVERIFIED', dimensionsCm: [profile.lengthCm, profile.widthCm, profile.heightCm], weightKg: profile.weightKg, sourcePosition: spare.position, sourceCustodian: spare.custodian, destinationEndpointId: endpoint.id, destination, serviceLevel: offer.serviceLevel, offerMode: offer.offerMode || 'LEGACY', state: 'DRAFT', recordedAt: now(), recordedBy: u.email };
+            entityId = r.id;
+            log(s, u, orgId, 'SHIPMENT_PREPARATION_SUPERSEDED', r.id, JSON.stringify({ reason, previous, replacement: r.shipmentPreparation }));
+            break;
+        }
         case 'reviewShipment': {
             requireCap(u, orgId, 'operate');
             const r = get(s.requests, p.id, orgId);
