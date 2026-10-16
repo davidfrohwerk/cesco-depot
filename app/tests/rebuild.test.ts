@@ -790,7 +790,7 @@ for(const changed of ['destination','package','agreement','position']) {
 test('live dispatch rejects missing pick and pack record without custody transfer',()=>{
  const f=liveShipmentFixture();
  const request=f.s.requests.find(x=>x.id===f.rid)!;
- assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'NO-HANDOFF',etaHours:24,custodian:'Carrier'}),/pick and pack/);
+ assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'NO-HANDOFF',etaHours:24,custodian:'Carrier'}),/label and tender readiness/);
  assert.equal(request.status,'RESERVED');
  assert.equal(f.spare.custodian,'CESCo');
  assert.equal(request.tracking,'');
