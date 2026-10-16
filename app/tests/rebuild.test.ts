@@ -542,7 +542,8 @@ test('unconfirmed legacy fulfillment offer can be withdrawn and reoffered withou
  assert.equal(JSON.parse(entry.detail).offer.totalCents, 7500);
  assert.equal(JSON.parse(entry.detail).reason, 'Legacy simulated offer');
  mutate(f.s, f.admin, 'acme', 'prepareFulfillment', { ...offer, offerMode:'SIMULATED' });
- assert.equal(r.fulfillment?.offerMode, 'SIMULATED');
+ const reoffered = f.s.requests.find(item => item.id === rid)?.fulfillment;
+ assert.equal(reoffered?.offerMode, 'SIMULATED');
  assert.throws(() => mutate(f.s, f.client, 'acme', 'confirmFulfillment', { id:rid }), /Simulated offers cannot authorize/);
  assert.equal(f.s.activities.length, 0);
 });
