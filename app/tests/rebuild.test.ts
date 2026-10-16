@@ -802,3 +802,32 @@ test('pick and pack validates physical identity, evidence, and is idempotency-pr
  assert.equal(r.status,'RESERVED');
  assert.throws(()=>mutate(f.s,f.admin,'acme','pickPack',details),/already recorded/);
 });
+
+test('training-only live fixture isolates fictional shipment and exercises pick-pack in portal workflow',()=>{
+ const f=basic();
+ const existing={organizations:f.s.organizations.length,requests:f.s.requests.length,equipment:f.s.equipment.length,activities:f.s.activities.length};
+ const demoId=mutate(f.s,f.admin,'acme','seedLiveDemo',{});
+ const demo=f.s.organizations.find(x=>x.id===demoId)!;
+ const request=f.s.requests.find(x=>x.orgId===demoId)!;
+ const spare=f.s.equipment.find(x=>x.id===request.spareId)!;
+ assert.equal(demo.demo,true);
+ assert.equal(request.status,'RESERVED');
+ assert.equal(request.shipmentPreparation?.state,'RELEASE_AUTHORIZED');
+ assert.equal(request.fulfillment?.offerMode,'LIVE');
+ assert.equal(f.s.organizations.length,existing.organizations+1);
+ assert.equal(f.s.requests.length,existing.requests+1);
+ assert.equal(f.s.equipment.length,existing.equipment+2);
+ assert.equal(f.s.activities.length,existing.activities);
+ assert.throws(()=>mutate(f.s,f.admin,'acme','seedLiveDemo',{}),/already exists/);
+ assert.throws(()=>mutate(f.s,f.client,'acme','seedLiveDemo',{}),/Only a system administrator/);
+ assert.throws(()=>mutate(f.s,f.admin,demoId,'dispatch',{id:request.id,tracking:'NO',etaHours:12,custodian:'Carrier'}),/TRAINING ONLY/);
+ assert.throws(()=>mutate(f.s,f.admin,demoId,'invoice',{}),/TRAINING ONLY/);
+ assert.throws(()=>mutate(f.s,f.admin,demoId,'activity',{requestId:request.id}),/TRAINING ONLY/);
+ assert.equal(request.pickPack,undefined);
+ mutate(f.s,f.admin,demoId,'pickPack',{id:request.id,observedSerial:spare.serial,packageId:'TRAINING-CARTON-001',stagingLocation:'TRAINING staging shelf',condition:'Fictional sealed carton',evidenceReference:'TRAINING-PHOTO-001'});
+ assert.equal(request.pickPack?.evidenceReference,'TRAINING-PHOTO-001');
+ assert.equal(request.status,'RESERVED');
+ assert.equal(spare.custodian,'CESCo');
+ assert.equal(f.s.activities.length,existing.activities);
+ assert.throws(()=>mutate(f.s,f.admin,demoId,'dispatch',{id:request.id,tracking:'NO',etaHours:12,custodian:'Carrier'}),/TRAINING ONLY/);
+});
