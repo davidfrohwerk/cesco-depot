@@ -108,7 +108,7 @@ export type Request = Base & {
     workOrder: string | null;
     pendingCeiling: number | null;
     resumeStatus: string | null;
-    shipmentPreparation?: { id: string; requestId: string; spareId: string; packageId: string; packageRevisionAt: string; packageStatus: string; dimensionsCm: [number, number, number]; weightKg: number; sourcePosition: string; sourceCustodian: string; destinationEndpointId: string; destination: string; serviceLevel: string; offerMode: string; state: 'DRAFT'; recordedAt: string; recordedBy: string }; 
+    shipmentPreparation?: { id: string; requestId: string; spareId: string; packageId: string; packageRevisionAt: string; packageStatus: string; dimensionsCm: [number, number, number]; weightKg: number; sourcePosition: string; sourceCustodian: string; destinationEndpointId: string; destination: string; serviceLevel: string; offerMode: string; state: 'DRAFT' | 'REVIEWED' | 'RELEASE_AUTHORIZED'; recordedAt: string; recordedBy: string; reviewedAt?: string; reviewedBy?: string; reviewNotes?: string; releaseAuthorizedAt?: string; releaseAuthorizedBy?: string }; 
     fulfillment?: { offerMode?: 'SIMULATED' | 'LIVE'; spareId: string; handlingRateId: string; handlingCents: number; shippingCents: number; shippingSource: string; serviceLevel: string; destination: string; termsVersion: string; totalCents: number; preparedAt: string; confirmedAt: string | null; confirmedBy: string | null };
 };
 export type Activity = Base & {
@@ -760,6 +760,47 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             log(s, u, orgId, 'SHIPMENT_PREPARATION_DRAFTED', r.id, JSON.stringify(r.shipmentPreparation));
             break;
         }
+        case 'reviewShipment': {
+            requireCap(u, orgId, 'operate');
+            const r = get(s.requests, p.id, orgId);
+            assert(r.status === 'FULFILLMENT_OFFER' && r.fulfillment && r.shipmentPreparation?.state === 'DRAFT', 'A draft shipment preparation is required.');
+            const draft = r.shipmentPreparation;
+            const a = get(s.equipment, draft.spareId, orgId);
+            const target = get(s.equipment, r.equipmentId, orgId);
+            const endpoint = get(s.endpoints, r.endpointId, orgId);
+            const destination = [endpoint.name, endpoint.addressLine1, endpoint.addressLine2, endpoint.city, endpoint.state, endpoint.postalCode, endpoint.country].filter(Boolean).join(', ');
+            assert(compatible(target, a) && ready(a) && a.custodian === 'CESCo' && !a.requestId, 'The spare is no longer available.');
+            assert(a.position === draft.sourcePosition && a.packageProfile?.updatedAt === draft.packageRevisionAt && a.packageProfile?.packageId === draft.packageId, 'Stock position or package profile changed; prepare a new shipment.');
+            assert(endpoint.active && destination === draft.destination && r.fulfillment.destination === draft.destination, 'Endpoint destination changed; refresh the fulfillment offer.');
+            assert(r.fulfillment.spareId === draft.spareId && r.fulfillment.serviceLevel === draft.serviceLevel && r.fulfillment.offerMode === draft.offerMode, 'Fulfillment terms changed.');
+            draft.reviewNotes = str(p.notes, 'Review notes', 1000);
+            draft.reviewedAt = now();
+            draft.reviewedBy = u.email;
+            draft.state = 'REVIEWED';
+            entityId = r.id;
+            log(s, u, orgId, 'SHIPMENT_PREPARATION_REVIEWED', r.id, JSON.stringify({ preparationId: draft.id, notes: draft.reviewNotes, mode: draft.offerMode }));
+            break;
+        }
+        case 'authorizeShipmentRelease': {
+            requireCap(u, orgId, 'operate');
+            const r = get(s.requests, p.id, orgId);
+            const draft = r.shipmentPreparation;
+            assert(draft && draft.state === 'REVIEWED', 'Shipment preparation must be reviewed first.');
+            assert(draft.offerMode === 'LIVE' && r.fulfillment?.offerMode === 'LIVE', 'Simulated or legacy shipment cannot be released.');
+            assert(r.status === 'AUTHORIZED' && r.fulfillment?.confirmedAt, 'Customer fulfillment approval is required before release authorization.');
+            const a = get(s.equipment, draft.spareId, orgId);
+            const endpoint = get(s.endpoints, r.endpointId, orgId);
+            const destination = [endpoint.name, endpoint.addressLine1, endpoint.addressLine2, endpoint.city, endpoint.state, endpoint.postalCode, endpoint.country].filter(Boolean).join(', ');
+            assert(a.packageProfile?.measurementStatus === 'CESCO_VERIFIED' && a.packageProfile.updatedAt === draft.packageRevisionAt && a.position === draft.sourcePosition && destination === draft.destination && endpoint.active, 'Shipment source, verified packaging or destination changed.');
+            assert(compatible(get(s.equipment, r.equipmentId, orgId), a) && ready(a) && a.custodian === 'CESCo' && !a.requestId, 'Spare availability changed.');
+            assert(draft.reviewedBy !== u.email, 'Release authorization requires an independent operator.');
+            draft.state = 'RELEASE_AUTHORIZED';
+            draft.releaseAuthorizedAt = now();
+            draft.releaseAuthorizedBy = u.email;
+            entityId = r.id;
+            log(s, u, orgId, 'SHIPMENT_RELEASE_AUTHORIZED', r.id, JSON.stringify({preparationId:draft.id, reviewedBy:draft.reviewedBy, authorizedBy:u.email}));
+            break;
+        }
         case 'withdrawFulfillment': {
             requireCap(u, orgId, 'operate');
             const r = get(s.requests, p.id, orgId);
@@ -845,6 +886,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             assert(r.status === 'RESERVED' && r.spareId, 'Reserve a spare first.');
             const a = get(s.equipment, r.spareId, orgId);
             assert(a.testDue && new Date(a.testDue) > new Date(), 'Readiness test expired; retest before dispatch.');
+            if (r.fulfillment) assert(r.shipmentPreparation?.state === 'RELEASE_AUTHORIZED', 'Shipment release authorization is required before dispatch.');
             r.tracking = str(p.tracking, 'Shipment / handoff reference');
             r.etaHours = num(p.etaHours, 'Delivery and installation estimate', .1, 8760);
             r.status = 'DISPATCHED';
