@@ -109,7 +109,10 @@ export type Request = Base & {
     workOrder: string | null;
     pendingCeiling: number | null;
     resumeStatus: string | null;
-    pickPack?: { at: string; actor: string; observedSerial: string; packageId: string; packageRevisionAt: string; sourcePosition: string; stagingLocation: string; condition: string; evidenceReference: string }; 
+    pickPack?: { at: string; actor: string; observedSerial: string; packageId: string; packageRevisionAt: string; sourcePosition: string; stagingLocation: string; condition: string; evidenceReference: string };
+    shippingLabel?: { at: string; actor: string; carrier: string; service: string; tracking: string; labelReference: string; rateReference: string; destination: string; packageRevisionAt: string };
+    tenderReady?: { at: string; actor: string; evidenceReference: string; tracking: string; packageRevisionAt: string };
+    carrierHandoff?: { at: string; actor: string; acceptedBy: string; proofReference: string; tracking: string }; 
     shipmentPreparation?: { id: string; requestId: string; spareId: string; packageId: string; packageRevisionAt: string; packageStatus: string; dimensionsCm: [number, number, number]; weightKg: number; sourcePosition: string; sourceCustodian: string; destinationEndpointId: string; destination: string; serviceLevel: string; offerMode: string; state: 'DRAFT' | 'REVIEWED' | 'STALE' | 'RELEASE_AUTHORIZED'; recordedAt: string; recordedBy: string; reviewedAt?: string; reviewedBy?: string; reviewNotes?: string; releaseAuthorizedAt?: string; releaseAuthorizedBy?: string }; 
     fulfillment?: { offerMode?: 'SIMULATED' | 'LIVE'; spareId: string; handlingRateId: string; handlingCents: number; shippingCents: number; shippingSource: string; serviceLevel: string; destination: string; termsVersion: string; totalCents: number; preparedAt: string; confirmedAt: string | null; confirmedBy: string | null };
 };
@@ -952,6 +955,45 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             log(s, u, orgId, 'SHIPMENT_PICK_PACK_RECORDED', r.id, JSON.stringify(r.pickPack));
             break;
         }
+        case 'recordShippingLabel': {
+            requireCap(u, orgId, 'operate');
+            const r = get(s.requests, p.id, orgId);
+            assert(r.status === 'RESERVED' && r.fulfillment?.offerMode === 'LIVE' && r.shipmentPreparation?.state === 'RELEASE_AUTHORIZED' && r.pickPack, 'Pick and pack and release authorization are required before recording a label.');
+            assert(!r.shippingLabel, 'A shipping label is already recorded; use a controlled correction workflow.');
+            const draft = r.shipmentPreparation;
+            const a = get(s.equipment, r.spareId, orgId);
+            assert(a.status === 'RESERVED' && a.custodian === 'CESCo' && a.requestId === r.id && a.packageProfile?.updatedAt === draft.packageRevisionAt && a.position === draft.sourcePosition, 'Reserved equipment or packaging changed.');
+            const endpoint = get(s.endpoints, r.endpointId, orgId);
+            const destination = [endpoint.name, endpoint.addressLine1, endpoint.addressLine2, endpoint.city, endpoint.state, endpoint.postalCode, endpoint.country].filter(Boolean).join(', ');
+            assert(endpoint.active && destination === draft.destination && r.fulfillment.destination === draft.destination, 'Delivery destination changed.');
+            const carrier = str(p.carrier, 'Carrier', 100);
+            const service = str(p.service, 'Carrier service', 200);
+            assert(service === draft.serviceLevel, 'Carrier service differs from authorized shipment.');
+            const tracking = str(p.tracking, 'Tracking reference', 200);
+            const labelReference = str(p.labelReference, 'Carrier label reference', 300);
+            const rateReference = str(p.rateReference, 'Carrier rate provenance', 300);
+            r.shippingLabel = { at: now(), actor: u.email, carrier, service, tracking, labelReference, rateReference, destination, packageRevisionAt: draft.packageRevisionAt };
+            entityId = r.id;
+            log(s, u, orgId, 'SHIPMENT_LABEL_RECORDED', r.id, JSON.stringify(r.shippingLabel));
+            break;
+        }
+        case 'markTenderReady': {
+            requireCap(u, orgId, 'operate');
+            const r = get(s.requests, p.id, orgId);
+            assert(r.status === 'RESERVED' && r.pickPack && r.shippingLabel && r.shipmentPreparation?.state === 'RELEASE_AUTHORIZED', 'Pick, pack, label, and release authorization are required.');
+            assert(!r.tenderReady, 'Tender readiness already recorded.');
+            const a = get(s.equipment, r.spareId, orgId), draft = r.shipmentPreparation;
+            const endpoint = get(s.endpoints, r.endpointId, orgId);
+            const destination = [endpoint.name, endpoint.addressLine1, endpoint.addressLine2, endpoint.city, endpoint.state, endpoint.postalCode, endpoint.country].filter(Boolean).join(', ');
+            assert(a.status === 'RESERVED' && a.custodian === 'CESCo' && a.requestId === r.id && a.position === draft.sourcePosition && a.packageProfile?.updatedAt === draft.packageRevisionAt && r.pickPack.packageRevisionAt === draft.packageRevisionAt && r.shippingLabel.packageRevisionAt === draft.packageRevisionAt, 'Packaging or reserved equipment changed after review.');
+            assert(endpoint.active && destination === draft.destination && r.shippingLabel.destination === destination, 'Shipment label destination changed.');
+            assert(str(p.observedTracking, 'Observed printed label tracking', 200) === r.shippingLabel.tracking, 'Printed label tracking does not match the recorded label.');
+            const evidenceReference = str(p.evidenceReference, 'Ready-for-tender verification evidence', 500);
+            r.tenderReady = { at: now(), actor: u.email, evidenceReference, tracking: r.shippingLabel.tracking, packageRevisionAt: draft.packageRevisionAt };
+            entityId = r.id;
+            log(s, u, orgId, 'SHIPMENT_TENDER_READY', r.id, JSON.stringify(r.tenderReady));
+            break;
+        }
         case 'dispatch': {
             requireCap(u, orgId, 'operate');
             const r = get(s.requests, p.id, orgId);
@@ -961,6 +1003,11 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             if (r.fulfillment) {
                 const draft = r.shipmentPreparation;
                 assert(draft?.state === 'RELEASE_AUTHORIZED' && draft.offerMode === 'LIVE' && r.fulfillment.offerMode === 'LIVE', 'Shipment release authorization is required before dispatch.');
+                const label = r.shippingLabel, tender = r.tenderReady;
+                assert(label && tender && label.tracking === tender.tracking && label.packageRevisionAt === tender.packageRevisionAt, 'Recorded shipping label and tender readiness are required before carrier acceptance.');
+                assert(str(p.tracking, 'Accepted package tracking', 200) === label.tracking, 'Accepted tracking does not match the shipping label.');
+                const acceptedBy = str(p.acceptedBy, 'Carrier acceptance representative', 200);
+                const proofReference = str(p.proofReference, 'Carrier acceptance proof reference', 500);
                 const pick = r.pickPack;
                 assert(pick && pick.observedSerial === a.serial && pick.packageId === draft.packageId && pick.packageRevisionAt === draft.packageRevisionAt && pick.sourcePosition === a.position && a.status === 'RESERVED' && a.custodian === 'CESCo', 'Verified pick and pack is required before carrier handoff.');
                 const profile = a.packageProfile;
@@ -971,6 +1018,10 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
                 assert(profile?.measurementStatus === 'CESCO_VERIFIED' && profile.updatedAt === draft.packageRevisionAt && profile.packageId === draft.packageId && profile.lengthCm === draft.dimensionsCm[0] && profile.widthCm === draft.dimensionsCm[1] && profile.heightCm === draft.dimensionsCm[2] && profile.weightKg === draft.weightKg, 'Shipment packaging changed; reauthorize release.');
                 assert(a.position === draft.sourcePosition && draft.sourceCustodian === 'CESCo' && r.fulfillment.spareId === a.id && r.fulfillment.serviceLevel === draft.serviceLevel, 'Shipment stock or fulfillment terms changed; reauthorize release.');
                 assert(rate.active && !!rate.approvedAt && rate.version === r.fulfillment.termsVersion && rate.cents === r.fulfillment.handlingCents && r.fulfillment.totalCents === r.fulfillment.handlingCents + r.fulfillment.shippingCents, 'Standing handling agreement or fulfillment price changed; reauthorize release.');
+            }
+            if (r.fulfillment) {
+                r.carrierHandoff = { at: now(), actor: u.email, acceptedBy: str(p.acceptedBy, 'Carrier acceptance representative', 200), proofReference: str(p.proofReference, 'Carrier acceptance proof reference', 500), tracking: r.shippingLabel!.tracking };
+                log(s, u, orgId, 'CARRIER_ACCEPTANCE_RECORDED', r.id, JSON.stringify(r.carrierHandoff));
             }
             r.tracking = str(p.tracking, 'Shipment / handoff reference');
             r.etaHours = num(p.etaHours, 'Delivery and installation estimate', .1, 8760);
