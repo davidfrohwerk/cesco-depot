@@ -112,7 +112,7 @@ export type Request = Base & {
     pickPack?: { at: string; actor: string; observedSerial: string; packageId: string; packageRevisionAt: string; sourcePosition: string; stagingLocation: string; condition: string; evidenceReference: string };
     shippingLabel?: { at: string; actor: string; carrier: string; service: string; tracking: string; labelReference: string; rateReference: string; destination: string; packageRevisionAt: string };
     tenderReady?: { at: string; actor: string; evidenceReference: string; tracking: string; packageRevisionAt: string };
-    carrierHandoff?: { at: string; actor: string; acceptedBy: string; proofReference: string; tracking: string }; 
+    carrierHandoff?: { at: string; actor: string; acceptedBy: string; proofReference: string; evidenceId: string; evidenceSha256: string; tracking: string }; 
     shipmentPreparation?: { id: string; requestId: string; spareId: string; packageId: string; packageRevisionAt: string; packageStatus: string; dimensionsCm: [number, number, number]; weightKg: number; sourcePosition: string; sourceCustodian: string; destinationEndpointId: string; destination: string; serviceLevel: string; offerMode: string; state: 'DRAFT' | 'REVIEWED' | 'STALE' | 'RELEASE_AUTHORIZED'; recordedAt: string; recordedBy: string; reviewedAt?: string; reviewedBy?: string; reviewNotes?: string; releaseAuthorizedAt?: string; releaseAuthorizedBy?: string }; 
     fulfillment?: { offerMode?: 'SIMULATED' | 'LIVE'; spareId: string; handlingRateId: string; handlingCents: number; shippingCents: number; shippingSource: string; serviceLevel: string; destination: string; termsVersion: string; totalCents: number; preparedAt: string; confirmedAt: string | null; confirmedBy: string | null };
 };
@@ -1007,7 +1007,10 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
                 assert(label && tender && label.tracking === tender.tracking && label.packageRevisionAt === tender.packageRevisionAt, 'Recorded shipping label and tender readiness are required before carrier acceptance.');
                 assert(str(p.tracking, 'Accepted package tracking', 200) === label.tracking, 'Accepted tracking does not match the shipping label.');
                 const acceptedBy = str(p.acceptedBy, 'Carrier acceptance representative', 200);
-                const proofReference = str(p.proofReference, 'Carrier acceptance proof reference', 500);
+                const evidenceId = str(p.evidenceId, 'Carrier acceptance evidence ID', 200);
+                const proof = get(s.evidence, evidenceId, orgId);
+                assert(proof.entityId === r.id && ['DISPATCH', 'RECEIPT'].includes(proof.category || ''), 'Carrier acceptance requires uploaded dispatch or receipt evidence attached to this request.');
+                assert(str(p.custodian, 'Accepting carrier / technician', 200) === label.carrier, 'Accepting carrier must match recorded shipping label.');
                 const pick = r.pickPack;
                 assert(pick && pick.observedSerial === a.serial && pick.packageId === draft.packageId && pick.packageRevisionAt === draft.packageRevisionAt && pick.sourcePosition === a.position && a.status === 'RESERVED' && a.custodian === 'CESCo', 'Verified pick and pack is required before carrier handoff.');
                 const profile = a.packageProfile;
@@ -1020,7 +1023,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
                 assert(rate.active && !!rate.approvedAt && rate.version === r.fulfillment.termsVersion && rate.cents === r.fulfillment.handlingCents && r.fulfillment.totalCents === r.fulfillment.handlingCents + r.fulfillment.shippingCents, 'Standing handling agreement or fulfillment price changed; reauthorize release.');
             }
             if (r.fulfillment) {
-                r.carrierHandoff = { at: now(), actor: u.email, acceptedBy: str(p.acceptedBy, 'Carrier acceptance representative', 200), proofReference: str(p.proofReference, 'Carrier acceptance proof reference', 500), tracking: r.shippingLabel!.tracking };
+                r.carrierHandoff = { at: now(), actor: u.email, acceptedBy: str(p.acceptedBy, 'Carrier acceptance representative', 200), proofReference: get(s.evidence, str(p.evidenceId, 'Carrier acceptance evidence ID'), orgId).name, evidenceId: str(p.evidenceId, 'Carrier acceptance evidence ID'), evidenceSha256: get(s.evidence, str(p.evidenceId, 'Carrier acceptance evidence ID'), orgId).sha256, tracking: r.shippingLabel!.tracking };
                 log(s, u, orgId, 'CARRIER_ACCEPTANCE_RECORDED', r.id, JSON.stringify(r.carrierHandoff));
             }
             r.tracking = str(p.tracking, 'Shipment / handoff reference');
