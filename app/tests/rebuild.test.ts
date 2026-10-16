@@ -735,3 +735,46 @@ test('retiring handling agreement blocks shipment review without changing draft 
  assert.deepEqual({status:spare.status,custodian:spare.custodian,requestId:spare.requestId},originalEquipment);
  assert.equal(f.s.activities.length,0);
 });
+
+function liveShipmentFixture() {
+ const f=basic(); receive(f);
+ const spare=f.s.equipment[1], target=f.s.equipment[0];
+ const reviewer: User={id:'reviewer',orgId:'internal',name:'Reviewer',email:'reviewer@example.com',password:'',role:'SYSTEM_ADMIN'};
+ f.s.users.push(reviewer);
+ const rid=mutate(f.s,f.client,'acme','request',{equipmentId:target.id,type:'RECOVERY',scope:'Controlled live shipping regression'});
+ const rateId=mutate(f.s,f.admin,'acme','rate',{name:'Pick pack dispatch',category:'DISPATCH',unit:'each',cents:2500,version:'LIVE-TEST'});
+ mutate(f.s,f.client,'acme','approveRate',{id:rateId});
+ mutate(f.s,f.admin,'acme','setPackageProfile',{id:spare.id,packageId:'LIVE-CARTON',packaging:'Verified test carton',lengthCm:45,widthCm:30,heightCm:20,weightKg:5.25,measurementStatus:'CESCO_VERIFIED'});
+ mutate(f.s,f.admin,'acme','prepareFulfillment',{id:rid,spareId:spare.id,handlingRateId:rateId,shippingCents:5000,shippingSource:'TEST carrier rate',serviceLevel:'Overnight',offerMode:'LIVE'});
+ mutate(f.s,f.admin,'acme','prepareShipment',{id:rid});
+ mutate(f.s,f.admin,'acme','reviewShipment',{id:rid,notes:'Verified live-test package and destination'});
+ mutate(f.s,f.client,'acme','confirmFulfillment',{id:rid});
+ assert.throws(()=>mutate(f.s,f.admin,'acme','authorizeShipmentRelease',{id:rid}),/independent operator/);
+ mutate(f.s,reviewer,'acme','authorizeShipmentRelease',{id:rid});
+ mutate(f.s,f.admin,'acme','reserve',{id:rid,spareId:spare.id});
+ return {...f,rid,rateId,spare,reviewer};
+}
+test('live fulfillment requires independent release authorization and permits validated dispatch',()=>{
+ const f=liveShipmentFixture();
+ const r=f.s.requests.find(x=>x.id===f.rid)!;
+ assert.equal(r.shipmentPreparation?.state,'RELEASE_AUTHORIZED');
+ assert.equal(f.spare.status,'RESERVED');
+ mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'TEST-TRACKING',etaHours:24,custodian:'Test carrier'});
+ assert.equal(r.status,'DISPATCHED');
+ assert.equal(f.spare.status,'OUTBOUND');
+ assert.equal(f.spare.custodian,'Test carrier');
+ assert.ok(f.s.audit.some(x=>x.action==='SHIPMENT_RELEASE_AUTHORIZED'&&x.entityId===f.rid));
+});
+for(const changed of ['destination','package','agreement','position']) {
+ test('dispatch refuses changed '+changed+' after release authorization without custody change',()=>{
+  const f=liveShipmentFixture();
+  const request=f.s.requests.find(x=>x.id===f.rid)!;
+  if(changed==='destination') f.s.endpoints[0].addressLine1='Alternate destination';
+  if(changed==='package') f.spare.packageProfile!.weightKg=8;
+  if(changed==='agreement') mutate(f.s,f.admin,'acme','retireRate',{id:f.rateId,reason:'Agreement superseded'});
+  if(changed==='position') f.spare.position='B-2';
+  const before={status:f.spare.status,custodian:f.spare.custodian,requestStatus:request.status,tracking:request.tracking};
+  assert.throws(()=>mutate(f.s,f.admin,'acme','dispatch',{id:f.rid,tracking:'SHOULD-NOT-DISPATCH',etaHours:24,custodian:'Test carrier'}),/changed|reauthorize/);
+  assert.deepEqual({status:f.spare.status,custodian:f.spare.custodian,requestStatus:request.status,tracking:request.tracking},before);
+ });
+}
