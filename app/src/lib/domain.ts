@@ -108,6 +108,7 @@ export type Request = Base & {
     workOrder: string | null;
     pendingCeiling: number | null;
     resumeStatus: string | null;
+    shipmentPreparation?: { id: string; requestId: string; spareId: string; packageId: string; packageRevisionAt: string; packageStatus: string; dimensionsCm: [number, number, number]; weightKg: number; sourcePosition: string; sourceCustodian: string; destinationEndpointId: string; destination: string; serviceLevel: string; offerMode: string; state: 'DRAFT'; recordedAt: string; recordedBy: string }; 
     fulfillment?: { offerMode?: 'SIMULATED' | 'LIVE'; spareId: string; handlingRateId: string; handlingCents: number; shippingCents: number; shippingSource: string; serviceLevel: string; destination: string; termsVersion: string; totalCents: number; preparedAt: string; confirmedAt: string | null; confirmedBy: string | null };
 };
 export type Activity = Base & {
@@ -739,6 +740,26 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             log(s, u, orgId, 'FULFILLMENT_OFFER_PREPARED', r.id, JSON.stringify(r.fulfillment));
             break;
         }
+        case 'prepareShipment': {
+            requireCap(u, orgId, 'operate');
+            const r = get(s.requests, p.id, orgId);
+            assert(r.type === 'RECOVERY' && r.status === 'FULFILLMENT_OFFER' && r.fulfillment, 'An active fulfillment offer is required before shipment preparation.');
+            const offer = r.fulfillment;
+            const spare = get(s.equipment, offer.spareId, orgId);
+            const affected = get(s.equipment, r.equipmentId, orgId);
+            assert(compatible(affected, spare) && ready(spare) && spare.custodian === 'CESCo' && !spare.requestId, 'Spare is not currently available for shipment preparation.');
+            const profile = spare.packageProfile;
+            assert(profile && profile.lengthCm > 0 && profile.widthCm > 0 && profile.heightCm > 0 && profile.weightKg > 0, 'A complete package profile is required.');
+            const endpoint = get(s.endpoints, r.endpointId, orgId);
+            const destination = [endpoint.name, endpoint.addressLine1, endpoint.addressLine2, endpoint.city, endpoint.state, endpoint.postalCode, endpoint.country].filter(Boolean).join(', ');
+            assert(endpoint.active && destination === offer.destination, 'Delivery destination changed; refresh the fulfillment offer.');
+            assert(offer.offerMode === 'SIMULATED' || profile.measurementStatus === 'CESCO_VERIFIED', 'Live shipment preparation requires CESCo-verified package measurements.');
+            assert(!r.shipmentPreparation || r.shipmentPreparation.state !== 'DRAFT', 'Shipment preparation already exists; withdraw the offer to start a new one.');
+            r.shipmentPreparation = { id: id(), requestId: r.id, spareId: spare.id, packageId: profile.packageId, packageRevisionAt: profile.updatedAt, packageStatus: profile.measurementStatus || 'LEGACY_UNVERIFIED', dimensionsCm: [profile.lengthCm, profile.widthCm, profile.heightCm], weightKg: profile.weightKg, sourcePosition: spare.position, sourceCustodian: spare.custodian, destinationEndpointId: endpoint.id, destination, serviceLevel: offer.serviceLevel, offerMode: offer.offerMode || 'LEGACY', state: 'DRAFT', recordedAt: now(), recordedBy: u.email };
+            entityId = r.id;
+            log(s, u, orgId, 'SHIPMENT_PREPARATION_DRAFTED', r.id, JSON.stringify(r.shipmentPreparation));
+            break;
+        }
         case 'withdrawFulfillment': {
             requireCap(u, orgId, 'operate');
             const r = get(s.requests, p.id, orgId);
@@ -748,6 +769,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             const previous = structuredClone(r.fulfillment);
             log(s, u, orgId, 'FULFILLMENT_OFFER_WITHDRAWN', r.id, JSON.stringify({ reason, offer: previous }));
             r.fulfillment = undefined;
+            r.shipmentPreparation = undefined;
             r.status = 'REQUESTED';
             entityId = r.id;
             break;
@@ -758,6 +780,9 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             assert(r.type === 'RECOVERY' && r.status === 'FULFILLMENT_OFFER' && r.fulfillment, 'An active fulfillment offer is required.');
             const offer = r.fulfillment;
             assert(offer.offerMode !== 'SIMULATED', 'Simulated offers cannot authorize shipment.');
+            assert(r.shipmentPreparation && r.shipmentPreparation.offerMode === 'LIVE', 'A live shipment preparation draft is required.');
+            const preparedSpare = get(s.equipment, offer.spareId, orgId);
+            assert(preparedSpare.packageProfile?.measurementStatus === 'CESCO_VERIFIED' && preparedSpare.packageProfile.updatedAt === r.shipmentPreparation.packageRevisionAt && preparedSpare.position === r.shipmentPreparation.sourcePosition, 'Package or stocking position changed; prepare shipment again.');
             const spare = get(s.equipment, offer.spareId, orgId);
             const source = get(s.equipment, r.equipmentId, orgId);
             const rate = get(s.rates, offer.handlingRateId, orgId);
