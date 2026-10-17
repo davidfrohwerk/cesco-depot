@@ -412,8 +412,22 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
         log(s,u,demoId,'TRAINING_FIXTURE_CREATED',requestId,'All assets, approval identities, customer agreements and charges are synthetic. No external obligations exist.');
         return demoId;
     }
+    if (action === 'seedDeliveryDemo') {
+        assert(u.role === 'SYSTEM_ADMIN' && org.demo && org.id === 'cesco-live-fulfillment-demo', 'Only the system administrator may initialize the isolated training delivery fixture.');
+        assert(!s.requests.some(x => x.orgId === orgId && x.number === 'TRAINING-DELIVERY-1'), 'Training delivery fixture already exists.');
+        const endpoint = s.endpoints.find(x => x.orgId === orgId && x.externalId === 'TRAINING-ENDPOINT');
+        assert(endpoint, 'Initialize the training fulfillment lab first.');
+        const stamp=now(), targetId=id(), spareId=id(), requestId=id();
+        const common={orgId,manufacturer:'DEMO OEM',model:'Training Router',configuration:'training-v1',pool:'TRAINING-DELIVERY-POOL',condition:'GOOD',testedAt:stamp,testDue:new Date(Date.now()+30*86400000).toISOString(),intakeId:null,volume:1,recoveryTargetHours:null};
+        s.equipment.push({...common,id:targetId,externalId:'TRAINING-DELIVERY-TARGET',serial:'TRAINING-FAILED-0002',purpose:'SUPPORTED',endpointId:endpoint.id,status:'FAILED',location:endpoint.name,position:'',custodian:'Client',requestId,description:'Synthetic failed device, never physically shipped'});
+        s.equipment.push({...common,id:spareId,externalId:'TRAINING-DELIVERY-SPARE',serial:'TRAINING-SPARE-0002',purpose:'SPARE',endpointId:null,status:'OUTBOUND',location:'Synthetic transit',position:'',custodian:'TRAINING COURIER',requestId,description:'Synthetic replacement, no actual carrier custody'});
+        s.requests.push({id:requestId,orgId,number:'TRAINING-DELIVERY-1',endpointId:endpoint.id,equipmentId:targetId,type:'RECOVERY',scope:'TRAINING ONLY: Record delivery, then independently verify installation',status:'DISPATCHED',ceiling:0,authorizedBy:'training-fixture',authorizedAt:stamp,termsVersion:'TRAINING-NONBILLABLE',spareId,tracking:'TRAINING-DELIVERY-TRACK',etaHours:24,createdAt:stamp,completedAt:null,workOrder:'TRAINING-DELIVERY-WO',pendingCeiling:null,resumeStatus:null});
+        log(s,u,orgId,'TRAINING_DELIVERY_FIXTURE_CREATED',requestId,'Synthetic dispatched request for delivery/installation training. No carrier, custody transfer, or charges.');
+        return requestId;
+    }
     if (org.demo) {
-        assert(!['dispatch','deliver','external','activity','review','invoice','settle','return','repair','restock','disposition','complete','recordStorage'].includes(action), 'TRAINING ONLY: physical custody, fulfillment, and financial execution are disabled for this demo account.');
+        const isTrainingDelivery = (action === 'deliver' || action === 'confirmInstallation') && s.requests.some(x => x.id === p.id && x.orgId === orgId && x.number === 'TRAINING-DELIVERY-1');
+        assert(isTrainingDelivery || !['dispatch','deliver','confirmInstallation','external','activity','review','invoice','settle','return','repair','restock','disposition','complete','recordStorage'].includes(action), 'TRAINING ONLY: physical carrier handoff, return, completion, and financial execution are disabled for this demo account.');
     }
     switch (action) {
         case 'plan': {
