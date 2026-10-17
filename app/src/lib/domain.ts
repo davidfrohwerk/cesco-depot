@@ -109,6 +109,8 @@ export type Request = Base & {
     workOrder: string | null;
     pendingCeiling: number | null;
     resumeStatus: string | null;
+    deliveryReceipt?: { at: string; actor: string; recipient: string; reference: string; notes: string };
+    installation?: { at: string; actor: string; technician: string; evidenceId: string; evidenceSha256: string; notes: string };
     pickPack?: { at: string; actor: string; observedSerial: string; packageId: string; packageRevisionAt: string; sourcePosition: string; stagingLocation: string; condition: string; evidenceReference: string };
     shippingLabel?: { at: string; actor: string; carrier: string; service: string; tracking: string; labelReference: string; rateReference: string; destination: string; packageRevisionAt: string };
     tenderReady?: { at: string; actor: string; evidenceReference: string; tracking: string; packageRevisionAt: string };
@@ -151,7 +153,7 @@ export type Settlement = Base & {
     reference: string;
     createdAt: string;
 };
-export type OperationalEvent = Base & { requestId: string; equipmentId: string; type: 'SPARE_RESERVED' | 'SPARE_DISPATCHED' | 'DELIVERY_RECORDED' | 'FAILED_RETURN_RECEIVED' | 'SPARE_REPLENISHED'; at: string; actor: string; reference: string; relatedEquipmentId: string | null; version: 1; };
+export type OperationalEvent = Base & { requestId: string; equipmentId: string; type: 'SPARE_RESERVED' | 'SPARE_DISPATCHED' | 'DELIVERY_RECORDED' | 'INSTALLATION_CONFIRMED' | 'FAILED_RETURN_RECEIVED' | 'SPARE_REPLENISHED'; at: string; actor: string; reference: string; relatedEquipmentId: string | null; version: 1; };
 export type Audit = Base & {
     at: string;
     actor: string;
@@ -1040,29 +1042,56 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
         case 'deliver': {
             requireCap(u, orgId, 'operate');
             const r = get(s.requests, p.id, orgId);
-            assert(r.status === 'DISPATCHED' && r.spareId, 'Dispatch first.');
-            const a = get(s.equipment, r.spareId, orgId);
-            const e = get(s.endpoints, r.endpointId, orgId);
-            str(p.notes, 'Delivery / installation evidence');
-            a.status = 'INSTALLED';
-            a.purpose = 'SUPPORTED';
+            assert(r.type === 'RECOVERY' && r.status === 'DISPATCHED' && r.spareId, 'A dispatched recovery shipment is required.');
+            const spare = get(s.equipment, r.spareId, orgId);
+            const endpoint = get(s.endpoints, r.endpointId, orgId);
+            assert(spare.status === 'OUTBOUND', 'Replacement is not in transit.');
+            const recipient = str(p.recipient, 'Delivery recipient', 200);
+            const reference = str(p.reference, 'Carrier proof of delivery reference', 500);
+            const notes = str(p.notes, 'Delivery observation', 500);
+            r.deliveryReceipt = { at: now(), actor: u.email, recipient, reference, notes };
+            spare.status = 'DELIVERED_PENDING_INSTALLATION';
+            spare.location = endpoint.name;
+            spare.position = '';
+            spare.custodian = 'Client';
+            r.status = 'DELIVERED';
+            log(s, u, orgId, 'CARRIER_DELIVERY_RECORDED', r.id, JSON.stringify(r.deliveryReceipt));
+            operationalEvent(s, u, orgId, r.id, spare.id, 'DELIVERY_RECORDED', reference, r.equipmentId);
+            entityId = r.id;
+            break;
+        }
+        case 'confirmInstallation': {
+            requireCap(u, orgId, 'operate');
+            const r = get(s.requests, p.id, orgId);
+            assert(r.type === 'RECOVERY' && r.status === 'DELIVERED' && r.spareId && r.deliveryReceipt, 'Carrier delivery must be recorded before installation confirmation.');
+            assert(!r.installation, 'Installation already confirmed.');
+            const spare = get(s.equipment, r.spareId, orgId);
+            assert(spare.status === 'DELIVERED_PENDING_INSTALLATION' && spare.custodian === 'Client' && spare.purpose === 'SPARE', 'Delivered replacement is not awaiting installation.');
+            const technician = str(p.technician, 'Installation technician / confirming representative', 200);
+            const notes = str(p.notes, 'Installation and functional validation result', 1000);
+            const evidenceId = str(p.evidenceId, 'Installation evidence ID', 200);
+            const proof = get(s.evidence, evidenceId, orgId);
+            assert(proof.entityId === r.id && ['INSTALLATION_AFTER', 'TEST_RESULT'].includes(proof.category || ''), 'Installation confirmation requires uploaded installation or functional test evidence attached to this request.');
             const failed = get(s.equipment, r.equipmentId, orgId);
+            const endpoint = get(s.endpoints, r.endpointId, orgId);
+            spare.status = 'INSTALLED';
+            spare.purpose = 'SUPPORTED';
+            spare.endpointId = endpoint.id;
+            spare.location = endpoint.name;
             failed.purpose = 'SPARE';
             failed.status = 'RETURN_PENDING';
             failed.endpointId = null;
-            a.location = e.name;
-            a.position = '';
-            a.custodian = 'Client';
-            a.endpointId = e.id;
-            r.status = 'DELIVERED';
-            operationalEvent(s, u, orgId, r.id, a.id, 'DELIVERY_RECORDED', String(p.notes), failed.id);
+            r.installation = { at: now(), actor: u.email, technician, evidenceId, evidenceSha256: proof.sha256, notes };
+            r.status = 'INSTALLED';
+            log(s, u, orgId, 'INSTALLATION_CONFIRMED', r.id, JSON.stringify(r.installation));
+            operationalEvent(s, u, orgId, r.id, spare.id, 'INSTALLATION_CONFIRMED', evidenceId, failed.id);
             entityId = r.id;
             break;
         }
         case 'return': {
             requireCap(u, orgId, 'operate');
             const r = get(s.requests, p.id, orgId);
-            assert(['DELIVERED', 'RETURNING'].includes(r.status), 'Delivery must be recorded first.');
+            assert(['INSTALLED', 'RETURNING'].includes(r.status), 'Installation must be confirmed before failed-equipment return.');
             const a = get(s.equipment, r.equipmentId, orgId);
             a.status = 'RETURNED';
             a.condition = 'FAILED';
@@ -1130,8 +1159,8 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
         case 'complete': {
             requireCap(u, orgId, 'operate');
             const r = get(s.requests, p.id, orgId);
-            assert(['DELIVERED', 'RETURNED', 'RECEIVED'].includes(r.status), 'Request is not ready to complete.');
-            assert(r.type !== 'RECOVERY' || ['DELIVERED', 'RETURNED'].includes(r.status), 'Recovery delivery required.');
+            assert(['INSTALLED', 'RETURNED', 'RECEIVED', 'DELIVERED'].includes(r.status), 'Request is not ready to complete.');
+            assert(r.type !== 'RECOVERY' || (r.installation && ['INSTALLED', 'RETURNED'].includes(r.status)), 'Recovery installation confirmation is required.');
             assert(!['DONATION', 'DECOMMISSION'].includes(r.type), 'Record authorized disposition first.');
             if (['REPAIR', 'OEM'].includes(r.type)) {
                 const a = get(s.equipment, r.equipmentId, orgId);
