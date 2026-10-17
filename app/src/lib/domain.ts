@@ -111,6 +111,7 @@ export type Request = Base & {
     resumeStatus: string | null;
     deliveryReceipt?: { at: string; actor: string; recipient: string; reference: string; notes: string };
     installation?: { at: string; actor: string; technician: string; evidenceId: string; evidenceSha256: string; notes: string };
+    technicalAssessment?: {at:string;actor:string;diagnosis:string;warranty:string;feasibility:string;estimatedCostCents:number;estimatedDays:number;recommendation:'REPAIR'|'OEM'|'REPLACE'|'HOLD'|'DISPOSITION';notes:string;evidenceId:string;evidenceSha256:string;approval?:{at:string;actor:string;reference:string;notes:string}};
     failedReturn?: { authorization?: {at:string;actor:string;reference:string;destination:string;instructions:string}; inbound?: {at:string;actor:string;carrier:string;tracking:string;shipper:string}; receipt?: {at:string;actor:string;observedSerial:string;condition:string;location:string;position:string;evidenceId:string;evidenceSha256:string} };
     pickPack?: { at: string; actor: string; observedSerial: string; packageId: string; packageRevisionAt: string; sourcePosition: string; stagingLocation: string; condition: string; evidenceReference: string };
     shippingLabel?: { at: string; actor: string; carrier: string; service: string; tracking: string; labelReference: string; rateReference: string; destination: string; packageRevisionAt: string };
@@ -427,8 +428,8 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
         return requestId;
     }
     if (org.demo) {
-        const isTrainingDelivery = ['deliver','confirmInstallation','authorizeFailedReturn','recordFailedReturnShipment','return'].includes(action) && s.requests.some(x => x.id === p.id && x.orgId === orgId && x.number === 'TRAINING-DELIVERY-1');
-        assert(isTrainingDelivery || !['dispatch','deliver','confirmInstallation','authorizeFailedReturn','recordFailedReturnShipment','return','external','activity','review','invoice','settle','return','repair','restock','disposition','complete','recordStorage'].includes(action), 'TRAINING ONLY: physical carrier handoff, return, completion, and financial execution are disabled for this demo account.');
+        const isTrainingDelivery = ['deliver','confirmInstallation','authorizeFailedReturn','recordFailedReturnShipment','return','assessFailedUnit'].includes(action) && s.requests.some(x => x.id === p.id && x.orgId === orgId && x.number === 'TRAINING-DELIVERY-1');
+        assert(isTrainingDelivery || !['dispatch','deliver','confirmInstallation','authorizeFailedReturn','recordFailedReturnShipment','return','assessFailedUnit','approveFailedTreatment','external','activity','review','invoice','settle','return','repair','restock','disposition','complete','recordStorage'].includes(action), 'TRAINING ONLY: physical carrier handoff, return, completion, and financial execution are disabled for this demo account.');
     }
     switch (action) {
         case 'plan': {
@@ -1160,10 +1161,43 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             entityId=a.id;
             break;
         }
+        case 'assessFailedUnit': {
+            requireCap(u,orgId,'operate');
+            const r=get(s.requests,p.id,orgId);
+            assert(r.type==='RECOVERY' && r.failedReturn?.receipt,'Physical return receipt is required before technical assessment.');
+            assert(!r.technicalAssessment,'Technical assessment already recorded; preserve the original and use a future revision workflow.');
+            const failed=get(s.equipment,r.equipmentId,orgId);
+            assert(failed.status==='RETURNED' && failed.custodian==='CESCo' && failed.condition==='FAILED','Only CESCo-held failed units in quarantine may be assessed.');
+            const diagnosis=str(p.diagnosis,'Diagnostic observations',1500),warranty=str(p.warranty,'Warranty or OEM eligibility',500),feasibility=str(p.feasibility,'Technical repair feasibility',500);
+            const recommendation=str(p.recommendation,'Recommended treatment',30) as 'REPAIR'|'OEM'|'REPLACE'|'HOLD'|'DISPOSITION';
+            assert(['REPAIR','OEM','REPLACE','HOLD','DISPOSITION'].includes(recommendation),'Unsupported proposed treatment.');
+            const estimatedCostCents=cents(p.estimatedCostCents,'Estimated treatment cost'),estimatedDays=num(p.estimatedDays,'Estimated turnaround days',0,3650);
+            const notes=str(p.notes,'Assessment rationale / uncertainty',1000),evidenceId=str(p.evidenceId,'Diagnostic evidence ID',200);
+            const proof=get(s.evidence,evidenceId,orgId);
+            assert([r.id,failed.id].includes(proof.entityId) && ['TEST_RESULT','EQUIPMENT_CONDITION','SERIAL_PHOTO'].includes(proof.category||''),'Technical assessment requires linked diagnostic or condition evidence.');
+            r.technicalAssessment={at:now(),actor:u.email,diagnosis,warranty,feasibility,estimatedCostCents,estimatedDays,recommendation,notes,evidenceId,evidenceSha256:proof.sha256};
+            log(s,u,orgId,'FAILED_UNIT_ASSESSED',r.id,JSON.stringify(r.technicalAssessment));
+            entityId=r.id;
+            break;
+        }
+        case 'approveFailedTreatment': {
+            requireCap(u,orgId,'authorize');
+            const r=get(s.requests,p.id,orgId);
+            assert(r.type==='RECOVERY' && r.technicalAssessment,'Technical assessment is required before a client treatment decision.');
+            assert(!r.technicalAssessment.approval,'Treatment decision already recorded.');
+            assert(r.technicalAssessment.recommendation!=='HOLD','Hold recommendation does not authorize a physical treatment.');
+            const reference=str(p.reference,'Client treatment authorization reference',200),notes=str(p.notes,'Client approval conditions',1000);
+            r.technicalAssessment.approval={at:now(),actor:u.email,reference,notes};
+            log(s,u,orgId,'FAILED_TREATMENT_AUTHORIZED',r.id,JSON.stringify(r.technicalAssessment.approval));
+            entityId=r.id;
+            break;
+        }
         case 'repair': {
             requireCap(u, orgId, 'operate');
             const a = get(s.equipment, p.id, orgId);
             assert(['RETURNED', 'RECEIVED', 'EXCEPTION', 'REPAIR', 'OEM_OUT'].includes(a.status), 'Equipment cannot enter repair from this state.');
+            const recovery = a.requestId ? s.requests.find(r=>r.id===a.requestId && r.orgId===orgId && r.type==='RECOVERY' && !!r.failedReturn?.receipt) : undefined;
+            if(recovery) assert(recovery.technicalAssessment?.recommendation==='REPAIR' && recovery.technicalAssessment.approval,'Returned recovery equipment requires an assessed and client-authorized repair.');
             a.status = 'REPAIR';
             a.condition = 'GOOD';
             str(p.notes, 'Repair result / exception resolution');
