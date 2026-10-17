@@ -52,6 +52,7 @@ export function operationsMetrics(s: Pick<State, 'equipment' | 'requests' | 'act
             reserved: eventCount('SPARE_RESERVED'),
             dispatched: eventCount('SPARE_DISPATCHED'),
             delivered: eventCount('DELIVERY_RECORDED'),
+            installed: eventCount('INSTALLATION_CONFIRMED'),
             failedReturnsReceived: eventCount('FAILED_RETURN_RECEIVED'),
             replenished: eventCount('SPARE_REPLENISHED')
         },
@@ -61,7 +62,7 @@ export function operationsMetrics(s: Pick<State, 'equipment' | 'requests' | 'act
         readySpareCount: ready.length,
         readyByCompatibility: [...byPool.values()].sort((a,b) => a.pool.localeCompare(b.pool) || a.configuration.localeCompare(b.configuration)),
         openRecoveryRequests: requests.filter(x => x.type === 'RECOVERY' && !['COMPLETED', 'CANCELLED'].includes(x.status)).length,
-        pendingReturns: requests.filter(x => x.type === 'RECOVERY' && ['DELIVERED', 'RETURNING'].includes(x.status)).length,
+        pendingReturns: requests.filter(x => x.type === 'RECOVERY' && ['INSTALLED', 'RETURNING'].includes(x.status)).length,
         pendingAssessment: equipment.filter(x => x.custodian === 'CESCo' && x.status === 'RETURNED' && x.condition === 'FAILED').length,
         receiptExceptions: equipment.filter(x => x.status === 'EXCEPTION').length,
         unverifiedSpareCount: equipment.filter(x => x.purpose === 'SPARE' && x.custodian === 'CESCo' && !ready.includes(x)).length,
