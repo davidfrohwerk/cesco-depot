@@ -891,7 +891,7 @@ test('live carrier acceptance needs uploaded request-linked dispatch evidence an
 });
 
 test('delivery does not establish installation or failed-unit return eligibility',()=>{
- const f=basic();receive(f);const rid=authorize(f), spare=f.s.equipment[1], failed=f.s.equipment[0];
+ const f=basic();receive(f);const rid=authorize(f), spare=f.s.equipment[1], failed=f.s.equipment[0], previousFailedStatus=failed.status;
  mutate(f.s,f.admin,'acme','reserve',{id:rid,spareId:spare.id});
  mutate(f.s,f.admin,'acme','dispatch',{id:rid,tracking:'DELIVERY-TRACK',custodian:'Courier',etaHours:12});
  mutate(f.s,f.admin,'acme','deliver',{id:rid,recipient:'Store manager',reference:'POD-001',notes:'Delivered intact'});
@@ -901,7 +901,7 @@ test('delivery does not establish installation or failed-unit return eligibility
  assert.equal(spare.purpose,'SPARE');
  assert.equal(spare.custodian,'Client');
  assert.equal(failed.purpose,'SUPPORTED');
- assert.equal(failed.status,'FAILED');
+ assert.equal(failed.status,previousFailedStatus);
  assert.throws(()=>mutate(f.s,f.admin,'acme','complete',{id:rid,notes:'Not installed'}),/installation confirmation/);
  assert.throws(()=>mutate(f.s,f.admin,'acme','return',{id:rid,location:'Depot',position:'Bench'}),/Installation must be confirmed/);
  assert.throws(()=>mutate(f.s,f.admin,'acme','confirmInstallation',{id:rid,technician:'Field tech',notes:'Validated',evidenceId:'MISSING'}),/Record not found/);
