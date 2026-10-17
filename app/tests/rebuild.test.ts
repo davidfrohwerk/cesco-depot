@@ -963,6 +963,7 @@ test('failed return authorization and inbound custody precede evidence-backed de
  mutate(f.s,admin,'acme','confirmInstallation',{id:rid,technician:'Client installer',notes:'Service restored',evidenceId:installationProof});
  assert.throws(()=>mutate(f.s,admin,'acme','return',{id:rid,observedSerial:failed.serial,condition:'Broken',location:'Indy',position:'Quarantine',evidenceId:installationProof}),/authorization and recorded inbound shipment/);
  mutate(f.s,admin,'acme','complete',{id:rid,notes:'Recovery confirmed, failed unit return outstanding'}); assert.equal(f.s.requests.find(x=>x.id===rid)?.status,'COMPLETED');
+ assert.equal(operationsMetrics(f.s,'acme').pendingReturns,1);
  mutate(f.s,admin,'acme','authorizeFailedReturn',{id:rid,reference:'RMA-004',destination:'CESCo Indy',instructions:'Label and package the failed unit'});
  assert.equal(failed.custodian,'Client');
  assert.throws(()=>mutate(f.s,admin,'acme','authorizeFailedReturn',{id:rid,reference:'RMA-005',destination:'CESCo',instructions:'Repeat'}),/already authorized/);
@@ -978,6 +979,7 @@ test('failed return authorization and inbound custody precede evidence-backed de
  assert.equal(failed.custodian,'CESCo');
  assert.equal(failed.condition,'FAILED');
  assert.equal(f.s.requests.find(x=>x.id===rid)?.status,'COMPLETED');
+ assert.equal(operationsMetrics(f.s,'acme').pendingReturns,0);
  assert.throws(()=>mutate(f.s,admin,'acme','verify',{id:failed.id,configuration:failed.configuration,validDays:30,notes:'Not repaired'}),/Only good-condition/);
  assert.throws(()=>mutate(f.s,admin,'acme','return',{id:rid,observedSerial:failed.serial,condition:'Again',location:'Indy',position:'Q-1',evidenceId:receiptId}),/authorization and recorded inbound shipment/);
 });
