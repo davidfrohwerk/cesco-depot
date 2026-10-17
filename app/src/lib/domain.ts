@@ -111,6 +111,7 @@ export type Request = Base & {
     resumeStatus: string | null;
     deliveryReceipt?: { at: string; actor: string; recipient: string; reference: string; notes: string };
     installation?: { at: string; actor: string; technician: string; evidenceId: string; evidenceSha256: string; notes: string };
+    failedReturn?: { authorization?: {at:string;actor:string;reference:string;destination:string;instructions:string}; inbound?: {at:string;actor:string;carrier:string;tracking:string;shipper:string}; receipt?: {at:string;actor:string;observedSerial:string;condition:string;location:string;position:string;evidenceId:string;evidenceSha256:string} };
     pickPack?: { at: string; actor: string; observedSerial: string; packageId: string; packageRevisionAt: string; sourcePosition: string; stagingLocation: string; condition: string; evidenceReference: string };
     shippingLabel?: { at: string; actor: string; carrier: string; service: string; tracking: string; labelReference: string; rateReference: string; destination: string; packageRevisionAt: string };
     tenderReady?: { at: string; actor: string; evidenceReference: string; tracking: string; packageRevisionAt: string };
@@ -1102,19 +1103,61 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             entityId = r.id;
             break;
         }
+        case 'authorizeFailedReturn': {
+            requireCap(u,orgId,'operate');
+            const r=get(s.requests,p.id,orgId);
+            assert(r.type==='RECOVERY' && r.status==='INSTALLED' && r.installation,'Verified installation is required before initiating failed-equipment return.');
+            assert(!r.failedReturn?.authorization,'Failed-unit return already authorized.');
+            const failed=get(s.equipment,r.equipmentId,orgId);
+            assert(failed.status==='RETURN_PENDING' && failed.custodian==='Client','Failed equipment is not awaiting client return.');
+            const reference=str(p.reference,'Return authorization / RMA',200);
+            const destination=str(p.destination,'Authorized return destination',300);
+            const instructions=str(p.instructions,'Return packaging and custody instructions',500);
+            r.failedReturn={authorization:{at:now(),actor:u.email,reference,destination,instructions}};
+            log(s,u,orgId,'FAILED_RETURN_AUTHORIZED',r.id,JSON.stringify(r.failedReturn.authorization));
+            entityId=r.id;
+            break;
+        }
+        case 'recordFailedReturnShipment': {
+            requireCap(u,orgId,'operate');
+            const r=get(s.requests,p.id,orgId);
+            assert(r.type==='RECOVERY' && r.status==='INSTALLED' && r.failedReturn?.authorization,'Authorize the failed-unit return before recording inbound shipping.');
+            assert(!r.failedReturn.inbound,'Inbound shipment already recorded.');
+            const failed=get(s.equipment,r.equipmentId,orgId);
+            assert(failed.status==='RETURN_PENDING' && failed.custodian==='Client','Failed equipment is not pending client return.');
+            const carrier=str(p.carrier,'Inbound carrier',200),tracking=str(p.tracking,'Inbound tracking number',200),shipper=str(p.shipper,'Person or party handing over shipment',200);
+            r.failedReturn.inbound={at:now(),actor:u.email,carrier,tracking,shipper};
+            r.status='RETURNING';
+            failed.status='RETURN_IN_TRANSIT';
+            failed.custodian=carrier;
+            failed.location='Inbound transit to CESCo';
+            log(s,u,orgId,'FAILED_RETURN_SHIPMENT_RECORDED',r.id,JSON.stringify(r.failedReturn.inbound));
+            entityId=r.id;
+            break;
+        }
         case 'return': {
             requireCap(u, orgId, 'operate');
-            const r = get(s.requests, p.id, orgId);
-            assert(['INSTALLED', 'RETURNING'].includes(r.status), 'Installation must be confirmed before failed-equipment return.');
-            const a = get(s.equipment, r.equipmentId, orgId);
-            a.status = 'RETURNED';
-            a.condition = 'FAILED';
-            a.custodian = 'CESCo';
-            a.location = str(p.location, 'Return depot');
-            a.position = str(p.position, 'Internal position');
-            r.status = 'RETURNED';
-            operationalEvent(s, u, orgId, r.id, a.id, 'FAILED_RETURN_RECEIVED', a.location, r.spareId);
-            entityId = a.id;
+            const r=get(s.requests,p.id,orgId);
+            assert(r.type==='RECOVERY' && r.status==='RETURNING' && r.failedReturn?.authorization && r.failedReturn.inbound,'Return authorization and recorded inbound shipment are required before receipt.');
+            assert(!r.failedReturn.receipt,'Failed-unit receipt already recorded.');
+            const a=get(s.equipment,r.equipmentId,orgId);
+            assert(a.status==='RETURN_IN_TRANSIT' && a.custodian===r.failedReturn.inbound.carrier,'Inbound unit custody does not match the recorded carrier.');
+            const observedSerial=str(p.observedSerial,'Observed physical serial',200);
+            assert(observedSerial===a.serial,'Observed serial does not match expected failed equipment; quarantine and open an exception.');
+            const evidenceId=str(p.evidenceId,'Return receiving evidence ID',200),proof=get(s.evidence,evidenceId,orgId);
+            assert([r.id,a.id].includes(proof.entityId) && ['RECEIPT','SERIAL_PHOTO','EQUIPMENT_CONDITION'].includes(proof.category || ''),'Receiving requires uploaded receipt or condition evidence linked to this request or failed equipment.');
+            const condition=str(p.condition,'Observed failed-equipment condition',500);
+            const location=str(p.location,'Return depot',200),position=str(p.position,'Internal position',200);
+            r.failedReturn.receipt={at:now(),actor:u.email,observedSerial,condition,location,position,evidenceId,evidenceSha256:proof.sha256};
+            a.status='RETURNED';
+            a.condition='FAILED';
+            a.custodian='CESCo';
+            a.location=location;
+            a.position=position;
+            r.status='RETURNED';
+            log(s,u,orgId,'FAILED_RETURN_RECEIVED',r.id,JSON.stringify(r.failedReturn.receipt));
+            operationalEvent(s,u,orgId,r.id,a.id,'FAILED_RETURN_RECEIVED',evidenceId,r.spareId);
+            entityId=a.id;
             break;
         }
         case 'repair': {
@@ -1173,8 +1216,8 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
         case 'complete': {
             requireCap(u, orgId, 'operate');
             const r = get(s.requests, p.id, orgId);
-            assert(['INSTALLED', 'RETURNED', 'RECEIVED', 'DELIVERED'].includes(r.status), 'Request is not ready to complete.');
-            assert(r.type !== 'RECOVERY' || (r.installation && ['INSTALLED', 'RETURNED'].includes(r.status)), 'Recovery installation confirmation is required.');
+            assert(['INSTALLED', 'RETURNING', 'RETURNED', 'RECEIVED', 'DELIVERED'].includes(r.status), 'Request is not ready to complete.');
+            assert(r.type !== 'RECOVERY' || (r.installation && r.failedReturn?.receipt && r.status === 'RETURNED'), 'Recovery completion requires installation and physical failed-unit return receipt.');
             assert(!['DONATION', 'DECOMMISSION'].includes(r.type), 'Record authorized disposition first.');
             if (['REPAIR', 'OEM'].includes(r.type)) {
                 const a = get(s.equipment, r.equipmentId, orgId);
