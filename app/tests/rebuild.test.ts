@@ -421,7 +421,7 @@ test('fulfillment event counters are tenant-scoped and period filtered', () => {
         make('e5','other','SPARE_REPLENISHED','2026-10-13T00:00:00.000Z')
     ];
     const report = operationsMetrics(f.s,'acme','2026-10-12T23:59:59.000Z','2026-10-11T00:00:00.000Z');
-    assert.deepEqual(report.fulfillmentMilestones, {reserved:0,dispatched:1,delivered:1,failedReturnsReceived:0,replenished:0});
+    assert.deepEqual(report.fulfillmentMilestones, {reserved:0,dispatched:1,delivered:1,installed:0,failedReturnsReceived:0,replenished:0});
     assert.equal(operationsMetrics(f.s,'acme','2026-10-14T00:00:00.000Z').fulfillmentMilestones.failedReturnsReceived,1);
     assert.equal(operationsMetrics(f.s,'other','2026-10-14T00:00:00.000Z').fulfillmentMilestones.replenished,1);
 });
