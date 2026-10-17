@@ -9,7 +9,7 @@ export const metricContractVersion = 'operations-v1';
 export const metricDefinitions = {
     readySpareCount: { unit: 'equipment', basis: 'SPARE + READY + GOOD + unexpired CESCo verification + CESCo custody + no active allocation', owner: 'CESCo operations' },
     openRecoveryRequests: { unit: 'requests', basis: 'Recovery requests not completed or cancelled', owner: 'Client/CESCo' },
-    pendingReturns: { unit: 'requests', basis: 'Replacement delivered or returning but failed unit not reconciled', owner: 'Client return / CESCo receiving' },
+    pendingReturns: { unit: 'requests', basis: 'Replacement installation confirmed; failed unit not yet physically received, including completed recovery requests', owner: 'Client return / CESCo receiving' },
     pendingAssessment: { unit: 'equipment', basis: 'Returned, failed equipment at CESCo not yet assessed', owner: 'CESCo bench' },
     receiptExceptions: { unit: 'equipment', basis: 'Equipment with unresolved receiving exception', owner: 'CESCo receiving' },
     unverifiedSpareCount: { unit: 'equipment', basis: 'CESCo-held spares without current readiness', owner: 'CESCo operations' },
@@ -62,7 +62,7 @@ export function operationsMetrics(s: Pick<State, 'equipment' | 'requests' | 'act
         readySpareCount: ready.length,
         readyByCompatibility: [...byPool.values()].sort((a,b) => a.pool.localeCompare(b.pool) || a.configuration.localeCompare(b.configuration)),
         openRecoveryRequests: requests.filter(x => x.type === 'RECOVERY' && !['COMPLETED', 'CANCELLED'].includes(x.status)).length,
-        pendingReturns: requests.filter(x => x.type === 'RECOVERY' && ['INSTALLED', 'RETURNING'].includes(x.status)).length,
+        pendingReturns: requests.filter(x => x.type === 'RECOVERY' && !!x.installation && !x.failedReturn?.receipt).length,
         pendingAssessment: equipment.filter(x => x.custodian === 'CESCo' && x.status === 'RETURNED' && x.condition === 'FAILED').length,
         receiptExceptions: equipment.filter(x => x.status === 'EXCEPTION').length,
         unverifiedSpareCount: equipment.filter(x => x.purpose === 'SPARE' && x.custodian === 'CESCo' && !ready.includes(x)).length,
