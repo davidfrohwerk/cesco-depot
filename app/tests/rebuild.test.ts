@@ -905,7 +905,7 @@ test('delivery does not establish installation or failed-unit return eligibility
  assert.equal(spare.custodian,'Client');
  assert.equal(failed.purpose,'SUPPORTED');
  assert.equal(failed.status,previousFailedStatus);
- assert.throws(()=>mutate(f.s,f.admin,'acme','complete',{id:rid,notes:'Not installed'}),/installation and physical failed-unit return receipt/);
+ assert.throws(()=>mutate(f.s,f.admin,'acme','complete',{id:rid,notes:'Not installed'}),/requires verified installation/);
  assert.throws(()=>mutate(f.s,f.admin,'acme','return',{id:rid,location:'Depot',position:'Bench'}),/Return authorization and recorded inbound shipment are required/);
  assert.throws(()=>mutate(f.s,f.admin,'acme','confirmInstallation',{id:rid,technician:'Field tech',notes:'Validated',evidenceId:'MISSING'}),/Record not found/);
  const eid=id();f.s.evidence.push({id:eid,orgId:'acme',entityId:spare.id,name:'wrong-link.jpg',sha256:'test-sha256',key:'test-file',size:123,mime:'image/jpeg',actor:f.admin.email,at:new Date().toISOString(),description:'Evidence',category:'INSTALLATION_AFTER'});
@@ -941,7 +941,7 @@ test('isolated training delivery can be recorded without installing, charging or
  assert.equal(spare.purpose,'SPARE');
  assert.equal(target.purpose,'SUPPORTED');
  assert.equal(f.s.activities.length,previousActivities);
- assert.throws(()=>mutate(f.s,f.admin,demoId,'return',{id:rid,location:'Depot',position:'A'}),/TRAINING ONLY/);
+ assert.throws(()=>mutate(f.s,f.admin,demoId,'return',{id:rid,location:'Depot',position:'A'}),/Return authorization and recorded inbound shipment/);
  assert.throws(()=>mutate(f.s,f.admin,demoId,'invoice',{}),/TRAINING ONLY/);
  const eid=id(); f.s.evidence.push({id:eid,orgId:demoId,entityId:rid,name:'fictional-installation-result.txt',sha256:'training-hash',key:'training-key',size:50,mime:'text/plain',actor:f.admin.email,at:new Date().toISOString(),description:'Synthetic field functional check',category:'TEST_RESULT'});
  mutate(f.s,f.admin,demoId,'confirmInstallation',{id:rid,technician:'TRAINING CLIENT TECH',notes:'Fictional functional validation',evidenceId:eid});
@@ -962,14 +962,14 @@ test('failed return authorization and inbound custody precede evidence-backed de
  const installationProof=id();f.s.evidence.push({id:installationProof,orgId:'acme',entityId:rid,name:'installed.pdf',sha256:'installation-hash',key:'installation-key',size:100,mime:'application/pdf',actor:admin.email,at:new Date().toISOString(),description:'Validation',category:'TEST_RESULT'});
  mutate(f.s,admin,'acme','confirmInstallation',{id:rid,technician:'Client installer',notes:'Service restored',evidenceId:installationProof});
  assert.throws(()=>mutate(f.s,admin,'acme','return',{id:rid,observedSerial:failed.serial,condition:'Broken',location:'Indy',position:'Quarantine',evidenceId:installationProof}),/authorization and recorded inbound shipment/);
- assert.throws(()=>mutate(f.s,admin,'acme','complete',{id:rid,notes:'No return'}),/physical failed-unit return receipt/);
+ mutate(f.s,admin,'acme','complete',{id:rid,notes:'Recovery confirmed, failed unit return outstanding'}); assert.equal(f.s.requests.find(x=>x.id===rid)?.status,'COMPLETED');
  mutate(f.s,admin,'acme','authorizeFailedReturn',{id:rid,reference:'RMA-004',destination:'CESCo Indy',instructions:'Label and package the failed unit'});
  assert.equal(failed.custodian,'Client');
  assert.throws(()=>mutate(f.s,admin,'acme','authorizeFailedReturn',{id:rid,reference:'RMA-005',destination:'CESCo',instructions:'Repeat'}),/already authorized/);
  mutate(f.s,admin,'acme','recordFailedReturnShipment',{id:rid,carrier:'Incoming carrier',tracking:'IN-004',shipper:'Client site'});
  assert.equal(failed.status,'RETURN_IN_TRANSIT');
  assert.equal(failed.custodian,'Incoming carrier');
- assert.equal(f.s.requests.find(x=>x.id===rid)?.status,'RETURNING');
+ assert.equal(f.s.requests.find(x=>x.id===rid)?.status,'COMPLETED');
  assert.throws(()=>mutate(f.s,admin,'acme','return',{id:rid,observedSerial:'WRONG',condition:'Damaged',location:'Indy',position:'Q-1',evidenceId:installationProof}),/Observed serial does not match/);
  assert.equal(failed.custodian,'Incoming carrier');
  const receiptId=id();f.s.evidence.push({id:receiptId,orgId:'acme',entityId:rid,name:'return-receipt.pdf',sha256:'receipt-hash',key:'receipt-key',size:100,mime:'application/pdf',actor:admin.email,at:new Date().toISOString(),description:'Received serial and condition',category:'RECEIPT'});
@@ -977,7 +977,27 @@ test('failed return authorization and inbound custody precede evidence-backed de
  assert.equal(failed.status,'RETURNED');
  assert.equal(failed.custodian,'CESCo');
  assert.equal(failed.condition,'FAILED');
- assert.equal(f.s.requests.find(x=>x.id===rid)?.status,'RETURNED');
+ assert.equal(f.s.requests.find(x=>x.id===rid)?.status,'COMPLETED');
  assert.throws(()=>mutate(f.s,admin,'acme','verify',{id:failed.id,configuration:failed.configuration,validDays:30,notes:'Not repaired'}),/Only good-condition/);
  assert.throws(()=>mutate(f.s,admin,'acme','return',{id:rid,observedSerial:failed.serial,condition:'Again',location:'Indy',position:'Q-1',evidenceId:receiptId}),/authorization and recorded inbound shipment/);
+});
+
+test('isolated training return rehearsal retains fictional custody and never bills or restocks',()=>{
+ const f=basic(),orgId=mutate(f.s,f.admin,'acme','seedLiveDemo',{}),rid=mutate(f.s,f.admin,orgId,'seedDeliveryDemo',{});
+ const r=f.s.requests.find(x=>x.id===rid)!,failed=f.s.equipment.find(x=>x.id===r.equipmentId)!;
+ mutate(f.s,f.admin,orgId,'deliver',{id:rid,recipient:'Training manager',reference:'TRAIN-POD',notes:'Synthetic delivery'});
+ const installEvidence=id();f.s.evidence.push({id:installEvidence,orgId,entityId:rid,name:'fictional-functional-check.txt',sha256:'training-install',key:'training-install',size:25,mime:'text/plain',actor:f.admin.email,at:new Date().toISOString(),description:'Synthetic install',category:'TEST_RESULT'});
+ mutate(f.s,f.admin,orgId,'confirmInstallation',{id:rid,technician:'Training technician',notes:'Simulated',evidenceId:installEvidence});
+ mutate(f.s,f.admin,orgId,'authorizeFailedReturn',{id:rid,reference:'TRAIN-RMA',destination:'TRAINING DEPOT',instructions:'Fictional return only'});
+ assert.equal(failed.custodian,'Client');
+ mutate(f.s,f.admin,orgId,'recordFailedReturnShipment',{id:rid,carrier:'TRAINING COURIER',tracking:'TRAIN-INBOUND',shipper:'TRAINING SITE'});
+ assert.equal(failed.status,'RETURN_IN_TRANSIT');
+ const proof=id();f.s.evidence.push({id:proof,orgId,entityId:rid,name:'fictional-return-receipt.txt',sha256:'training-return',key:'training-return',size:40,mime:'text/plain',actor:f.admin.email,at:new Date().toISOString(),description:'Synthetic receipt',category:'RECEIPT'});
+ mutate(f.s,f.admin,orgId,'return',{id:rid,observedSerial:failed.serial,condition:'Synthetic failed unit',location:'TRAINING DEPOT',position:'QUARANTINE-A',evidenceId:proof});
+ assert.equal(r.status,'RETURNED');
+ assert.equal(failed.condition,'FAILED');
+ assert.equal(failed.status,'RETURNED');
+ assert.throws(()=>mutate(f.s,f.admin,orgId,'repair',{id:failed.id,notes:'Test'}),/TRAINING ONLY/);
+ assert.throws(()=>mutate(f.s,f.admin,orgId,'invoice',{}),/TRAINING ONLY/);
+ assert.equal(f.s.activities.filter(x=>x.orgId===orgId).length,0);
 });
