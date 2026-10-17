@@ -427,8 +427,8 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
         return requestId;
     }
     if (org.demo) {
-        const isTrainingDelivery = (action === 'deliver' || action === 'confirmInstallation') && s.requests.some(x => x.id === p.id && x.orgId === orgId && x.number === 'TRAINING-DELIVERY-1');
-        assert(isTrainingDelivery || !['dispatch','deliver','confirmInstallation','external','activity','review','invoice','settle','return','repair','restock','disposition','complete','recordStorage'].includes(action), 'TRAINING ONLY: physical carrier handoff, return, completion, and financial execution are disabled for this demo account.');
+        const isTrainingDelivery = ['deliver','confirmInstallation','authorizeFailedReturn','recordFailedReturnShipment','return'].includes(action) && s.requests.some(x => x.id === p.id && x.orgId === orgId && x.number === 'TRAINING-DELIVERY-1');
+        assert(isTrainingDelivery || !['dispatch','deliver','confirmInstallation','authorizeFailedReturn','recordFailedReturnShipment','return','external','activity','review','invoice','settle','return','repair','restock','disposition','complete','recordStorage'].includes(action), 'TRAINING ONLY: physical carrier handoff, return, completion, and financial execution are disabled for this demo account.');
     }
     switch (action) {
         case 'plan': {
@@ -1106,7 +1106,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
         case 'authorizeFailedReturn': {
             requireCap(u,orgId,'operate');
             const r=get(s.requests,p.id,orgId);
-            assert(r.type==='RECOVERY' && r.status==='INSTALLED' && r.installation,'Verified installation is required before initiating failed-equipment return.');
+            assert(r.type==='RECOVERY' && ['INSTALLED','COMPLETED'].includes(r.status) && r.installation,'Verified installation is required before initiating failed-equipment return.');
             assert(!r.failedReturn?.authorization,'Failed-unit return already authorized.');
             const failed=get(s.equipment,r.equipmentId,orgId);
             assert(failed.status==='RETURN_PENDING' && failed.custodian==='Client','Failed equipment is not awaiting client return.');
@@ -1121,13 +1121,13 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
         case 'recordFailedReturnShipment': {
             requireCap(u,orgId,'operate');
             const r=get(s.requests,p.id,orgId);
-            assert(r.type==='RECOVERY' && r.status==='INSTALLED' && r.failedReturn?.authorization,'Authorize the failed-unit return before recording inbound shipping.');
+            assert(r.type==='RECOVERY' && ['INSTALLED','COMPLETED'].includes(r.status) && r.failedReturn?.authorization,'Authorize the failed-unit return before recording inbound shipping.');
             assert(!r.failedReturn.inbound,'Inbound shipment already recorded.');
             const failed=get(s.equipment,r.equipmentId,orgId);
             assert(failed.status==='RETURN_PENDING' && failed.custodian==='Client','Failed equipment is not pending client return.');
             const carrier=str(p.carrier,'Inbound carrier',200),tracking=str(p.tracking,'Inbound tracking number',200),shipper=str(p.shipper,'Person or party handing over shipment',200);
             r.failedReturn.inbound={at:now(),actor:u.email,carrier,tracking,shipper};
-            r.status='RETURNING';
+            if(r.status!=='COMPLETED') r.status='RETURNING';
             failed.status='RETURN_IN_TRANSIT';
             failed.custodian=carrier;
             failed.location='Inbound transit to CESCo';
@@ -1138,7 +1138,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
         case 'return': {
             requireCap(u, orgId, 'operate');
             const r=get(s.requests,p.id,orgId);
-            assert(r.type==='RECOVERY' && r.status==='RETURNING' && r.failedReturn?.authorization && r.failedReturn.inbound,'Return authorization and recorded inbound shipment are required before receipt.');
+            assert(r.type==='RECOVERY' && ['RETURNING','COMPLETED'].includes(r.status) && r.failedReturn?.authorization && r.failedReturn.inbound,'Return authorization and recorded inbound shipment are required before receipt.');
             assert(!r.failedReturn.receipt,'Failed-unit receipt already recorded.');
             const a=get(s.equipment,r.equipmentId,orgId);
             assert(a.status==='RETURN_IN_TRANSIT' && a.custodian===r.failedReturn.inbound.carrier,'Inbound unit custody does not match the recorded carrier.');
@@ -1154,7 +1154,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             a.custodian='CESCo';
             a.location=location;
             a.position=position;
-            r.status='RETURNED';
+            if(r.status!=='COMPLETED') r.status='RETURNED';
             log(s,u,orgId,'FAILED_RETURN_RECEIVED',r.id,JSON.stringify(r.failedReturn.receipt));
             operationalEvent(s,u,orgId,r.id,a.id,'FAILED_RETURN_RECEIVED',evidenceId,r.spareId);
             entityId=a.id;
@@ -1217,7 +1217,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             requireCap(u, orgId, 'operate');
             const r = get(s.requests, p.id, orgId);
             assert(['INSTALLED', 'RETURNING', 'RETURNED', 'RECEIVED', 'DELIVERED'].includes(r.status), 'Request is not ready to complete.');
-            assert(r.type !== 'RECOVERY' || (r.installation && r.failedReturn?.receipt && r.status === 'RETURNED'), 'Recovery completion requires installation and physical failed-unit return receipt.');
+            assert(r.type !== 'RECOVERY' || (r.installation && ['INSTALLED','RETURNING','RETURNED'].includes(r.status)), 'Recovery completion requires verified installation; failed-unit return and spare replenishment remain separate obligations.');
             assert(!['DONATION', 'DECOMMISSION'].includes(r.type), 'Record authorized disposition first.');
             if (['REPAIR', 'OEM'].includes(r.type)) {
                 const a = get(s.equipment, r.equipmentId, orgId);
