@@ -906,7 +906,7 @@ test('delivery does not establish installation or failed-unit return eligibility
  assert.equal(failed.purpose,'SUPPORTED');
  assert.equal(failed.status,previousFailedStatus);
  assert.throws(()=>mutate(f.s,f.admin,'acme','complete',{id:rid,notes:'Not installed'}),/installation and physical failed-unit return receipt/);
- assert.throws(()=>mutate(f.s,f.admin,'acme','return',{id:rid,location:'Depot',position:'Bench'}),/Installation must be confirmed/);
+ assert.throws(()=>mutate(f.s,f.admin,'acme','return',{id:rid,location:'Depot',position:'Bench'}),/Return authorization and recorded inbound shipment are required/);
  assert.throws(()=>mutate(f.s,f.admin,'acme','confirmInstallation',{id:rid,technician:'Field tech',notes:'Validated',evidenceId:'MISSING'}),/Record not found/);
  const eid=id();f.s.evidence.push({id:eid,orgId:'acme',entityId:spare.id,name:'wrong-link.jpg',sha256:'test-sha256',key:'test-file',size:123,mime:'image/jpeg',actor:f.admin.email,at:new Date().toISOString(),description:'Evidence',category:'INSTALLATION_AFTER'});
  assert.throws(()=>mutate(f.s,f.admin,'acme','confirmInstallation',{id:rid,technician:'Field tech',notes:'Validated',evidenceId:eid}),/attached to this request/);
