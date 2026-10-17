@@ -918,3 +918,35 @@ test('delivery does not establish installation or failed-unit return eligibility
  assert.ok(f.s.operationalEvents?.some(e=>e.type==='DELIVERY_RECORDED'&&e.requestId===rid));
  assert.ok(f.s.operationalEvents?.some(e=>e.type==='INSTALLATION_CONFIRMED'&&e.requestId===rid));
 });
+
+test('isolated training delivery can be recorded without installing, charging or enabling physical return',()=>{
+ const f=basic(), demoId=mutate(f.s,f.admin,'acme','seedLiveDemo',{});
+ const existingRequest=f.s.requests.find(x=>x.orgId===demoId)!;
+ const previousActivities=f.s.activities.length;
+ const rid=mutate(f.s,f.admin,demoId,'seedDeliveryDemo',{});
+ assert.throws(()=>mutate(f.s,f.admin,demoId,'seedDeliveryDemo',{}),/already exists/);
+ const r=f.s.requests.find(x=>x.id===rid)!;
+ const spare=f.s.equipment.find(x=>x.id===r.spareId)!;
+ const target=f.s.equipment.find(x=>x.id===r.equipmentId)!;
+ assert.equal(r.status,'DISPATCHED');
+ assert.equal(spare.custodian,'TRAINING COURIER');
+ assert.equal(existingRequest.status,'RESERVED');
+ assert.throws(()=>mutate(f.s,f.admin,demoId,'confirmInstallation',{id:rid}),/Carrier delivery must be recorded/);
+ mutate(f.s,f.admin,demoId,'deliver',{id:rid,recipient:'Fictional site manager',reference:'TRAINING-POD',notes:'Synthetic receipt'});
+ assert.equal(r.status,'DELIVERED');
+ assert.equal(spare.status,'DELIVERED_PENDING_INSTALLATION');
+ assert.equal(spare.purpose,'SPARE');
+ assert.equal(target.purpose,'SUPPORTED');
+ assert.equal(f.s.activities.length,previousActivities);
+ assert.throws(()=>mutate(f.s,f.admin,demoId,'return',{id:rid,location:'Depot',position:'A'}),/TRAINING ONLY/);
+ assert.throws(()=>mutate(f.s,f.admin,demoId,'invoice',{}),/TRAINING ONLY/);
+ const eid=id(); f.s.evidence.push({id:eid,orgId:demoId,entityId:rid,name:'fictional-installation-result.txt',sha256:'training-hash',key:'training-key',size:50,mime:'text/plain',actor:f.admin.email,at:new Date().toISOString(),description:'Synthetic field functional check',category:'TEST_RESULT'});
+ mutate(f.s,f.admin,demoId,'confirmInstallation',{id:rid,technician:'TRAINING CLIENT TECH',notes:'Fictional functional validation',evidenceId:eid});
+ assert.equal(r.status,'INSTALLED');
+ assert.equal(spare.purpose,'SUPPORTED');
+ assert.equal(target.status,'RETURN_PENDING');
+ assert.equal(existingRequest.status,'RESERVED');
+ assert.equal(f.s.activities.length,previousActivities);
+ assert.throws(()=>mutate(f.s,f.admin,demoId,'complete',{id:rid,notes:'No actual fulfillment'}),/TRAINING ONLY/);
+ assert.throws(()=>mutate(f.s,f.admin,demoId,'dispatch',{id:existingRequest.id}),/TRAINING ONLY/);
+});
