@@ -90,6 +90,7 @@ export type Rate = Base & {
     approvedBy: string | null;
     approvedAt: string | null;
 };
+export type TechnicalAssessment = {version?:number;at:string;actor:string;diagnosis:string;warranty:string;feasibility:string;estimatedCostCents:number|null;estimatedDays:number|null;recommendation:'REPAIR'|'OEM'|'REPLACE'|'HOLD'|'DISPOSITION';notes:string;evidenceId:string;evidenceSha256:string;approval?:{at:string;actor:string;reference:string;notes:string;assessmentVersion?:number}};
 export type Request = Base & {
     number: string;
     endpointId: string;
@@ -111,7 +112,8 @@ export type Request = Base & {
     resumeStatus: string | null;
     deliveryReceipt?: { at: string; actor: string; recipient: string; reference: string; notes: string };
     installation?: { at: string; actor: string; technician: string; evidenceId: string; evidenceSha256: string; notes: string };
-    technicalAssessment?: {at:string;actor:string;diagnosis:string;warranty:string;feasibility:string;estimatedCostCents:number;estimatedDays:number;recommendation:'REPAIR'|'OEM'|'REPLACE'|'HOLD'|'DISPOSITION';notes:string;evidenceId:string;evidenceSha256:string;approval?:{at:string;actor:string;reference:string;notes:string}};
+    technicalAssessment?: TechnicalAssessment;
+    assessmentHistory?: TechnicalAssessment[];
     failedReturn?: { authorization?: {at:string;actor:string;reference:string;destination:string;instructions:string}; inbound?: {at:string;actor:string;carrier:string;tracking:string;shipper:string}; receipt?: {at:string;actor:string;observedSerial:string;condition:string;location:string;position:string;evidenceId:string;evidenceSha256:string} };
     pickPack?: { at: string; actor: string; observedSerial: string; packageId: string; packageRevisionAt: string; sourcePosition: string; stagingLocation: string; condition: string; evidenceReference: string };
     shippingLabel?: { at: string; actor: string; carrier: string; service: string; tracking: string; labelReference: string; rateReference: string; destination: string; packageRevisionAt: string };
@@ -1165,17 +1167,30 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             requireCap(u,orgId,'operate');
             const r=get(s.requests,p.id,orgId);
             assert(r.type==='RECOVERY' && r.failedReturn?.receipt,'Physical return receipt is required before technical assessment.');
-            assert(!r.technicalAssessment,'Technical assessment already recorded; preserve the original and use a future revision workflow.');
             const failed=get(s.equipment,r.equipmentId,orgId);
             assert(failed.status==='RETURNED' && failed.custodian==='CESCo' && failed.condition==='FAILED','Only CESCo-held failed units in quarantine may be assessed.');
+            assert(!r.technicalAssessment?.approval,'Approved assessment is locked; change in treatment requires a separately authorized amendment workflow.');
+            if(r.technicalAssessment) {
+                assert(r.technicalAssessment.recommendation==='HOLD','Only a HOLD assessment can be revised in this phase.');
+                assert(p.expectedVersion!==undefined && Number(p.expectedVersion)===(r.technicalAssessment.version||1),'Assessment version is stale; review current findings.');
+            }
             const diagnosis=str(p.diagnosis,'Diagnostic observations',1500),warranty=str(p.warranty,'Warranty or OEM eligibility',500),feasibility=str(p.feasibility,'Technical repair feasibility',500);
-            const recommendation=str(p.recommendation,'Recommended treatment',30) as 'REPAIR'|'OEM'|'REPLACE'|'HOLD'|'DISPOSITION';
+            const recommendation=str(p.recommendation,'Recommended treatment',30) as TechnicalAssessment['recommendation'];
             assert(['REPAIR','OEM','REPLACE','HOLD','DISPOSITION'].includes(recommendation),'Unsupported proposed treatment.');
-            const estimatedCostCents=cents(p.estimatedCostCents,'Estimated treatment cost'),estimatedDays=num(p.estimatedDays,'Estimated turnaround days',0,3650);
+            const estimate=(v:unknown,label:string,integer=false):number|null => {
+                if(v===null || v===undefined || v==='') return null;
+                return integer?cents(v,label):num(v,label,0,3650);
+            };
+            const estimatedCostCents=estimate(p.estimatedCostCents,'Estimated treatment cost',true),estimatedDays=estimate(p.estimatedDays,'Estimated turnaround days');
             const notes=str(p.notes,'Assessment rationale / uncertainty',1000),evidenceId=str(p.evidenceId,'Diagnostic evidence ID',200);
             const proof=get(s.evidence,evidenceId,orgId);
             assert([r.id,failed.id].includes(proof.entityId) && ['TEST_RESULT','EQUIPMENT_CONDITION','SERIAL_PHOTO'].includes(proof.category||''),'Technical assessment requires linked diagnostic or condition evidence.');
-            r.technicalAssessment={at:now(),actor:u.email,diagnosis,warranty,feasibility,estimatedCostCents,estimatedDays,recommendation,notes,evidenceId,evidenceSha256:proof.sha256};
+            assert(proof.id!==r.installation?.evidenceId && proof.id!==r.failedReturn.receipt.evidenceId,'Installation and receiving evidence cannot substitute for new diagnostic evidence.');
+            assert(proof.at>=r.failedReturn.receipt.at,'Diagnostic evidence must be uploaded after the failed unit was received.');
+            assert(![r.technicalAssessment,...(r.assessmentHistory||[])].filter(Boolean).some(a=>a?.evidenceId===proof.id),'Each assessment revision requires different diagnostic evidence.');
+            const version=(r.technicalAssessment?.version||1)+(r.technicalAssessment?1:0);
+            if(r.technicalAssessment) (r.assessmentHistory ||= []).push({...r.technicalAssessment,version:r.technicalAssessment.version||1});
+            r.technicalAssessment={version,at:now(),actor:u.email,diagnosis,warranty,feasibility,estimatedCostCents,estimatedDays,recommendation,notes,evidenceId,evidenceSha256:proof.sha256};
             log(s,u,orgId,'FAILED_UNIT_ASSESSED',r.id,JSON.stringify(r.technicalAssessment));
             entityId=r.id;
             break;
@@ -1186,8 +1201,9 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             assert(r.type==='RECOVERY' && r.technicalAssessment,'Technical assessment is required before a client treatment decision.');
             assert(!r.technicalAssessment.approval,'Treatment decision already recorded.');
             assert(r.technicalAssessment.recommendation!=='HOLD','Hold recommendation does not authorize a physical treatment.');
+            assert(p.expectedVersion!==undefined && Number(p.expectedVersion)===(r.technicalAssessment.version||1),'Assessment version is stale; review current findings.');
             const reference=str(p.reference,'Client treatment authorization reference',200),notes=str(p.notes,'Client approval conditions',1000);
-            r.technicalAssessment.approval={at:now(),actor:u.email,reference,notes};
+            r.technicalAssessment.approval={at:now(),actor:u.email,reference,notes,assessmentVersion:r.technicalAssessment.version||1};
             log(s,u,orgId,'FAILED_TREATMENT_AUTHORIZED',r.id,JSON.stringify(r.technicalAssessment.approval));
             entityId=r.id;
             break;
