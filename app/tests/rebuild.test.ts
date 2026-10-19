@@ -1,5 +1,5 @@
 import { toCanonicalLength, toCanonicalWeight, toDisplayLength, toDisplayWeight } from '../src/lib/package-measurements.ts';
-import { parseUsdCents } from '../src/lib/currency.ts';
+import { parseUsdCents, normalizeMoneyInputs } from '../src/lib/currency.ts';
 import { normalizeRateUnit, rateUnitOptions } from '../src/lib/rate-units.ts';
 import { operationsMetrics, metricContractVersion } from '../src/lib/operations-metrics.ts';
 import test from 'node:test';
@@ -582,6 +582,26 @@ test('USD entry accepts whole dollars and two decimal places without confusing c
  for (const invalid of ['50.000', '-1', '1e2', '1,000', 'NaN', '', '1.2.3']) {
    assert.throws(() => parseUsdCents(invalid), /nonnegative USD/);
  }
+});
+
+test('all financial entry points treat typed values as USD dollars rather than integer cents',()=>{
+ const examples:[string,string,string,string][]=[
+  ['rate','priceDollars','cents','75.00'],['editDraftRate','priceDollars','cents','0.75'],
+  ['prepareFulfillment','shippingDollars','shippingCents','12.50'],['quote','ceilingDollars','ceiling','75'],
+  ['amendQuote','ceilingDollars','ceiling','120.00'],['activity','costDollars','costCents','22.45'],
+  ['settle','amountDollars','cents','0.75'],['assessFailedUnit','estimatedCostDollars','estimatedCostCents','75.00'],
+  ['trainingRepairApprove','maximumDollars','maxCents','75.00'],['trainingRepairResult','spentDollars','spentCents','0.75']
+ ];
+ for(const [action,input,output,amount] of examples){
+  const parsed=normalizeMoneyInputs(action,{[input]:amount,id:'leave-intact'});
+  assert.equal(parsed[output],parseUsdCents(amount),action);
+  assert.equal(parsed[input],undefined,action);
+  assert.equal(parsed.id,'leave-intact');
+ }
+ assert.equal(normalizeMoneyInputs('assessFailedUnit',{estimatedCostDollars:''}).estimatedCostCents,null);
+ assert.equal(normalizeMoneyInputs('assessFailedUnit',{estimatedCostDollars:'0.00'}).estimatedCostCents,0);
+ assert.throws(()=>normalizeMoneyInputs('settle',{amountDollars:'75.000'}),/nonnegative USD/);
+ assert.throws(()=>normalizeMoneyInputs('quote',{ceilingDollars:'1e3'}),/nonnegative USD/);
 });
 
 test('package profiles require measured values, preserve revisions and never move stock or create charges', () => {
