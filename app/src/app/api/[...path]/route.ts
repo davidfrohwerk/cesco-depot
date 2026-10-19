@@ -4,7 +4,7 @@ import { mkdir, writeFile, readFile, unlink } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { authenticate, hash, passwordHash, passwordValid, session, throttle } from '@/lib/security';
 import { read, transact, query } from '@/lib/store';
-import { assert, id, now, str, num, mutate, scoped, requireCap, isInternal, get, log, fields, validateCorrectionEvidenceLink, type Role } from '@/lib/domain';
+import { assert, id, now, str, num, mutate, scoped, requireCap, canReadCollection, isInternal, get, log, fields, validateCorrectionEvidenceLink, type Role } from '@/lib/domain';
 import { csvEscape } from '@/lib/csv';
 import { validateEvidenceCategory } from '@/lib/evidence-categories';
 export const runtime = 'nodejs';
@@ -70,14 +70,17 @@ export async function GET(req: NextRequest, { params }: {
                 requireCap(u, orgId, 'billing');
                 rows = s.activities.filter(x => x.orgId === orgId).map(x => ({ invoice: s.invoices.find(v => v.id === x.invoiceId)?.number || '', service: x.description, quantity: x.quantity, unit: x.unit, unitCents: x.unitCents, amountCents: x.amount, agreement: x.rateVersion, status: x.status, workOrder: s.intakes.find(v => v.id === x.intakeId)?.workOrder || s.requests.find(v => v.id === x.requestId)?.number || '', periodStart: x.periodStart, periodEnd: x.periodEnd, performedAt: x.performedAt }));
             }
-            else if (entity === 'audit')
+            else if (entity === 'audit') {
+                assert(canReadCollection(u,orgId,'audit'),'You do not have permission to export account audit records.');
                 rows = s.audit.filter(x => x.orgId === orgId);
+            }
             else
                 throw Error('Unknown export.');
             const headers = rows.length ? Object.keys(rows[0]) : fields[entity as keyof typeof fields] || [];
             return new NextResponse([headers.join(','), ...rows.map(r => headers.map(h => csvEscape(r[h])).join(','))].join('\r\n'), { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="cesco-${entity}.csv"`, 'Cache-Control': 'no-store' } });
         }
         if (path[0] === 'evidence') {
+            assert(canReadCollection(u,orgId,'evidence'),'You do not have permission to download account evidence.');
             const e = get(s.evidence, path[1], orgId);
             const bytes = await readFile(join(/*turbopackIgnore: true*/ resolve(/*turbopackIgnore: true*/ process.env.DEPOT_EVIDENCE_PATH || 'data/evidence'), e.key));
             assert(createHash('sha256').update(bytes).digest('hex') === e.sha256, 'Evidence integrity verification failed.');
