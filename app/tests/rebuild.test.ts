@@ -1106,3 +1106,37 @@ test('failed recovery repair cannot enter readiness without authorized work, rec
  assert.throws(()=>mutate(f.s,admin,'acme','verifyRecoveryRepair',{id:rid,configuration:'v1',validDays:30,notes:'Must not pass',evidenceId:evidence}),/Successful repair record/);
  assert.throws(()=>mutate(f.s,admin,'acme','restock',{id:failed.id}),/Repair and test/);
 });
+
+test('fictional repair approval is version-bound, spending-capped and never changes stock or invoices',()=>{
+ const f=basic(),org=mutate(f.s,f.admin,'acme','seedLiveDemo',{}),rid=mutate(f.s,f.admin,org,'seedDeliveryDemo',{});
+ const r=f.s.requests.find(x=>x.id===rid)!,failed=f.s.equipment.find(x=>x.id===r.equipmentId)!;
+ mutate(f.s,f.admin,org,'deliver',{id:rid,recipient:'Training manager',reference:'POD',notes:'Synthetic'});
+ const i=id();f.s.evidence.push({id:i,orgId:org,entityId:rid,name:'install.txt',sha256:'install',key:'install',size:9,mime:'text/plain',actor:f.admin.email,at:new Date().toISOString(),description:'Simulated',category:'TEST_RESULT'});
+ mutate(f.s,f.admin,org,'confirmInstallation',{id:rid,technician:'Client training',notes:'Simulated',evidenceId:i});
+ mutate(f.s,f.admin,org,'authorizeFailedReturn',{id:rid,reference:'RMA',destination:'TRAINING DEPOT',instructions:'Simulated'});
+ mutate(f.s,f.admin,org,'recordFailedReturnShipment',{id:rid,carrier:'TRAINING COURIER',tracking:'T-IN',shipper:'Training client'});
+ const rc=id();f.s.evidence.push({id:rc,orgId:org,entityId:rid,name:'receipt.txt',sha256:'receipt',key:'receipt',size:9,mime:'text/plain',actor:f.admin.email,at:new Date().toISOString(),description:'Simulated',category:'RECEIPT'});
+ mutate(f.s,f.admin,org,'return',{id:rid,observedSerial:failed.serial,condition:'Failed',location:'Training depot',position:'Q-1',evidenceId:rc});
+ const diag=id();f.s.evidence.push({id:diag,orgId:org,entityId:rid,name:'diagnosis.txt',sha256:'diagnosis',key:'diagnosis',size:9,mime:'text/plain',actor:f.admin.email,at:new Date().toISOString(),description:'Simulated',category:'TEST_RESULT'});
+ mutate(f.s,f.admin,org,'assessFailedUnit',{id:rid,diagnosis:'Training PSU fault',warranty:'Unknown',feasibility:'Training repair possible',estimatedCostCents:7500,estimatedDays:3,recommendation:'REPAIR',notes:'Synthetic',evidenceId:diag});
+ assert.throws(()=>mutate(f.s,f.admin,org,'trainingRepairOpen',{id:rid,reference:'WO-1'}),/approval required/);
+ assert.throws(()=>mutate(f.s,f.admin,org,'trainingRepairApprove',{id:rid,expectedVersion:0,reference:'APP',maxCents:7500,notes:'Synthetic'}),/stale/);
+ assert.throws(()=>mutate(f.s,f.admin,org,'trainingRepairApprove',{id:rid,expectedVersion:1,reference:'APP',maxCents:8000,notes:'Synthetic'}),/exceeds the documented/);
+ mutate(f.s,f.admin,org,'trainingRepairApprove',{id:rid,expectedVersion:1,reference:'APP',maxCents:7500,notes:'Only simulated work'});
+ assert.throws(()=>mutate(f.s,f.admin,org,'trainingRepairApprove',{id:rid,expectedVersion:1,reference:'DUP',maxCents:7500,notes:'Again'}),/already approved/);
+ mutate(f.s,f.admin,org,'trainingRepairOpen',{id:rid,reference:'TRAIN-WO-1'});
+ assert.throws(()=>mutate(f.s,f.admin,org,'trainingRepairResult',{id:rid,outcome:'SUCCESS',spentCents:7600,notes:'Over budget'}),/exceeds the approved ceiling/);
+ const work=id();f.s.evidence.push({id:work,orgId:org,entityId:rid,name:'work.txt',sha256:'work',key:'work',size:9,mime:'text/plain',actor:f.admin.email,at:new Date().toISOString(),description:'Synthetic work',category:'EQUIPMENT_CONDITION'});
+ mutate(f.s,f.admin,org,'trainingRepairResult',{id:rid,outcome:'SUCCESS',spentCents:6500,notes:'Fictional PSU swapped',evidenceId:work});
+ assert.throws(()=>mutate(f.s,f.admin,org,'trainingRepairVerify',{id:rid,notes:'Own test',evidenceId:work}),/different authenticated operator/);
+ const qa={...f.admin,id:'training-qa',email:'training-qa@example.com'};f.s.users.push(qa);
+ const testId=id();f.s.evidence.push({id:testId,orgId:org,entityId:rid,name:'qa.txt',sha256:'qa',key:'qa',size:9,mime:'text/plain',actor:qa.email,at:new Date().toISOString(),description:'Synthetic QA',category:'TEST_RESULT'});
+ mutate(f.s,qa,org,'trainingRepairVerify',{id:rid,notes:'Fictional functional QA passed',evidenceId:testId});
+ assert.ok(r.trainingRepair?.verification);
+ assert.equal(failed.status,'RETURNED');
+ assert.equal(failed.condition,'FAILED');
+ assert.equal(r.status,'RETURNED');
+ assert.equal(f.s.invoices.filter(x=>x.orgId===org).length,0);
+ assert.equal(f.s.activities.filter(x=>x.orgId===org).length,0);
+ assert.throws(()=>mutate(f.s,f.admin,org,'restock',{id:failed.id}),/TRAINING ONLY/);
+});
