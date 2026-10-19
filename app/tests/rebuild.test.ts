@@ -44,6 +44,10 @@ test('recovery: authenticated ceiling, compatible reservation, single allocation
  assert.equal(s.equipment[0].condition,'GOOD');
  assert.equal(s.equipment[0].status,'READY');
  assert.equal(operationsMetrics(s,'acme').readySpareCount,0);
+ const verifiedDue=s.equipment[0].testDue;
+ s.equipment[0].testDue='2000-01-01T00:00:00.000Z';
+ assert.throws(()=>mutate(s,admin,'acme','restock',{id:s.equipment[0].id}),/Current CESCo readiness and custody/);
+ s.equipment[0].testDue=verifiedDue;
  assert.throws(()=>mutate(s,admin,'acme','restock',{id:s.equipment[0].id}),/Serial observed at stocking/);
  const placed=id();s.evidence.push({id:placed,orgId:'acme',entityId:rid,name:'stock-placement.txt',sha256:'placement-sha',key:'placement',size:30,mime:'text/plain',actor:admin.email,at:new Date().toISOString(),description:'Physical bin and serial observation',category:'RECEIPT'});
  assert.throws(()=>mutate(s,admin,'acme','restock',{id:s.equipment[0].id,observedSerial:'WRONG',location:'Indy Hub',position:'SP-01',notes:'Wrong serial',evidenceId:placed}),/Stocking serial does not match/);
