@@ -1,5 +1,5 @@
 'use client';
-import { parseUsdCents } from '@/lib/currency';
+import { parseUsdCents, normalizeMoneyInputs } from '@/lib/currency';
 import { toDisplayLength, toDisplayWeight, toCanonicalLength, toCanonicalWeight, rounded, type MeasurementUnit } from '@/lib/package-measurements';
 
 import { rateUnitOptions, normalizeRateUnit } from '@/lib/rate-units';
@@ -192,21 +192,7 @@ export default function Portal() {
         externalId?: string;
     }[]) => items.map(x => ({ value: x.id, label: x.name || x.number || x.externalId || x.id }));
     const [packageProfileForModal, setPackageProfileForModal] = useState<Data['equipment'][number]['packageProfile']>();
-    const open = (title: string, fields: Field[], name: string, extra: Record<string, unknown> = {}, intro?: string) => setModal({ title, fields, intro, submit: async (p) => { const values = { ...extra, ...p }; if (name === 'rate' || name === 'editDraftRate') { values.cents = parseUsdCents(values.priceDollars); delete values.priceDollars; } const currencyFields: Record<string, Record<string,string>> = {
-            quote: { ceilingDollars: 'ceiling' },
-            amendQuote: { ceilingDollars: 'ceiling' },
-            activity: { costDollars: 'costCents' },
-            settle: { amountDollars: 'cents' },
-            assessFailedUnit: { estimatedCostDollars: 'estimatedCostCents' },
-            trainingRepairApprove: { maximumDollars: 'maxCents' },
-            trainingRepairResult: { spentDollars: 'spentCents' }
-        };
-        for (const [dollarsKey,centsKey] of Object.entries(currencyFields[name] || {})) {
-            const amount=values[dollarsKey];
-            values[centsKey] = name==='assessFailedUnit' && (amount===undefined || amount===null || String(amount).trim()==='') ? null : parseUsdCents(amount);
-            delete values[dollarsKey];
-        }
-         if (name === 'setPackageProfile') {
+    const open = (title: string, fields: Field[], name: string, extra: Record<string, unknown> = {}, intro?: string) => setModal({ title, fields, intro, submit: async (p) => { const values = normalizeMoneyInputs(name, { ...extra, ...p }); if (name === 'setPackageProfile') {
             const unit = String(values.enteredUnit) as MeasurementUnit;
             const measure = (key: string) => { const raw = String(values[key + 'Entered'] || ''); if (!raw || !Number.isFinite(Number(raw)) || Number(raw) <= 0) throw Error('Enter a positive measurement for ' + key); return Number(raw); };
             const original = { length: measure('length'), width: measure('width'), height: measure('height'), weight: measure('weight') };
@@ -220,7 +206,7 @@ export default function Portal() {
             values.widthCm = canonicalValue('width');
             values.heightCm = canonicalValue('height');
             values.weightKg = canonicalValue('weight');
-        } if (name === 'prepareFulfillment') { values.shippingCents = parseUsdCents(values.shippingDollars); delete values.shippingDollars; } await action(name, values); setNotice(title + ' recorded.'); } });
+        } await action(name, values); setNotice(title + ' recorded.'); } });
     const ep = (id: string | null) => data?.endpoints.find(x => x.id === id)?.name || 'Shared pool';
     const eq = (id: string | null) => data?.equipment.find(x => x.id === id)?.externalId || '—';
     const eligible = (equipmentId: string) => { const source = data?.equipment.find(x => x.id === equipmentId); return data?.equipment.filter(a => a.purpose === 'SPARE' && a.status === 'READY' && a.condition === 'GOOD' && a.pool === source?.pool && a.configuration === source?.configuration && a.testDue && new Date(a.testDue) > new Date()) || []; };
