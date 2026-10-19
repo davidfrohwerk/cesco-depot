@@ -1191,6 +1191,33 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             log(s,u,orgId,'TRAINING_REPAIR_OPENED',r.id,reference);
             entityId=r.id;break;
         }
+        case 'trainingRepairResult': {
+            requireCap(u,orgId,'operate');
+            const r=get(s.requests,p.id,orgId),t=r.trainingRepair;
+            assert(org.demo && orgId==='cesco-live-fulfillment-demo' && r.number==='TRAINING-DELIVERY-1','Only the isolated repair training case is permitted.');
+            assert(t?.approval && t.workOrder && !t.result,'Approved unfinished training work order required.');
+            const outcome=str(p.outcome,'Fictional repair outcome',30) as 'SUCCESS'|'UNSUCCESSFUL';
+            assert(['SUCCESS','UNSUCCESSFUL'].includes(outcome),'Unsupported repair outcome.');
+            const spentCents=cents(p.spentCents,'Simulated expenditures');
+            assert(spentCents<=t.approval.maxCents,'Simulated spending exceeds the approved ceiling.');
+            const notes=str(p.notes,'Fictional work findings',1500),evidenceId=str(p.evidenceId,'Synthetic repair evidence ID',200),proof=get(s.evidence,evidenceId,orgId);
+            assert(proof.entityId===r.id && ['TEST_RESULT','EQUIPMENT_CONDITION'].includes(proof.category||'') && proof.at>=t.workOrder.at && evidenceId!==r.technicalAssessment?.evidenceId,'New synthetic work evidence uploaded after the work order is required.');
+            t.result={at:now(),actor:u.email,outcome,notes,evidenceId,evidenceSha256:proof.sha256,spentCents};
+            log(s,u,orgId,'TRAINING_REPAIR_RESULT',r.id,JSON.stringify(t.result));
+            entityId=r.id;break;
+        }
+        case 'trainingRepairVerify': {
+            requireCap(u,orgId,'operate');
+            const r=get(s.requests,p.id,orgId),t=r.trainingRepair;
+            assert(org.demo && orgId==='cesco-live-fulfillment-demo' && r.number==='TRAINING-DELIVERY-1','Only the isolated repair training case is permitted.');
+            assert(t?.result?.outcome==='SUCCESS' && !t.verification,'Successful unverified training repair result required.');
+            assert(u.email!==t.result.actor,'A different authenticated operator must perform independent training verification.');
+            const notes=str(p.notes,'Synthetic functional test results',1500),evidenceId=str(p.evidenceId,'Synthetic verification evidence ID',200),proof=get(s.evidence,evidenceId,orgId);
+            assert(proof.entityId===r.id && proof.category==='TEST_RESULT' && proof.at>=t.result.at && evidenceId!==t.result.evidenceId,'New synthetic functional test evidence is required after the work result.');
+            t.verification={at:now(),actor:u.email,notes,evidenceId,evidenceSha256:proof.sha256};
+            log(s,u,orgId,'TRAINING_REPAIR_VERIFIED',r.id,JSON.stringify(t.verification));
+            entityId=r.id;break;
+        }
         case 'assessFailedUnit': {
             requireCap(u,orgId,'operate');
             const r=get(s.requests,p.id,orgId);
