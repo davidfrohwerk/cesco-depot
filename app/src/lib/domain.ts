@@ -115,6 +115,7 @@ export type Request = Base & {
     technicalAssessment?: TechnicalAssessment;
     assessmentHistory?: TechnicalAssessment[];
     repairExecution?: {workOrder:string;openedAt:string;openedBy:string;assessmentVersion:number;authorizationReference:string;result?:{at:string;actor:string;outcome:'SUCCESS'|'UNSUCCESSFUL';notes:string;evidenceId:string;evidenceSha256:string}};
+    trainingRepair?: {approval?:{at:string;actor:string;version:number;reference:string;maxCents:number;notes:string};workOrder?:{at:string;actor:string;reference:string};result?:{at:string;actor:string;outcome:'SUCCESS'|'UNSUCCESSFUL';notes:string;evidenceId:string;evidenceSha256:string;spentCents:number};verification?:{at:string;actor:string;notes:string;evidenceId:string;evidenceSha256:string}};
     failedReturn?: { authorization?: {at:string;actor:string;reference:string;destination:string;instructions:string}; inbound?: {at:string;actor:string;carrier:string;tracking:string;shipper:string}; receipt?: {at:string;actor:string;observedSerial:string;condition:string;location:string;position:string;evidenceId:string;evidenceSha256:string} };
     pickPack?: { at: string; actor: string; observedSerial: string; packageId: string; packageRevisionAt: string; sourcePosition: string; stagingLocation: string; condition: string; evidenceReference: string };
     shippingLabel?: { at: string; actor: string; carrier: string; service: string; tracking: string; labelReference: string; rateReference: string; destination: string; packageRevisionAt: string };
