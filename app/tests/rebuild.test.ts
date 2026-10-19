@@ -78,7 +78,10 @@ test('state disclosure is role-scoped and fails closed for restricted tenant col
   assert.ok(data.audit.every(x=>x.orgId==='acme'));
   assert.ok(data.evidence.every(x=>x.orgId==='acme'));
   assert.ok(data.team.every(x=>x.orgId==='acme' && !('password' in x)));
-  assert.equal(data.audit.length,canReadCollection(u,'acme','audit')?1:0,r+' audit');
+  const auditAllowed=canReadCollection(u,'acme','audit');
+  assert.equal(data.audit.length,auditAllowed?f.s.audit.filter(x=>x.orgId==='acme').length:0,r+' audit');
+  assert.equal(data.audit.some(x=>x.action==='INTERNAL_AUDIT'),auditAllowed,r+' audit visibility');
+  assert.ok(!data.audit.some(x=>x.action==='OTHER_AUDIT'),r+' cross-tenant audit');
   assert.equal(data.evidence.length,canReadCollection(u,'acme','evidence')?1:0,r+' evidence');
   assert.equal(data.team.length,canReadCollection(u,'acme','team')?2:0,r+' team');
   assert.equal(canReadCollection(u,'other','audit'),['SYSTEM_ADMIN','OPERATIONS','FINANCE'].includes(r),r+' CESCo staff account scope');
