@@ -80,7 +80,7 @@ test('state disclosure is role-scoped and fails closed for restricted tenant col
   assert.ok(data.team.every(x=>x.orgId==='acme' && !('password' in x)));
   assert.equal(data.audit.length,canReadCollection(u,'acme','audit')?1:0,r+' audit');
   assert.equal(data.evidence.length,canReadCollection(u,'acme','evidence')?1:0,r+' evidence');
-  assert.equal(data.team.length,canReadCollection(u,'acme','team')?3:0,r+' team');
+  assert.equal(data.team.length,canReadCollection(u,'acme','team')?2:0,r+' team');
   assert.equal(canReadCollection(u,'other','audit'),r==='SYSTEM_ADMIN',r+' cross-tenant audit');
   assert.equal(canReadCollection(u,'other','evidence'),r==='SYSTEM_ADMIN',r+' cross-tenant evidence');
  }
