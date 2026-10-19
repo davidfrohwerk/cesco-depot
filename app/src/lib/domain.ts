@@ -117,7 +117,7 @@ export type Request = Base & {
     repairExecution?: {workOrder:string;openedAt:string;openedBy:string;assessmentVersion:number;authorizationReference:string;result?:{at:string;actor:string;outcome:'SUCCESS'|'UNSUCCESSFUL';notes:string;evidenceId:string;evidenceSha256:string}};
     recoveryReadiness?: {at:string;actor:string;configuration:string;notes:string;expiresAt:string;evidenceId:string;evidenceSha256:string};
     replenishment?: {at:string;actor:string;location:string;position:string;observedSerial:string;notes:string;evidenceId:string;evidenceSha256:string};
-    trainingRepair?: {approval?:{at:string;actor:string;version:number;reference:string;maxCents:number;notes:string};workOrder?:{at:string;actor:string;reference:string};result?:{at:string;actor:string;outcome:'SUCCESS'|'UNSUCCESSFUL';notes:string;evidenceId:string;evidenceSha256:string;spentCents:number};verification?:{at:string;actor:string;notes:string;evidenceId:string;evidenceSha256:string}};
+    trainingRepair?: {approval?:{at:string;actor:string;version:number;reference:string;maxCents:number;notes:string};workOrder?:{at:string;actor:string;reference:string};result?:{at:string;actor:string;outcome:'SUCCESS'|'UNSUCCESSFUL';notes:string;evidenceId:string;evidenceSha256:string;spentCents:number};verification?:{at:string;actor:string;notes:string;evidenceId:string;evidenceSha256:string};stocking?:{at:string;actor:string;location:string;position:string;observedSerial:string;notes:string;evidenceId:string;evidenceSha256:string}};
     failedReturn?: { authorization?: {at:string;actor:string;reference:string;destination:string;instructions:string}; inbound?: {at:string;actor:string;carrier:string;tracking:string;shipper:string}; receipt?: {at:string;actor:string;observedSerial:string;condition:string;location:string;position:string;evidenceId:string;evidenceSha256:string} };
     pickPack?: { at: string; actor: string; observedSerial: string; packageId: string; packageRevisionAt: string; sourcePosition: string; stagingLocation: string; condition: string; evidenceReference: string };
     shippingLabel?: { at: string; actor: string; carrier: string; service: string; tracking: string; labelReference: string; rateReference: string; destination: string; packageRevisionAt: string };
@@ -1218,6 +1218,22 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             assert(proof.entityId===r.id && proof.category==='TEST_RESULT' && proof.at>=t.result.at && evidenceId!==t.result.evidenceId,'New synthetic functional test evidence is required after the work result.');
             t.verification={at:now(),actor:u.email,notes,evidenceId,evidenceSha256:proof.sha256};
             log(s,u,orgId,'TRAINING_REPAIR_VERIFIED',r.id,JSON.stringify(t.verification));
+            entityId=r.id;break;
+        }
+        case 'trainingRestockPreview': {
+            requireCap(u,orgId,'operate');
+            const r=get(s.requests,p.id,orgId),t=r.trainingRepair;
+            assert(org.demo && orgId==='cesco-live-fulfillment-demo' && r.number==='TRAINING-DELIVERY-1','Restricted to the isolated training recovery.');
+            assert(t?.verification && !t.stocking,'Independent fictional QA is required before simulated placement.');
+            const failed=get(s.equipment,r.equipmentId,orgId);
+            assert(failed.status==='RETURNED' && failed.condition==='FAILED' && failed.custodian==='CESCo','Fictional return fixture must remain failed and in training depot custody.');
+            const observedSerial=str(p.observedSerial,'Fictional observed serial',200);
+            assert(observedSerial===failed.serial,'Fictional stocking serial does not match the training device.');
+            const location=str(p.location,'Fictional storage location',200),position=str(p.position,'Fictional shelf/bin',200),notes=str(p.notes,'Fictional placement observations',1000);
+            const evidenceId=str(p.evidenceId,'Synthetic placement evidence',200),proof=get(s.evidence,evidenceId,orgId);
+            assert(proof.entityId===r.id && ['TEST_RESULT','RECEIPT'].includes(proof.category||'') && proof.at>=t.verification.at && proof.id!==t.verification.evidenceId,'New evidence after independent training QA is required.');
+            t.stocking={at:now(),actor:u.email,location,position,observedSerial,notes,evidenceId,evidenceSha256:proof.sha256};
+            log(s,u,orgId,'TRAINING_STOCK_PLACEMENT_PREVIEW',r.id,JSON.stringify(t.stocking));
             entityId=r.id;break;
         }
         case 'assessFailedUnit': {
