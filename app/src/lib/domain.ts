@@ -1166,6 +1166,31 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             entityId=a.id;
             break;
         }
+        case 'trainingRepairApprove': {
+            requireCap(u,orgId,'authorize');
+            const r=get(s.requests,p.id,orgId),a=r.technicalAssessment;
+            assert(org.demo && orgId==='cesco-live-fulfillment-demo' && r.number==='TRAINING-DELIVERY-1','Only the isolated repair training case is permitted.');
+            assert(r.failedReturn?.receipt && a?.recommendation==='REPAIR','A returned unit and REPAIR recommendation are required.');
+            assert(Number(p.expectedVersion)===(a.version||1),'Assessment version is stale.');
+            assert(!r.trainingRepair?.approval,'Fictional treatment already approved.');
+            const maxCents=cents(p.maxCents,'Simulated spending ceiling');
+            assert(a.estimatedCostCents!==null && maxCents<=a.estimatedCostCents,'Simulated spending ceiling exceeds the documented assessment estimate.');
+            const reference=str(p.reference,'Fictional approval reference',200),notes=str(p.notes,'Fictional approval conditions',1000);
+            r.trainingRepair={approval:{at:now(),actor:u.email,version:a.version||1,reference,maxCents,notes}};
+            log(s,u,orgId,'TRAINING_REPAIR_APPROVED',r.id,JSON.stringify(r.trainingRepair.approval));
+            entityId=r.id;break;
+        }
+        case 'trainingRepairOpen': {
+            requireCap(u,orgId,'operate');
+            const r=get(s.requests,p.id,orgId),a=r.trainingRepair?.approval;
+            assert(org.demo && orgId==='cesco-live-fulfillment-demo' && r.number==='TRAINING-DELIVERY-1','Only the isolated repair training case is permitted.');
+            assert(a && a.version===(r.technicalAssessment?.version||1),'Current simulated approval required.');
+            assert(!r.trainingRepair?.workOrder,'Fictional repair work order already opened.');
+            const reference=str(p.reference,'Fictional work order reference',200);
+            r.trainingRepair!.workOrder={at:now(),actor:u.email,reference};
+            log(s,u,orgId,'TRAINING_REPAIR_OPENED',r.id,reference);
+            entityId=r.id;break;
+        }
         case 'assessFailedUnit': {
             requireCap(u,orgId,'operate');
             const r=get(s.requests,p.id,orgId);
