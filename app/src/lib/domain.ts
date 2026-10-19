@@ -114,6 +114,7 @@ export type Request = Base & {
     installation?: { at: string; actor: string; technician: string; evidenceId: string; evidenceSha256: string; notes: string };
     technicalAssessment?: TechnicalAssessment;
     assessmentHistory?: TechnicalAssessment[];
+    repairExecution?: {workOrder:string;openedAt:string;openedBy:string;assessmentVersion:number;authorizationReference:string;result?:{at:string;actor:string;outcome:'SUCCESS'|'UNSUCCESSFUL';notes:string;evidenceId:string;evidenceSha256:string}};
     failedReturn?: { authorization?: {at:string;actor:string;reference:string;destination:string;instructions:string}; inbound?: {at:string;actor:string;carrier:string;tracking:string;shipper:string}; receipt?: {at:string;actor:string;observedSerial:string;condition:string;location:string;position:string;evidenceId:string;evidenceSha256:string} };
     pickPack?: { at: string; actor: string; observedSerial: string; packageId: string; packageRevisionAt: string; sourcePosition: string; stagingLocation: string; condition: string; evidenceReference: string };
     shippingLabel?: { at: string; actor: string; carrier: string; service: string; tracking: string; labelReference: string; rateReference: string; destination: string; packageRevisionAt: string };
@@ -431,7 +432,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
     }
     if (org.demo) {
         const isTrainingDelivery = ['deliver','confirmInstallation','authorizeFailedReturn','recordFailedReturnShipment','return','assessFailedUnit'].includes(action) && s.requests.some(x => x.id === p.id && x.orgId === orgId && x.number === 'TRAINING-DELIVERY-1');
-        assert(isTrainingDelivery || !['dispatch','deliver','confirmInstallation','authorizeFailedReturn','recordFailedReturnShipment','return','assessFailedUnit','approveFailedTreatment','external','activity','review','invoice','settle','return','repair','restock','disposition','complete','recordStorage'].includes(action), 'TRAINING ONLY: physical carrier handoff, return, completion, and financial execution are disabled for this demo account.');
+        assert(isTrainingDelivery || !['dispatch','deliver','confirmInstallation','authorizeFailedReturn','recordFailedReturnShipment','return','assessFailedUnit','approveFailedTreatment','openRecoveryRepair','recordRecoveryRepairResult','verifyRecoveryRepair','external','activity','review','invoice','settle','return','repair','restock','disposition','complete','recordStorage'].includes(action), 'TRAINING ONLY: physical carrier handoff, return, completion, and financial execution are disabled for this demo account.');
     }
     switch (action) {
         case 'plan': {
@@ -676,6 +677,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             requireCap(u, orgId, 'operate');
             const a = get(s.equipment, p.id, orgId);
             assert(['RECEIVED', 'RETURNED', 'REPAIR'].includes(a.status), 'Receive or repair this unit before testing.');
+            assert(!s.requests.some(r=>r.orgId===orgId&&r.type==='RECOVERY'&&r.equipmentId===a.id&&!!r.failedReturn?.receipt),'Recovered failed equipment requires independent post-repair verification.');
             assert(a.condition === 'GOOD', 'Only good-condition equipment may become ready.');
             assert(str(p.configuration, 'Verified configuration') === a.configuration, 'Configuration must match the approved profile.');
             const days = num(p.validDays, 'Test validity days', 1, 3650);
@@ -1208,20 +1210,66 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             entityId=r.id;
             break;
         }
+        case 'openRecoveryRepair': {
+            requireCap(u,orgId,'operate');
+            const r=get(s.requests,p.id,orgId);
+            assert(r.type==='RECOVERY' && r.failedReturn?.receipt && r.technicalAssessment?.recommendation==='REPAIR' && r.technicalAssessment.approval,'A returned failed unit and client-authorized REPAIR assessment are required.');
+            assert(r.technicalAssessment.approval.assessmentVersion===(r.technicalAssessment.version||1),'Client authorization does not match the current assessment.');
+            assert(!r.repairExecution,'Repair work order already opened.');
+            const a=get(s.equipment,r.equipmentId,orgId);
+            assert(a.status==='RETURNED' && a.condition==='FAILED' && a.custodian==='CESCo','Repair work order requires failed equipment in CESCo custody.');
+            const workOrder=str(p.workOrder,'Repair work-order reference',200);
+            assert(!s.requests.some(x=>x.orgId===orgId && x.repairExecution?.workOrder===workOrder),'Repair work-order reference must be unique within the account.');
+            r.repairExecution={workOrder,openedAt:now(),openedBy:u.email,assessmentVersion:r.technicalAssessment.version||1,authorizationReference:r.technicalAssessment.approval.reference};
+            a.status='REPAIR';
+            log(s,u,orgId,'RECOVERY_REPAIR_OPENED',r.id,JSON.stringify(r.repairExecution));
+            entityId=r.id;
+            break;
+        }
+        case 'recordRecoveryRepairResult': {
+            requireCap(u,orgId,'operate');
+            const r=get(s.requests,p.id,orgId);
+            assert(r.type==='RECOVERY' && r.repairExecution && !r.repairExecution.result,'An open, unfinished recovery repair work order is required.');
+            const a=get(s.equipment,r.equipmentId,orgId);
+            assert(a.status==='REPAIR' && a.condition==='FAILED' && a.custodian==='CESCo','Repair result requires failed equipment at the authorized repair bench.');
+            const outcome=str(p.outcome,'Repair outcome',30) as 'SUCCESS'|'UNSUCCESSFUL';
+            assert(['SUCCESS','UNSUCCESSFUL'].includes(outcome),'Unsupported repair result.');
+            const notes=str(p.notes,'Work performed and findings',1500),evidenceId=str(p.evidenceId,'Repair evidence ID',200),proof=get(s.evidence,evidenceId,orgId);
+            assert([r.id,a.id].includes(proof.entityId) && ['TEST_RESULT','EQUIPMENT_CONDITION'].includes(proof.category||''),'Repair result requires uploaded work evidence linked to the request or equipment.');
+            assert(proof.at>=r.repairExecution.openedAt && proof.id!==r.technicalAssessment?.evidenceId,'Repair work evidence must be distinct from the assessment and uploaded after work-order creation.');
+            r.repairExecution.result={at:now(),actor:u.email,outcome,notes,evidenceId,evidenceSha256:proof.sha256};
+            a.status=outcome==='SUCCESS'?'REPAIRED_PENDING_TEST':'REPAIR_FAILED';
+            log(s,u,orgId,'RECOVERY_REPAIR_RESULT',r.id,JSON.stringify(r.repairExecution.result));
+            entityId=r.id;
+            break;
+        }
+        case 'verifyRecoveryRepair': {
+            requireCap(u,orgId,'operate');
+            const r=get(s.requests,p.id,orgId);
+            assert(r.type==='RECOVERY' && r.repairExecution?.result?.outcome==='SUCCESS','Successful repair record required before independent readiness verification.');
+            const a=get(s.equipment,r.equipmentId,orgId);
+            assert(a.status==='REPAIRED_PENDING_TEST' && a.condition==='FAILED' && a.custodian==='CESCo','Equipment is not awaiting post-repair functional verification.');
+            assert(u.email!==r.repairExecution.result.actor,'Independent readiness verification requires a different operator from the repair-result recorder.');
+            assert(str(p.configuration,'Verified configuration')===a.configuration,'Configuration must match the approved profile.');
+            const days=num(p.validDays,'Test validity days',1,3650),notes=str(p.notes,'Independent functional verification',1500);
+            const evidenceId=str(p.evidenceId,'Post-repair test evidence ID',200),proof=get(s.evidence,evidenceId,orgId);
+            assert([r.id,a.id].includes(proof.entityId) && proof.category==='TEST_RESULT','Readiness verification requires linked functional TEST_RESULT evidence.');
+            assert(proof.id!==r.repairExecution.result.evidenceId && proof.at>=r.repairExecution.result.at,'Post-repair testing requires new evidence after the repair result.');
+            a.condition='GOOD';a.status='READY';a.testedAt=now();a.testDue=new Date(Date.now()+days*86400000).toISOString();
+            log(s,u,orgId,'RECOVERY_READINESS_VERIFIED',a.id,JSON.stringify({notes,evidenceId,sha256:proof.sha256,repairWorkOrder:r.repairExecution.workOrder}));
+            entityId=a.id;
+            break;
+        }
         case 'repair': {
-            requireCap(u, orgId, 'operate');
-            const a = get(s.equipment, p.id, orgId);
-            assert(['RETURNED', 'RECEIVED', 'EXCEPTION', 'REPAIR', 'OEM_OUT'].includes(a.status), 'Equipment cannot enter repair from this state.');
-            const recovery = a.requestId ? s.requests.find(r=>r.id===a.requestId && r.orgId===orgId && r.type==='RECOVERY' && !!r.failedReturn?.receipt) : undefined;
-            if(recovery) assert(recovery.technicalAssessment?.recommendation==='REPAIR' && recovery.technicalAssessment.approval,'Returned recovery equipment requires an assessed and client-authorized repair.');
-            a.status = 'REPAIR';
-            a.condition = 'GOOD';
-            str(p.notes, 'Repair result / exception resolution');
-            if (a.requestId) {
-                const r = get(s.requests, a.requestId, orgId);
-                assert(r.type !== 'DONATION', 'Donation scope does not authorize repair.');
-            }
-            entityId = a.id;
+            requireCap(u,orgId,'operate');
+            const a=get(s.equipment,p.id,orgId);
+            assert(['RETURNED','RECEIVED','EXCEPTION','REPAIR','OEM_OUT'].includes(a.status),'Equipment cannot enter repair from this state.');
+            const recovery=a.requestId?s.requests.find(r=>r.id===a.requestId&&r.orgId===orgId&&r.type==='RECOVERY'&&!!r.failedReturn?.receipt):undefined;
+            assert(!recovery,'Recovery returns require a separate authorized repair work order and evidence-backed repair result.');
+            const notes=str(p.notes,'Repair result / exception resolution');
+            a.status='REPAIR';a.condition='GOOD';
+            log(s,u,orgId,'LEGACY_REPAIR_RECORDED',a.id,notes);
+            entityId=a.id;
             break;
         }
         case 'restock': {
