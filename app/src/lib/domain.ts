@@ -115,6 +115,8 @@ export type Request = Base & {
     technicalAssessment?: TechnicalAssessment;
     assessmentHistory?: TechnicalAssessment[];
     repairExecution?: {workOrder:string;openedAt:string;openedBy:string;assessmentVersion:number;authorizationReference:string;result?:{at:string;actor:string;outcome:'SUCCESS'|'UNSUCCESSFUL';notes:string;evidenceId:string;evidenceSha256:string}};
+    recoveryReadiness?: {at:string;actor:string;configuration:string;notes:string;expiresAt:string;evidenceId:string;evidenceSha256:string};
+    replenishment?: {at:string;actor:string;location:string;position:string;observedSerial:string;notes:string;evidenceId:string;evidenceSha256:string};
     trainingRepair?: {approval?:{at:string;actor:string;version:number;reference:string;maxCents:number;notes:string};workOrder?:{at:string;actor:string;reference:string};result?:{at:string;actor:string;outcome:'SUCCESS'|'UNSUCCESSFUL';notes:string;evidenceId:string;evidenceSha256:string;spentCents:number};verification?:{at:string;actor:string;notes:string;evidenceId:string;evidenceSha256:string}};
     failedReturn?: { authorization?: {at:string;actor:string;reference:string;destination:string;instructions:string}; inbound?: {at:string;actor:string;carrier:string;tracking:string;shipper:string}; receipt?: {at:string;actor:string;observedSerial:string;condition:string;location:string;position:string;evidenceId:string;evidenceSha256:string} };
     pickPack?: { at: string; actor: string; observedSerial: string; packageId: string; packageRevisionAt: string; sourcePosition: string; stagingLocation: string; condition: string; evidenceReference: string };
@@ -1309,6 +1311,7 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             assert([r.id,a.id].includes(proof.entityId) && proof.category==='TEST_RESULT','Readiness verification requires linked functional TEST_RESULT evidence.');
             assert(proof.id!==r.repairExecution.result.evidenceId && proof.at>=r.repairExecution.result.at,'Post-repair testing requires new evidence after the repair result.');
             a.condition='GOOD';a.status='READY';a.testedAt=now();a.testDue=new Date(Date.now()+days*86400000).toISOString();
+            r.recoveryReadiness={at:a.testedAt!,actor:u.email,configuration:a.configuration,notes,expiresAt:a.testDue!,evidenceId,evidenceSha256:proof.sha256};
             log(s,u,orgId,'RECOVERY_READINESS_VERIFIED',a.id,JSON.stringify({notes,evidenceId,sha256:proof.sha256,repairWorkOrder:r.repairExecution.workOrder}));
             entityId=a.id;
             break;
@@ -1326,13 +1329,32 @@ export function mutate(s: State, u: User, orgId: string, action: string, p: Reco
             break;
         }
         case 'restock': {
-            requireCap(u, orgId, 'operate');
-            const a = get(s.equipment, p.id, orgId);
-            assert(a.status === 'READY' && a.purpose === 'SUPPORTED', 'Repair and test returned equipment first.');
-            a.purpose = 'SPARE';
-            a.endpointId = null;
-            if (a.requestId) operationalEvent(s, u, orgId, a.requestId, a.id, 'SPARE_REPLENISHED', a.location);
-            entityId = a.id;
+            requireCap(u,orgId,'operate');
+            const a=get(s.equipment,p.id,orgId);
+            assert(a.status==='READY' && ['SUPPORTED','SPARE'].includes(a.purpose),'Only readiness-verified equipment can be returned to spare stock.');
+            assert(a.condition==='GOOD' && a.custodian==='CESCo' && !!a.testedAt && !!a.testDue && Date.parse(a.testDue)>Date.now(),'Current CESCo readiness and custody are required.');
+            const recovery=a.requestId?s.requests.find(r=>r.orgId===orgId && r.id===a.requestId && r.type==='RECOVERY' && !!r.failedReturn?.receipt):undefined;
+            if(recovery){
+                assert(!org.demo,'TRAINING ONLY: simulated QA cannot replenish real inventory.');
+                assert(recovery.recoveryReadiness && recovery.repairExecution?.result?.outcome==='SUCCESS','Evidence-backed independent recovery readiness is required.');
+                assert(!recovery.replenishment,'The recovered unit has already been replenished.');
+                assert(a.endpointId===null && a.purpose==='SPARE','Only the displaced unit can be replenished as a compatible spare.');
+                const observedSerial=str(p.observedSerial,'Serial observed at stocking',200);
+                assert(observedSerial===a.serial,'Stocking serial does not match the recovered equipment.');
+                const location=str(p.location,'Verified physical stocking facility',200),position=str(p.position,'Verified physical shelf/bin',200),notes=str(p.notes,'Stocking inspection and custody notes',1000);
+                const evidenceId=str(p.evidenceId,'Stock placement evidence ID',200),proof=get(s.evidence,evidenceId,orgId);
+                assert([recovery.id,a.id].includes(proof.entityId) && ['RECEIPT','TEST_RESULT','SERIAL_PHOTO','EQUIPMENT_CONDITION'].includes(proof.category||''),'Stock placement requires uploaded evidence linked to this request or equipment.');
+                assert(proof.id!==recovery.recoveryReadiness.evidenceId && proof.at>=recovery.recoveryReadiness.at,'Stock placement evidence must be distinct from readiness verification and uploaded afterwards.');
+                recovery.replenishment={at:now(),actor:u.email,location,position,observedSerial,notes,evidenceId,evidenceSha256:proof.sha256};
+                a.location=location;a.position=position;
+                log(s,u,orgId,'RECOVERY_SPARE_RESTOCKED',a.id,JSON.stringify(recovery.replenishment));
+            } else {
+                assert(a.purpose==='SUPPORTED','Legacy restock requires supported equipment.');
+            }
+            const requestId=a.requestId;
+            a.purpose='SPARE';a.endpointId=null;a.requestId=null;
+            if(requestId) operationalEvent(s,u,orgId,requestId,a.id,'SPARE_REPLENISHED',a.location);
+            entityId=a.id;
             break;
         }
         case 'external': {
