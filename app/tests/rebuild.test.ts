@@ -1140,7 +1140,7 @@ test('failed recovery repair cannot enter readiness without authorized work, rec
  assert.equal(failed.status,'REPAIR_FAILED');
  assert.equal(failed.condition,'FAILED');
  assert.throws(()=>mutate(f.s,admin,'acme','verifyRecoveryRepair',{id:rid,configuration:'v1',validDays:30,notes:'Must not pass',evidenceId:evidence}),/Successful repair record/);
- assert.throws(()=>mutate(f.s,admin,'acme','restock',{id:failed.id}),/Repair and test/);
+ assert.throws(()=>mutate(f.s,admin,'acme','restock',{id:failed.id}),/Only readiness-verified equipment can be returned to spare stock/);
 });
 
 test('fictional repair approval is version-bound, spending-capped and never changes stock or invoices',()=>{
