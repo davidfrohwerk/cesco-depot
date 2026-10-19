@@ -6,7 +6,7 @@ import test from 'node:test';
 import { inferMapping } from '../src/lib/import-mapping.ts';
 import { validateEvidenceCategory } from '../src/lib/evidence-categories.ts';
 import assert from 'node:assert/strict';
-import { emptyState, id, mutate, previewImport, previewEnrichment, validateCorrectionEvidenceLink, balance, creditBalance, scoped, type State, type User } from '../src/lib/domain.ts';
+import { emptyState, id, mutate, previewImport, previewEnrichment, validateCorrectionEvidenceLink, balance, creditBalance, scoped, canReadCollection, type State, type User } from '../src/lib/domain.ts';
 function fixture() { const s = emptyState(); s.organizations.push({ id: 'acme', name: 'Acme', termsDays: 30, currency: 'USD' }, { id: 'other', name: 'Other', termsDays: 0, currency: 'USD' }); const admin: User = { id: 'ops', orgId: 'internal', name: 'Ops', email: 'ops@example.com', password: '', role: 'SYSTEM_ADMIN' }; const client: User = { id: 'client', orgId: 'acme', name: 'Client', email: 'client@example.com', password: '', role: 'CLIENT_ADMIN' }; s.users.push(admin, client); return { s, admin, client }; }
 function importCsv(s: State, u: User, kind: string, csv: string) { const job = mutate(s, u, 'acme', 'importPreview', { kind, csv }); mutate(s, u, 'acme', 'importCommit', { id: job }); }
 function basic() { const f = fixture(); importCsv(f.s, f.client, 'endpoints', 'externalId,name,addressLine1\nIND,Indy,Indianapolis IN'); importCsv(f.s, f.client, 'equipment', 'externalId,manufacturer,model,serial,configuration,pool,purpose,endpointId,volume,recoveryTargetHours\nR1,OEM,X,001,v1,routers,SUPPORTED,IND,0,4\nS1,OEM,X,002,v1,routers,SPARE,,1,'); return f; }
@@ -64,6 +64,34 @@ test('charges require client-approved rates and accepted work, ceiling amendment
 test('review, issue, payment idempotency, account credit application and refunds preserve balances', () => { const f = basic(); const iid = receive(f); const rateId = rate(f); const aid = mutate(f.s, f.admin, 'acme', 'activity', { intakeId: iid, rateId, description: 'Received', quantity: 2, costCents: 2000 }); assert.throws(() => mutate(f.s, f.admin, 'acme', 'invoice', {}), /approved/); mutate(f.s, f.admin, 'acme', 'review', { id: aid }); const invId = mutate(f.s, f.admin, 'acme', 'invoice', {}); assert.throws(() => mutate(f.s, f.admin, 'acme', 'invoice', {}), /unbilled/); mutate(f.s, f.admin, 'acme', 'settle', { kind: 'CREDIT', cents: 2500, reference: 'funding-1' }); mutate(f.s, f.admin, 'acme', 'settle', { kind: 'APPLY_CREDIT', invoiceId: invId, cents: 2500, reference: 'apply-1' }); assert.equal(creditBalance(f.s, 'acme'), 0); assert.equal(balance(f.s, f.s.invoices[0]), 7500); mutate(f.s, f.admin, 'acme', 'settle', { kind: 'PAYMENT', invoiceId: invId, cents: 7500, reference: 'provider-1' }); assert.equal(f.s.invoices[0].status, 'PAID'); assert.throws(() => mutate(f.s, f.admin, 'acme', 'settle', { kind: 'PAYMENT', invoiceId: invId, cents: 1, reference: 'provider-1' }), /already recorded/); assert.throws(() => mutate(f.s, f.admin, 'acme', 'settle', { kind: 'REFUND', invoiceId: invId, cents: 8000, reference: 'refund-too-high' }), /exceeds/); mutate(f.s, f.admin, 'acme', 'settle', { kind: 'REFUND', invoiceId: invId, cents: 1000, reference: 'refund-1' }); assert.equal(balance(f.s, f.s.invoices[0]), 1000); assert.equal(f.s.invoices[0].status, 'ISSUED'); });
 test('storage periods prevent duplicate/overlapping accrual and require physical custody', () => { const f = basic(); const iid = receive(f), rateId = rate(f, 'STORAGE'); const p = { intakeId: iid, assetId: f.s.equipment[1].id, rateId, description: '1 cubic foot × 30 days', quantity: 30, periodStart: '2026-10-01', periodEnd: '2026-11-01' }; mutate(f.s, f.admin, 'acme', 'activity', p); assert.throws(() => mutate(f.s, f.admin, 'acme', 'activity', { ...p, periodStart: '2026-10-15', periodEnd: '2026-11-15' }), /already has a charge/); mutate(f.s, f.admin, 'acme', 'activity', { ...p, periodStart: '2026-11-01', periodEnd: '2026-12-01' }); });
 test('tenant isolation and separation of helpdesk, operational and financial authority', () => { const f = basic(); const help: User = { ...f.client, role: 'HELPDESK' }; const ops: User = { ...f.admin, role: 'OPERATIONS' }; assert.throws(() => scoped(f.s, f.client, 'other'), /permission/); assert.throws(() => mutate(f.s, help, 'acme', 'authorize', { id: 'x' }), /permission/); assert.throws(() => mutate(f.s, help, 'acme', 'settle', { kind: 'CREDIT', cents: 10, reference: 'x' }), /permission/); assert.throws(() => mutate(f.s, ops, 'acme', 'rate', { name: 'x' }), /permission/); const view = scoped(f.s, help, 'acme'); assert.equal(view.invoices.length, 0); assert.equal(view.rates.length, 0); assert.ok(view.team.every(x => !('password' in x))); });
+
+test('state disclosure is role-scoped and fails closed for restricted tenant collections',()=>{
+ const f=basic(),at=new Date().toISOString();
+ f.s.audit.push({id:id(),orgId:'acme',at,actor:'ops@example.com',action:'INTERNAL_AUDIT',entityId:'secret',detail:'internal-cost-private'});
+ f.s.audit.push({id:id(),orgId:'other',at,actor:'other@example.com',action:'OTHER_AUDIT',entityId:'other',detail:'other-tenant'});
+ f.s.evidence.push({id:id(),orgId:'acme',entityId:f.s.equipment[0].id,name:'diagnostic-secret.txt',sha256:'testhash',key:'private-key',size:10,mime:'text/plain',actor:'ops@example.com',at,description:'Diagnostic',category:'TEST_RESULT'});
+ f.s.evidence.push({id:id(),orgId:'other',entityId:'other',name:'other-secret.txt',sha256:'otherhash',key:'other-key',size:10,mime:'text/plain',actor:'other@example.com',at,description:'Other tenant',category:'TEST_RESULT'});
+ f.s.users.push({id:'billing-user',orgId:'acme',role:'CLIENT_BILLING',name:'Billing User',email:'billing@example.com',password:'hidden'});
+ const role=(r:User['role']):User=>({id:r,orgId:'acme',role:r,name:r,email:r.toLowerCase()+'@example.com',password:'secret'});
+ for(const r of ['HELPDESK','CLIENT_BILLING','CLIENT_ADMIN','AUDITOR','OPERATIONS','FINANCE','SYSTEM_ADMIN'] as User['role'][]){
+  const u=role(r),data=scoped(f.s,u,'acme');
+  assert.ok(data.audit.every(x=>x.orgId==='acme'));
+  assert.ok(data.evidence.every(x=>x.orgId==='acme'));
+  assert.ok(data.team.every(x=>x.orgId==='acme' && !('password' in x)));
+  assert.equal(data.audit.length,canReadCollection(u,'acme','audit')?1:0,r+' audit');
+  assert.equal(data.evidence.length,canReadCollection(u,'acme','evidence')?1:0,r+' evidence');
+  assert.equal(data.team.length,canReadCollection(u,'acme','team')?3:0,r+' team');
+  assert.equal(canReadCollection(u,'other','audit'),r==='SYSTEM_ADMIN',r+' cross-tenant audit');
+  assert.equal(canReadCollection(u,'other','evidence'),r==='SYSTEM_ADMIN',r+' cross-tenant evidence');
+ }
+ const help=role('HELPDESK'),bill=role('CLIENT_BILLING'),client=role('CLIENT_ADMIN'),audit=role('AUDITOR');
+ assert.equal(scoped(f.s,help,'acme').audit.length,0);
+ assert.equal(scoped(f.s,bill,'acme').evidence.length,0);
+ assert.equal(scoped(f.s,client,'acme').audit.length,0);
+ assert.equal(scoped(f.s,audit,'acme').team.length,0);
+ assert.equal(canReadCollection(help,'acme','imports'),false);
+ assert.equal(canReadCollection(bill,'acme','operationalEvents'),false);
+});
 test('repair and OEM service require acceptance, receipt, repair and verified completion', () => { for (const type of ['REPAIR', 'OEM']) {
     const f = basic();
     const rid = authorize(f, type);
