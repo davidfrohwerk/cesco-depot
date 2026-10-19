@@ -1000,7 +1000,7 @@ test('failed return authorization and inbound custody precede evidence-backed de
  assert.equal(failed.condition,'FAILED');
  assert.equal(f.s.requests.find(x=>x.id===rid)?.status,'COMPLETED');
  assert.equal(operationsMetrics(f.s,'acme').pendingReturns,0);
- assert.throws(()=>mutate(f.s,admin,'acme','verify',{id:failed.id,configuration:failed.configuration,validDays:30,notes:'Not repaired'}),/Only good-condition/);
+ assert.throws(()=>mutate(f.s,admin,'acme','verify',{id:failed.id,configuration:failed.configuration,validDays:30,notes:'Not repaired'}),/Recovered failed equipment requires independent post-repair verification/);
  assert.throws(()=>mutate(f.s,admin,'acme','return',{id:rid,observedSerial:failed.serial,condition:'Again',location:'Indy',position:'Q-1',evidenceId:receiptId}),/Failed-unit receipt already recorded/);
 });
 
