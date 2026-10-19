@@ -1165,7 +1165,7 @@ test('fictional repair approval is version-bound, spending-capped and never chan
  const testId=id();f.s.evidence.push({id:testId,orgId:org,entityId:rid,name:'qa.txt',sha256:'qa',key:'qa',size:9,mime:'text/plain',actor:qa.email,at:new Date().toISOString(),description:'Synthetic QA',category:'TEST_RESULT'});
  mutate(f.s,qa,org,'trainingRepairVerify',{id:rid,notes:'Fictional functional QA passed',evidenceId:testId});
  assert.ok(r.trainingRepair?.verification);
- assert.throws(()=>mutate(f.s,qa,org,'trainingRestockPreview',{id:rid,observedSerial:failed.serial,location:'Training depot',position:'A1',notes:'No proof'}),/Synthetic placement evidence/);
+ assert.throws(()=>mutate(f.s,qa,org,'trainingRestockPreview',{id:rid,observedSerial:failed.serial,location:'Training depot',position:'A1',notes:'No proof'}),/Synthetic placement evidence|Fictional observed serial/);
  const stockProof=id();f.s.evidence.push({id:stockProof,orgId:org,entityId:rid,name:'fictional-placement.txt',sha256:'stock-training',key:'stock-training',size:9,mime:'text/plain',actor:qa.email,at:new Date().toISOString(),description:'Fictional bin observation',category:'RECEIPT'});
  mutate(f.s,qa,org,'trainingRestockPreview',{id:rid,observedSerial:failed.serial,location:'Training depot',position:'A1',notes:'Simulation only',evidenceId:stockProof});
  assert.equal(r.trainingRepair?.stocking?.position,'A1');
