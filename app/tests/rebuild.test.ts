@@ -107,6 +107,34 @@ test('customer-scoped requests do not reveal internal shipment storage positions
  assert.equal(customer.shipmentPreparation.sourcePosition,'Managed by CESCo');
  assert.equal(scoped(f.s,client,demoId).equipment.find(x=>x.purpose==='SPARE')?.position,'Managed by CESCo');
 });
+test('all nested request storage and staging positions are redacted for customer roles', () => {
+ const f=fixture(), demoId=mutate(f.s,f.admin,'acme','seedLiveDemo',{});
+ const req=f.s.requests.find(x=>x.orgId===demoId)!;
+ req.pickPack={at:'2026-10-19',actor:'ops',observedSerial:'TEST',packageId:'PKG',packageRevisionAt:'2026-10-19',sourcePosition:'PRIVATE-PICK-BIN',stagingLocation:'PRIVATE-STAGING',condition:'GOOD',evidenceReference:'TEST'};
+ req.replenishment={at:'2026-10-19',actor:'ops',location:'Indy hub',position:'PRIVATE-RESTOCK-BIN',observedSerial:'TEST',notes:'fixture',evidenceId:'test',evidenceSha256:'sha'};
+ req.failedReturn={receipt:{at:'2026-10-19',actor:'ops',observedSerial:'TEST',condition:'FAILED',location:'Indy hub',position:'PRIVATE-RETURN-BIN',evidenceId:'test',evidenceSha256:'sha'}};
+ req.trainingRepair={stocking:{at:'2026-10-19',actor:'ops',location:'Training depot',position:'PRIVATE-TRAINING-BIN',observedSerial:'TEST',notes:'fixture',evidenceId:'test',evidenceSha256:'sha'}};
+ const clientRoles=['CLIENT_ADMIN','HELPDESK','CLIENT_BILLING','AUDITOR'] as const;
+ for(const role of clientRoles){
+  const customer:User={...f.client,orgId:demoId,role};
+  const visible=scoped(f.s,customer,demoId).requests.find(x=>x.id===req.id)!;
+  assert.equal(visible.shipmentPreparation?.sourcePosition,'Managed by CESCo',role);
+  assert.equal(visible.pickPack?.sourcePosition,'Managed by CESCo',role);
+  assert.equal(visible.pickPack?.stagingLocation,'Managed by CESCo',role);
+  assert.equal(visible.replenishment?.position,'Managed by CESCo',role);
+  assert.equal(visible.failedReturn?.receipt?.position,'Managed by CESCo',role);
+  assert.equal(visible.trainingRepair?.stocking?.position,'Managed by CESCo',role);
+  assert.equal(visible.replenishment?.location,'Indy hub',role);
+  assert.equal(visible.failedReturn?.receipt?.location,'Indy hub',role);
+  assert.equal(visible.trainingRepair?.stocking?.location,'Training depot',role);
+ }
+ for(const role of ['SYSTEM_ADMIN','OPERATIONS','FINANCE'] as const){
+  const staff:User={...f.admin,role};
+  const visible=scoped(f.s,staff,demoId).requests.find(x=>x.id===req.id)!;
+  assert.equal(visible.pickPack?.stagingLocation,'PRIVATE-STAGING',role);
+  assert.equal(visible.replenishment?.position,'PRIVATE-RESTOCK-BIN',role);
+ }
+});
 test('repair and OEM service require acceptance, receipt, repair and verified completion', () => { for (const type of ['REPAIR', 'OEM']) {
     const f = basic();
     const rid = authorize(f, type);
