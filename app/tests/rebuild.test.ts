@@ -95,6 +95,18 @@ test('state disclosure is role-scoped and fails closed for restricted tenant col
  assert.equal(canReadCollection(help,'acme','imports'),false);
  assert.equal(canReadCollection(bill,'acme','operationalEvents'),false);
 });
+test('customer-scoped requests do not reveal internal shipment storage positions', () => {
+ const f=fixture();
+ const demoId=mutate(f.s,f.admin,'acme','seedLiveDemo',{});
+ const client:User={...f.client,orgId:demoId};
+ const staff=scoped(f.s,f.admin,demoId).requests.find(x=>x.shipmentPreparation);
+ const customer=scoped(f.s,client,demoId).requests.find(x=>x.shipmentPreparation);
+ assert.ok(staff?.shipmentPreparation);
+ assert.ok(customer?.shipmentPreparation);
+ assert.equal(staff.shipmentPreparation.sourcePosition,'DEMO-BIN-A1');
+ assert.equal(customer.shipmentPreparation.sourcePosition,'Managed by CESCo');
+ assert.equal(scoped(f.s,client,demoId).equipment.find(x=>x.purpose==='SPARE')?.position,'Managed by CESCo');
+});
 test('repair and OEM service require acceptance, receipt, repair and verified completion', () => { for (const type of ['REPAIR', 'OEM']) {
     const f = basic();
     const rid = authorize(f, type);
