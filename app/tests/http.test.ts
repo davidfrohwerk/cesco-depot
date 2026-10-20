@@ -18,7 +18,7 @@ test('HTTP authentication, CSRF, free account, bulk commit, role isolation, evid
     assert.equal((await read()).audit.length, 10);
     await assert.rejects(transact(s => { s.organizations.push({ id: 'rollback', name: 'Rollback', termsDays: 0, currency: 'USD' }); throw Error('rollback'); }));
     assert.equal((await read()).organizations.length, 1);
-    const child = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--hostname', '127.0.0.1', '--port', '3197'], { env: { ...process.env, DEPOT_ORIGIN: origin, NEXT_TELEMETRY_DISABLED: '1' }, stdio: 'pipe' });
+    const child = spawn(process.execPath, ['node_modules/next/dist/bin/next', 'dev', '--hostname', '127.0.0.1', '--port', '3197'], { env: { ...process.env, DEPOT_ORIGIN: origin, DEPOT_HTTP_TEST_DIST_DIR: '.next-http-test', NEXT_TELEMETRY_DISABLED: '1' }, stdio: 'pipe' });
     let output = '';
     child.stdout.on('data', d => output += String(d));
     child.stderr.on('data', d => output += String(d));
