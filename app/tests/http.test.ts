@@ -97,6 +97,28 @@ test('HTTP authentication, CSRF, free account, bulk commit, role isolation, evid
         const exportResponse = await fetch(origin + `/api/export/equipment?orgId=${orgId}`, { headers: { Cookie: cookie } });
         assert.equal(exportResponse.status, 200);
         assert.match(await exportResponse.text(), /R1/);
+        // Gate A: denied HTTP routes must never return cross-account or restricted content.
+        for (const endpoint of ['/api/state', '/api/export/equipment', '/api/export/billing', '/api/export/audit', '/api/evidence/' + eid]) {
+            const unauthenticated = await fetch(origin + endpoint);
+            assert.equal(unauthenticated.status, 401, endpoint + ' requires a session');
+            assert.doesNotMatch(await unauthenticated.text(), /original receipt evidence|PRIVATE-STAGING|admin@example.com/);
+        }
+        for (const endpoint of ['/api/state?orgId=cesco', '/api/export/equipment?orgId=cesco', '/api/export/audit?orgId=cesco', '/api/evidence/' + eid + '?orgId=cesco']) {
+            const crossTenant = await fetch(origin + endpoint, { headers: { Cookie: cookie } });
+            assert.notEqual(crossTenant.status, 200, endpoint + ' must deny cross-account access');
+            assert.doesNotMatch(await crossTenant.text(), /original receipt evidence|CONCURRENT/);
+        }
+        for (const endpoint of ['/api/export/billing?orgId=' + orgId, '/api/export/audit?orgId=' + orgId, '/api/evidence/' + eid + '?orgId=' + orgId]) {
+            const restricted = await fetch(origin + endpoint, { headers: { Cookie: hc } });
+            assert.notEqual(restricted.status, 200, endpoint + ' is restricted for HELPDESK');
+            assert.doesNotMatch(await restricted.text(), /original receipt evidence|CONCURRENT/);
+        }
+        const clientAudit = await fetch(origin + '/api/export/audit?orgId=' + orgId, { headers: { Cookie: cookie } });
+        assert.notEqual(clientAudit.status, 200, 'CLIENT_ADMIN cannot export internal audit records');
+        const missingEvidence = await fetch(origin + '/api/evidence/' + randomUUID() + '?orgId=' + orgId, { headers: { Cookie: cookie } });
+        assert.notEqual(missingEvidence.status, 200, 'unknown evidence must not be downloadable');
+        const forbiddenPost = await post('action', { orgId: 'cesco', action: 'plan', pool: 'x', configuration: 'x', afr: 0.1, days: 1, level: 0.95, contingency: 0 }, cookie);
+        assert.notEqual(forbiddenPost.r.status, 200, 'cross-account writes must fail');
         const beforeLogout = await read();
         assert.equal(beforeLogout.endpoints.filter(x => x.orgId === orgId).length, 1);
         assert.equal(beforeLogout.equipment.filter(x => x.orgId === orgId).length, 2);
